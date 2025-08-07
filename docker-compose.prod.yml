@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: absensi_mysql_prod
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: absensi_db
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data_prod:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - absensi_network_prod
+    command: --default-authentication-plugin=mysql_native_password
+
+  # phpMyAdmin (Optional for production)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: absensi_phpmyadmin_prod
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - absensi_network_prod
+    profiles:
+      - admin
+
+  # Backend FastAPI (Production)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: absensi_backend_prod
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/absensi_db
+      - SECRET_KEY=${SECRET_KEY}
+      - PASSWORD_SALT=${PASSWORD_SALT}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mysql
+    networks:
+      - absensi_network_prod
+    volumes:
+      - ./logs:/app/logs
+
+  # Frontend Next.js (Production)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: absensi_frontend_prod
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - absensi_network_prod
+
+volumes:
+  mysql_data_prod:
+    driver: local
+
+networks:
+  absensi_network_prod:
+    driver: bridge
