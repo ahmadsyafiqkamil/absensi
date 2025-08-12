@@ -69,3 +69,41 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function GET() {
+  try {
+    const accessToken = (await cookies()).get('access_token')?.value;
+    if (!accessToken) {
+      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
+    }
+
+    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+
+    // Verify admin
+    const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+      cache: 'no-store',
+    });
+    if (!meResponse.ok) {
+      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
+    }
+    const userData = await meResponse.json();
+    const isAdmin = userData.groups?.includes('admin') || userData.is_superuser;
+    if (!isAdmin) {
+      return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
+    // Fetch employees from backend
+    const response = await fetch(`${backendBase}/api/employees/`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+      cache: 'no-store',
+    });
+    const data = await response.json().catch(() => ([]));
+    return NextResponse.json(data, { status: response.status });
+  } catch (error) {
+    console.error('Error fetching employees:', error);
+    return NextResponse.json({ detail: 'Internal server error' }, { status: 500 });
+  }
+}
+
+

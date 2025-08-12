@@ -147,8 +147,8 @@ export default function AddUserPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
-        title="Add New User" 
-        subtitle="Create a new user account and assign them to a role"
+        title="Add Employee" 
+        subtitle="Create a new employee with an associated user account"
         username="Admin"
         role="admin"
       />
@@ -157,8 +157,8 @@ export default function AddUserPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>User Information</CardTitle>
-            <CardDescription>Fill in the details to create a new user account</CardDescription>
+            <CardTitle>Employee Information</CardTitle>
+            <CardDescription>Fill in account and employee details</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -226,7 +226,7 @@ export default function AddUserPage() {
 
               {/* Employee Details Section */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Employee Details (Optional)</h3>
+                <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Employee Details</h3>
                 
                 <div className="space-y-2">
                   <Label htmlFor="nip">NIP</Label>
@@ -305,7 +305,7 @@ export default function AddUserPage() {
                   disabled={isLoading}
                   className="flex-1"
                 >
-                  {isLoading ? "Creating User..." : "Create User"}
+                  {isLoading ? "Creating Employee..." : "Create Employee"}
                 </Button>
               </div>
             </form>

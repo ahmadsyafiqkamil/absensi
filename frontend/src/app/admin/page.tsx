@@ -57,26 +57,7 @@ export default async function AdminPage() {
 
         {/* Admin Functions Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* User Management */}
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                </svg>
-                User Management
-              </CardTitle>
-              <CardDescription>Manage user accounts and permissions</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/admin/add-user">
-                <Button className="w-full">Add New User</Button>
-              </Link>
-              <Link href="/admin/users">
-                <Button variant="outline" className="w-full">View All Users</Button>
-              </Link>
-            </CardContent>
-          </Card>
+          
 
           {/* Employee Management */}
           <Card className="hover:shadow-lg transition-shadow">
@@ -90,12 +71,15 @@ export default async function AdminPage() {
               <CardDescription>Manage employee records and details</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <Link href="/admin/add-user">
+                <Button variant="outline" className="w-full">Add Employee</Button>
+              </Link>
               <Link href="/admin/employees">
                 <Button variant="outline" className="w-full">View Employees</Button>
               </Link>
-              <Link href="/admin/employees/add">
+              {/* <Link href="/admin/employees/add">
                 <Button variant="outline" className="w-full">Add Employee</Button>
-              </Link>
+              </Link> */}
             </CardContent>
           </Card>
 

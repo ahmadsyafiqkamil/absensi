@@ -9,6 +9,7 @@ from django.contrib.auth.models import Group
 from rest_framework import viewsets, permissions
 from .models import Division, Position, Employee
 from .serializers import DivisionSerializer, PositionSerializer, EmployeeSerializer
+from .pagination import DefaultPagination
 
 def health(request):
     return JsonResponse({"status": "ok"})
@@ -85,7 +86,7 @@ def users_list(request):
                 'username': {'type': 'string'},
                 'password': {'type': 'string'},
                 'email': {'type': 'string'},
-                'group': {'type': 'string', 'enum': ['supervisor', 'pegawai']},
+                'group': {'type': 'string', 'enum': ['admin', 'supervisor', 'pegawai']},
             },
             'required': ['username', 'group'],
         }
@@ -104,8 +105,8 @@ def provision_user(request):
     group_name = (data.get('group') or '').strip()
     alias = {'hs': 'supervisor', 'ls': 'pegawai', 'localstaff': 'pegawai'}
     mapped = alias.get(group_name.lower(), group_name)
-    if not username or mapped not in {'supervisor', 'pegawai'}:
-        return JsonResponse({'detail': 'username dan group (supervisor/pegawai) wajib.'}, status=400)
+    if not username or mapped not in {'admin', 'supervisor', 'pegawai'}:
+        return JsonResponse({'detail': 'username dan group (admin/supervisor/pegawai) wajib.'}, status=400)
 
     User = get_user_model()
     user, created = User.objects.get_or_create(username=username, defaults={'email': email})
@@ -138,15 +139,18 @@ class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
     permission_classes = [IsAdminOrReadOnly]
+    pagination_class = DefaultPagination
 
 
 class PositionViewSet(viewsets.ModelViewSet):
     queryset = Position.objects.all()
     serializer_class = PositionSerializer
     permission_classes = [IsAdminOrReadOnly]
+    pagination_class = DefaultPagination
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.select_related('user', 'division', 'position').all()
     serializer_class = EmployeeSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
