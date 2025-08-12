@@ -50,6 +50,34 @@ def me(request):
 
 
 @extend_schema(
+    responses={200: list},
+    auth=[{"BearerAuth": []}],
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def users_list(request):
+    # Only allow admin or superuser to view the list of users
+    user = request.user
+    is_admin = bool(user.is_superuser or user.groups.filter(name='admin').exists())
+    if not is_admin:
+        return JsonResponse({"detail": "forbidden"}, status=403)
+
+    User = get_user_model()
+    users = User.objects.all().prefetch_related('groups')
+    data = [
+        {
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "is_superuser": u.is_superuser,
+            "groups": list(u.groups.values_list('name', flat=True)),
+        }
+        for u in users
+    ]
+    return JsonResponse(data, safe=False)
+
+
+@extend_schema(
     request={
         'application/json': {
             'type': 'object',

@@ -149,12 +149,6 @@ export default async function PegawaiPage() {
           </div>
         </div>
 
-        {/* Navigation
-        <div className="mt-8 text-center">
-          <Link href="/">
-            <Button variant="outline">← Back to Home</Button>
-          </Link>
-        </div> */}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ urlpatterns = [
     path('health', views.health, name='health'),
     path('users/check', views.check_user, name='check-user'),
     path('users/provision', views.provision_user, name='provision-user'),
+    path('users', views.users_list, name='users-list'),
     # Auth
     path('auth/login', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh', TokenRefreshView.as_view(), name='token_refresh'),
