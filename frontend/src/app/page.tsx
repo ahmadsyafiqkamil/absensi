@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { meFromServerCookies } from '@/lib/backend';
+import RoleBasedRedirect from '@/components/RoleBasedRedirect';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -9,6 +10,12 @@ async function getMe() {
 
 export default async function Home() {
   const me = await getMe()
+  
+  // If user is logged in, redirect to appropriate dashboard
+  if (me) {
+    return <RoleBasedRedirect user={me} />
+  }
+  
   const groups: string[] = me?.groups || []
   const isAdmin = groups.includes('admin')
   const isSupervisor = groups.includes('supervisor')
@@ -33,6 +40,14 @@ export default async function Home() {
           <div className="p-4 border rounded w-full max-w-xl">
             <h2 className="font-bold mb-2">Admin Panel</h2>
             <p>Konten khusus admin, seperti manajemen user dan laporan.</p>
+            <div className="mt-4">
+              <a 
+                href="/admin" 
+                className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+              >
+                Go to Admin Dashboard
+              </a>
+            </div>
           </div>
         )}
         {isSupervisor && (

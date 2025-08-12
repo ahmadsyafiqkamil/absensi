@@ -1,0 +1,71 @@
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+
+export async function POST(request: Request) {
+  try {
+    const accessToken = (await cookies()).get('access_token')?.value;
+    
+    if (!accessToken) {
+      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is admin
+    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/auth/me`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!meResponse.ok) {
+      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userData = await meResponse.json();
+    const isAdmin = userData.groups?.includes('admin') || userData.is_superuser;
+
+    if (!isAdmin) {
+      return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { user_id, nip, division_id, position_id } = body;
+
+    // Validate required fields
+    if (!user_id || !nip) {
+      return NextResponse.json(
+        { detail: 'User ID and NIP are required' },
+        { status: 400 }
+      );
+    }
+
+    // Call backend employee creation API
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/employees/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        user_id,
+        nip,
+        division_id: division_id || null,
+        position_id: position_id || null
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return NextResponse.json(errorData, { status: response.status });
+    }
+
+    const result = await response.json();
+    return NextResponse.json(result);
+
+  } catch (error) {
+    console.error('Error creating employee:', error);
+    return NextResponse.json(
+      { detail: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

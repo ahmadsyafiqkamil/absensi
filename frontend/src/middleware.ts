@@ -17,6 +17,6 @@ export function middleware(req: NextRequest) {
   return NextResponse.next()
 }
 
-export const config = { matcher: ['/', '/dashboard/:path*', '/login'] }
+export const config = { matcher: ['/', '/pegawai/:path*', '/login', '/admin/:path*', '/supervisor/:path*'] }
 
 
