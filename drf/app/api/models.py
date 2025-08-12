@@ -35,6 +35,27 @@ class Employee(models.Model):
     position = models.ForeignKey(
         Position, null=True, blank=True, on_delete=models.SET_NULL, related_name="employees"
     )
+    gaji_pokok = models.DecimalField(
+        max_digits=12,  # misal maksimal 999.999.999,99
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    tmt_kerja = models.DateField(
+        verbose_name="Terhitung Mulai Tanggal Kerja",
+        null=True,
+        blank=True,
+    )
+
+    tempat_lahir = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+    )
+    tanggal_lahir = models.DateField(
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         ordering = ["nip"]

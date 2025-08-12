@@ -32,11 +32,40 @@ export default function AddUserPage() {
     group: "pegawai", // default to pegawai
     nip: "",
     division_id: "",
-    position_id: ""
+    position_id: "",
+    gaji_pokok: "",
+    tmt_kerja: "",
+    tempat_lahir: "",
+    tanggal_lahir: ""
   });
 
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  function extractErrorMessage(data: any): string {
+    try {
+      if (!data) return 'Unknown error';
+      if (typeof data === 'string') return data;
+      if (Array.isArray(data)) return data.map(String).join(', ');
+      if (data.detail) return String(data.detail);
+      if (data.non_field_errors) {
+        const a = Array.isArray(data.non_field_errors) ? data.non_field_errors : [data.non_field_errors];
+        return a.map(String).join(', ');
+      }
+      const messages: string[] = [];
+      for (const [key, value] of Object.entries(data)) {
+        if (key === 'detail') continue;
+        if (Array.isArray(value)) {
+          messages.push(`${key}: ${(value as any[]).map(String).join(', ')}`);
+        } else if (value) {
+          messages.push(`${key}: ${String(value)}`);
+        }
+      }
+      return messages.length ? messages.join(' | ') : JSON.stringify(data);
+    } catch {
+      return 'Unknown error';
+    }
+  }
+
 
   // Fetch divisions and positions on component mount
   useEffect(() => {
@@ -49,7 +78,8 @@ export default function AddUserPage() {
       const response = await fetch('/api/admin/divisions');
       if (response.ok) {
         const data = await response.json();
-        setDivisions(data);
+        const items = Array.isArray(data) ? data : (data?.results ?? []);
+        setDivisions(items);
       }
     } catch (error) {
       console.error('Error fetching divisions:', error);
@@ -61,7 +91,8 @@ export default function AddUserPage() {
       const response = await fetch('/api/admin/positions');
       if (response.ok) {
         const data = await response.json();
-        setPositions(data);
+        const items = Array.isArray(data) ? data : (data?.results ?? []);
+        setPositions(items);
       }
     } catch (error) {
       console.error('Error fetching positions:', error);
@@ -96,8 +127,8 @@ export default function AddUserPage() {
       });
 
       if (!userResponse.ok) {
-        const errorData = await userResponse.json();
-        throw new Error(errorData.detail || 'Failed to create user');
+        const errorData = await userResponse.json().catch(() => null);
+        throw new Error(extractErrorMessage(errorData) || 'Failed to create user');
       }
 
       const userData = await userResponse.json();
@@ -111,13 +142,17 @@ export default function AddUserPage() {
             user_id: userData.id,
             nip: formData.nip,
             division_id: formData.division_id || null,
-            position_id: formData.position_id || null
+            position_id: formData.position_id || null,
+            gaji_pokok: formData.gaji_pokok ? formData.gaji_pokok : null,
+            tmt_kerja: formData.tmt_kerja || null,
+            tempat_lahir: formData.tempat_lahir || null,
+            tanggal_lahir: formData.tanggal_lahir || null,
           })
         });
 
         if (!employeeResponse.ok) {
-          const errorData = await employeeResponse.json();
-          throw new Error(errorData.detail || 'Failed to create employee record');
+          const errorData = await employeeResponse.json().catch(() => null);
+          throw new Error(extractErrorMessage(errorData) || 'Failed to create employee record');
         }
       }
 
@@ -129,7 +164,11 @@ export default function AddUserPage() {
         group: "pegawai",
         nip: "",
         division_id: "",
-        position_id: ""
+        position_id: "",
+        gaji_pokok: "",
+        tmt_kerja: "",
+        tempat_lahir: "",
+        tanggal_lahir: ""
       });
 
       // Redirect to admin dashboard after 2 seconds
@@ -273,6 +312,55 @@ export default function AddUserPage() {
                         </option>
                       ))}
                     </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gaji_pokok">Gaji Pokok</Label>
+                    <Input
+                      id="gaji_pokok"
+                      name="gaji_pokok"
+                      type="number"
+                      step="0.01"
+                      value={formData.gaji_pokok}
+                      onChange={handleInputChange}
+                      placeholder="cth: 5000000.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tmt_kerja">TMT Kerja</Label>
+                    <Input
+                      id="tmt_kerja"
+                      name="tmt_kerja"
+                      type="date"
+                      value={formData.tmt_kerja}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="tempat_lahir">Tempat Lahir</Label>
+                    <Input
+                      id="tempat_lahir"
+                      name="tempat_lahir"
+                      type="text"
+                      value={formData.tempat_lahir}
+                      onChange={handleInputChange}
+                      placeholder="cth: Jakarta"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tanggal_lahir">Tanggal Lahir</Label>
+                    <Input
+                      id="tanggal_lahir"
+                      name="tanggal_lahir"
+                      type="date"
+                      value={formData.tanggal_lahir}
+                      onChange={handleInputChange}
+                    />
                   </div>
                 </div>
               </div>

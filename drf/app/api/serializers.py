@@ -46,6 +46,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "division_id",
             "position",
             "position_id",
+            "gaji_pokok",
+            "tmt_kerja",
+            "tempat_lahir",
+            "tanggal_lahir",
         ]
 
 

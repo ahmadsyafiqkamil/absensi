@@ -10,8 +10,12 @@ import {
   ColumnFiltersState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Label } from "@/components/ui/label";
 
 export type DivisionRow = { id: number; name: string };
 
@@ -26,11 +30,81 @@ const columns: ColumnDef<DivisionRow>[] = [
     accessorKey: "name",
     cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>())}</span>,
   },
+  {
+    header: "Actions",
+    id: "actions",
+    cell: ({ row, table }) => {
+      const id = row.original.id
+      return (
+        <div className="flex gap-2">
+          <Button data-id={id} variant="outline" size="sm" className="px-2 py-1 h-auto text-xs"
+            onClick={() => (table.options.meta as any)?.onOpenEdit?.(id)}
+          >
+            Edit
+          </Button>
+          <Button data-id={id} variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50 px-2 py-1 h-auto text-xs"
+            onClick={() => (table.options.meta as any)?.onDelete?.(id)}
+          >
+            Delete
+          </Button>
+        </div>
+      )
+    },
+    enableSorting: false,
+  },
 ];
 
 export default function DivisionsTable({ data }: { data: DivisionRow[] }) {
+  const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const handleDelete = useCallback(async (id: number) => {
+    if (!confirm('Delete this division?')) return;
+    const resp = await fetch(`/api/admin/divisions/${id}`, { method: 'DELETE' })
+    if (resp.ok || resp.status === 204) {
+      router.refresh()
+    } else {
+      const data = await resp.json().catch(() => ({} as any))
+      alert(data?.detail || 'Failed to delete')
+    }
+  }, [router])
+  const handleOpenEdit = useCallback(async (id: number) => {
+    setEditingId(id)
+    setErrorMsg("")
+    const resp = await fetch(`/api/admin/divisions/${id}`)
+    const d = await resp.json().catch(() => ({} as any))
+    if (!resp.ok) {
+      alert(d?.detail || 'Failed to load division')
+      return
+    }
+    setEditName(d.name || "")
+    setEditOpen(true)
+  }, [])
+  const handleSave = useCallback(async () => {
+    if (!editingId) return
+    setSaving(true)
+    setErrorMsg("")
+    try {
+      const resp = await fetch(`/api/admin/divisions/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName })
+      })
+      const data = await resp.json().catch(() => ({} as any))
+      if (!resp.ok) throw new Error(data?.detail || 'Failed to update division')
+      setEditOpen(false)
+      router.refresh()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Unknown error')
+    } finally {
+      setSaving(false)
+    }
+  }, [editingId, editName, router])
   const table = useReactTable({
     data,
     columns,
@@ -40,6 +114,7 @@ export default function DivisionsTable({ data }: { data: DivisionRow[] }) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    meta: { onDelete: handleDelete, onOpenEdit: handleOpenEdit },
   });
 
   return (
@@ -95,6 +170,27 @@ export default function DivisionsTable({ data }: { data: DivisionRow[] }) {
           )}
         </tbody>
       </table>
+
+      <Dialog.Root open={editOpen} onOpenChange={setEditOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/40" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-lg w-[480px] max-w-[95vw] p-4">
+            <Dialog.Title className="text-lg font-semibold">Edit Division</Dialog.Title>
+            <Dialog.Description className="text-sm text-gray-500 mb-4">Update division details</Dialog.Description>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </div>
+              {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{errorMsg}</div>}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>Cancel</Button>
+              <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
