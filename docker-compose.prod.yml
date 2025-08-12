@@ -40,19 +40,23 @@ services:
     profiles:
       - admin
 
-  # Backend FastAPI (Production)
+  # Backend DRF (Production)
   backend:
     build:
-      context: ./backend
+      context: ./drf
       dockerfile: Dockerfile
     container_name: absensi_backend_prod
     restart: unless-stopped
     environment:
-      - DATABASE_URL=mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/absensi_db
-      - SECRET_KEY=${SECRET_KEY}
-      - PASSWORD_SALT=${PASSWORD_SALT}
-      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - DJANGO_DEBUG=0
+      - DJANGO_SECRET_KEY=${SECRET_KEY}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=absensi_db
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - CORS_ORIGIN_FRONTEND=${NEXT_PUBLIC_BACKEND_URL}
     ports:
       - "8000:8000"
     depends_on:

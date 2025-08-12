@@ -25,13 +25,13 @@ echo "✅ Development services are running!"
 echo ""
 echo "🌐 Access your applications:"
 echo "   Frontend:     http://localhost:3000"
-echo "   Backend API:  http://localhost:8000"
-echo "   API Docs:     http://localhost:8000/docs"
+echo "   Backend API:  http://localhost:8000/api/health"
+echo "   Django Admin: http://localhost:8000/admin/"
 echo "   phpMyAdmin:   http://localhost:8080"
 echo ""
 echo "📊 Database credentials:"
 echo "   Host:         localhost"
-echo "   Port:         3306"
+echo "   Port:         3307 (host) -> 3306 (container)"
 echo "   Database:     absensi_db"
 echo "   Username:     absensi_user"
 echo "   Password:     absensi_password"
@@ -47,3 +47,10 @@ echo "   View logs:    docker-compose -f docker-compose.dev.yml logs -f"
 echo "   Stop services: docker-compose -f docker-compose.dev.yml down"
 echo "   Restart:      docker-compose -f docker-compose.dev.yml restart"
 echo "   Rebuild:      docker-compose -f docker-compose.dev.yml up --build -d"
+
+# Run DB migration scripts inside MySQL container
+echo "\n🗄️ Running database migration (add role + attendance)..."
+# Use root credentials defined in compose for reliability
+docker-compose -f docker-compose.dev.yml exec -T mysql sh -lc "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" absensi_db < /docker-entrypoint-initdb.d/01-init.sql" || true
+docker-compose -f docker-compose.dev.yml exec -T mysql sh -lc "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" absensi_db < /migrations/01-add-role-and-attendance.sql" || true
+echo "✅ Migration completed."

@@ -38,19 +38,23 @@ services:
     networks:
       - absensi_network
 
-  # Backend FastAPI
+  # Backend DRF
   backend:
     build:
-      context: ./backend
+      context: ./drf
       dockerfile: Dockerfile
     container_name: absensi_backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=mysql+pymysql://absensi_user:absensi_password@mysql:3306/absensi_db
-      - SECRET_KEY=your-super-secret-key-change-this-in-production
-      - PASSWORD_SALT=your-password-salt-change-this-in-production
-      - BACKEND_CORS_ORIGINS=["http://localhost:3000", "http://frontend:3000"]
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - DJANGO_DEBUG=0
+      - DJANGO_SECRET_KEY=your-super-secret-key-change-this-in-production
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=absensi_db
+      - MYSQL_USER=absensi_user
+      - MYSQL_PASSWORD=absensi_password
+      - CORS_ORIGIN_FRONTEND=http://frontend:3000
     ports:
       - "8000:8000"
     depends_on:
@@ -58,8 +62,7 @@ services:
     networks:
       - absensi_network
     volumes:
-      - ./backend:/app
-      - /app/.venv
+      - ./drf/app:/app
 
   # Frontend Next.js
   frontend:

@@ -1,6 +1,18 @@
 import Image from "next/image";
+import { meFromServerCookies } from '@/lib/backend';
 
-export default function Home() {
+async function getMe() {
+  const { resp, data } = await meFromServerCookies()
+  if (!resp.ok) return null
+  return data
+}
+
+export default async function Home() {
+  const me = await getMe()
+  const groups: string[] = me?.groups || []
+  const isAdmin = groups.includes('admin')
+  const isSupervisor = groups.includes('supervisor')
+  const isPegawai = groups.includes('pegawai')
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -12,18 +24,31 @@ export default function Home() {
           height={38}
           priority
         />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+        <div className="space-y-2">
+          <p className="text-lg font-semibold">Selamat datang, {me?.username || 'User'}</p>
+          <p className="text-sm text-gray-500">Role: {groups.join(', ') || '-'}</p>
+        </div>
+
+        {isAdmin && (
+          <div className="p-4 border rounded w-full max-w-xl">
+            <h2 className="font-bold mb-2">Admin Panel</h2>
+            <p>Konten khusus admin, seperti manajemen user dan laporan.</p>
+          </div>
+        )}
+        {isSupervisor && (
+          <div className="p-4 border rounded w-full max-w-xl">
+            <h2 className="font-bold mb-2">Supervisor Dashboard</h2>
+            <p>Konten supervisor, seperti approval dan monitoring tim.</p>
+          </div>
+        )}
+        {isPegawai && (
+          <div className="p-4 border rounded w-full max-w-xl">
+            <h2 className="font-bold mb-2">Pegawai Area</h2>
+            <p>Konten pegawai, seperti absensi harian dan riwayat.</p>
+          </div>
+        )}
+
+        <a href="/api/auth/logout" className="text-blue-600 underline">Logout</a>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row">
           <a

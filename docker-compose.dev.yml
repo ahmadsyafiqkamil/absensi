@@ -12,10 +12,11 @@ services:
       MYSQL_USER: absensi_user
       MYSQL_PASSWORD: absensi_password
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data_dev:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/migrations:/migrations
     networks:
       - absensi_network_dev
     command: --default-authentication-plugin=mysql_native_password
@@ -38,19 +39,23 @@ services:
     networks:
       - absensi_network_dev
 
-  # Backend FastAPI (Development)
+  # Backend DRF (Development)
   backend:
     build:
-      context: ./backend
+      context: ./drf
       dockerfile: Dockerfile
     container_name: absensi_backend_dev
     restart: unless-stopped
     environment:
-      - DATABASE_URL=mysql+pymysql://absensi_user:absensi_password@mysql:3306/absensi_db
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - PASSWORD_SALT=dev-password-salt-change-in-production
-      - BACKEND_CORS_ORIGINS=["http://localhost:3000", "http://frontend:3000"]
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - DJANGO_DEBUG=1
+      - DJANGO_SECRET_KEY=dev-secret-key-change-in-production
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=absensi_db
+      - MYSQL_USER=absensi_user
+      - MYSQL_PASSWORD=absensi_password
+      - CORS_ORIGIN_FRONTEND=http://localhost:3000
     ports:
       - "8000:8000"
     depends_on:
@@ -58,9 +63,8 @@ services:
     networks:
       - absensi_network_dev
     volumes:
-      - ./backend:/app
-      - /app/.venv
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      - ./drf/app:/app
+    command: ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
 
   # Frontend Next.js (Development)
   frontend:

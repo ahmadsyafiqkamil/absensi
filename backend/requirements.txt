@@ -17,7 +17,7 @@ passlib[bcrypt]
 python-multipart
 
 # Validation & Serialization
-pydantic
+pydantic[email]
 pydantic-settings
 
 # Development & Testing (Opsional)
