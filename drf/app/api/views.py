@@ -7,15 +7,19 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import viewsets, permissions
-from .models import Division, Position, Employee, WorkSettings, Holiday
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
     EmployeeSerializer,
     WorkSettingsSerializer,
     HolidaySerializer,
+    AttendanceSerializer,
 )
 from .pagination import DefaultPagination
+from .utils import evaluate_lateness_as_dict, haversine_meters
+from zoneinfo import ZoneInfo
+from django.utils import timezone as dj_timezone
 
 def health(request):
     return JsonResponse({"status": "ok"})
@@ -200,3 +204,140 @@ class HolidayViewSet(viewsets.ModelViewSet):
     serializer_class = HolidaySerializer
     permission_classes = [IsAdmin]
     pagination_class = DefaultPagination
+
+
+class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AttendanceSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Attendance.objects.select_related('employee').filter(user=user)
+        start = self.request.query_params.get('start')
+        end = self.request.query_params.get('end')
+        if start:
+            qs = qs.filter(date_local__gte=start)
+        if end:
+            qs = qs.filter(date_local__lte=end)
+        return qs.order_by('-date_local')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def attendance_precheck(request):
+    """Return current day attendance status for confirmation UI."""
+    user = request.user
+    now = dj_timezone.now()
+    ws, _ = WorkSettings.objects.get_or_create()
+    tz = ZoneInfo(ws.timezone or dj_timezone.get_current_timezone_name())
+    local_now = now.astimezone(tz)
+    date_local = local_now.date()
+    att = Attendance.objects.filter(user=user, date_local=date_local).first()
+    has_check_in = bool(att and att.check_in_at_utc)
+    has_check_out = bool(att and att.check_out_at_utc)
+    return JsonResponse({
+        'date_local': str(date_local),
+        'has_check_in': has_check_in,
+        'has_check_out': has_check_out,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def attendance_check_in(request):
+    user = request.user
+    now = dj_timezone.now()
+    ws, _ = WorkSettings.objects.get_or_create()
+    tz = ZoneInfo(ws.timezone or dj_timezone.get_current_timezone_name())
+    local_now = now.astimezone(tz)
+    date_local = local_now.date()
+    # Prevent double check-in today
+    att, _created = Attendance.objects.get_or_create(user=user, date_local=date_local, defaults={
+        'timezone': ws.timezone or dj_timezone.get_current_timezone_name(),
+    })
+    if att.check_in_at_utc:
+        return JsonResponse({'detail': 'Already checked in.'}, status=400)
+
+    # Parse location
+    data = request.data if hasattr(request, 'data') else {}
+    try:
+        lat = float(data.get('lat'))
+        lng = float(data.get('lng'))
+        acc = int(data.get('accuracy_m') or 0)
+    except Exception:
+        return JsonResponse({'detail': 'Invalid location payload'}, status=400)
+
+    # Geofence validation
+    if ws.office_latitude is None or ws.office_longitude is None:
+        return JsonResponse({'detail': 'Office location is not configured'}, status=400)
+    dist = haversine_meters(float(ws.office_latitude), float(ws.office_longitude), lat, lng)
+    within = dist <= float(ws.office_radius_meters or 100)
+    if not within:
+        return JsonResponse({'detail': 'Outside office radius'}, status=403)
+
+    # Holiday/workday determination
+    is_holiday = Holiday.objects.filter(date=date_local).exists()
+    minutes_late = 0
+    if not is_holiday:
+        # Compute lateness using local time now
+        # evaluate_lateness expects a datetime; we pass now (server) which will be normalized
+        res = evaluate_lateness_as_dict(now)
+        minutes_late = int(res.get('minutes_late') or 0)
+
+    att.check_in_at_utc = now
+    att.check_in_lat = lat
+    att.check_in_lng = lng
+    att.check_in_accuracy_m = acc
+    att.within_geofence = within
+    att.is_holiday = is_holiday
+    att.minutes_late = minutes_late
+    # Try link to employee
+    try:
+        att.employee = user.employee
+    except Exception:
+        pass
+    att.save()
+    return JsonResponse(AttendanceSerializer(att).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def attendance_check_out(request):
+    user = request.user
+    now = dj_timezone.now()
+    ws, _ = WorkSettings.objects.get_or_create()
+    tz = ZoneInfo(ws.timezone or dj_timezone.get_current_timezone_name())
+    local_now = now.astimezone(tz)
+    date_local = local_now.date()
+    att = Attendance.objects.filter(user=user, date_local=date_local).first()
+    if not att or not att.check_in_at_utc:
+        return JsonResponse({'detail': 'No active attendance for today'}, status=400)
+    if att.check_out_at_utc:
+        return JsonResponse({'detail': 'Already checked out'}, status=400)
+
+    data = request.data if hasattr(request, 'data') else {}
+    try:
+        lat = float(data.get('lat'))
+        lng = float(data.get('lng'))
+        acc = int(data.get('accuracy_m') or 0)
+    except Exception:
+        return JsonResponse({'detail': 'Invalid location payload'}, status=400)
+
+    # Geofence validation (optional at checkout; still enforce by default)
+    if ws.office_latitude is None or ws.office_longitude is None:
+        return JsonResponse({'detail': 'Office location is not configured'}, status=400)
+    dist = haversine_meters(float(ws.office_latitude), float(ws.office_longitude), lat, lng)
+    within = dist <= float(ws.office_radius_meters or 100)
+    if not within:
+        return JsonResponse({'detail': 'Outside office radius'}, status=403)
+
+    att.check_out_at_utc = now
+    att.check_out_lat = lat
+    att.check_out_lng = lng
+    att.check_out_accuracy_m = acc
+    # Compute total work minutes
+    delta = now - (att.check_in_at_utc or now)
+    att.total_work_minutes = max(0, int(delta.total_seconds() // 60))
+    att.save(update_fields=['check_out_at_utc', 'check_out_lat', 'check_out_lng', 'check_out_accuracy_m', 'total_work_minutes'])
+    return JsonResponse(AttendanceSerializer(att).data)

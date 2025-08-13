@@ -1,0 +1,12 @@
+# Development Caddyfile
+# Access via https://absensi.localhost and https://api.absensi.localhost
+
+absensi.localhost {
+	encode gzip
+	reverse_proxy frontend:3000
+}
+
+api.absensi.localhost {
+	encode gzip
+	reverse_proxy backend:8000
+}

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Division, Position, Employee, WorkSettings, Holiday
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance
 
 
 class DivisionSerializer(serializers.ModelSerializer):
@@ -64,6 +64,9 @@ class WorkSettingsSerializer(serializers.ModelSerializer):
             "required_minutes",
             "grace_minutes",
             "workdays",
+            "office_latitude",
+            "office_longitude",
+            "office_radius_meters",
         ]
 
 
@@ -71,4 +74,45 @@ class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
         fields = ["id", "date", "note"]
+
+
+class AttendanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attendance
+        fields = [
+            "id",
+            "user",
+            "employee",
+            "date_local",
+            "timezone",
+            "check_in_at_utc",
+            "check_in_lat",
+            "check_in_lng",
+            "check_in_accuracy_m",
+            "check_out_at_utc",
+            "check_out_lat",
+            "check_out_lng",
+            "check_out_accuracy_m",
+            "is_holiday",
+            "within_geofence",
+            "minutes_late",
+            "total_work_minutes",
+            "note",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "user",
+            "employee",
+            "date_local",
+            "timezone",
+            "check_in_at_utc",
+            "check_out_at_utc",
+            "is_holiday",
+            "within_geofence",
+            "minutes_late",
+            "total_work_minutes",
+            "created_at",
+            "updated_at",
+        ]
 

@@ -84,8 +84,34 @@ services:
       - ./frontend:/app
       - /app/node_modules
 
+  # Reverse proxy with automatic HTTPS (Let's Encrypt)
+  caddy:
+    image: caddy:2
+    container_name: absensi_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Replace with your real domains
+      - FRONTEND_DOMAIN=absensi.example.com
+      - API_DOMAIN=api.absensi.example.com
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - absensi_network
+
 volumes:
   mysql_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 networks:

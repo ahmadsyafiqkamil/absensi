@@ -16,6 +16,9 @@ type WorkSettings = {
   required_minutes: number
   grace_minutes: number
   workdays: number[]
+  office_latitude?: number | null
+  office_longitude?: number | null
+  office_radius_meters?: number
 }
 
 type Holiday = { id: number; date: string; note?: string }
@@ -31,6 +34,7 @@ export default function SettingsClient() {
   const [error, setError] = useState<string | null>(null)
   const [settings, setSettings] = useState<WorkSettings | null>(null)
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [locating, setLocating] = useState(false)
   const [holidaysCount, setHolidaysCount] = useState(0)
   const [holidaysPage, setHolidaysPage] = useState(1)
   const [holidaysPageSize, setHolidaysPageSize] = useState(10)
@@ -94,6 +98,38 @@ export default function SettingsClient() {
       setError(e instanceof Error ? e.message : 'Gagal menyimpan settings')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function useMyLocation() {
+    if (!settings) return
+    setError(null)
+    setLocating(true)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        if (!('geolocation' in navigator)) {
+          reject(new Error('Geolocation tidak didukung browser'))
+          return
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords
+            setSettings({
+              ...settings,
+              office_latitude: Number(latitude.toFixed(7)),
+              office_longitude: Number(longitude.toFixed(7)),
+              office_radius_meters: settings.office_radius_meters ?? 100,
+            })
+            resolve()
+          },
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        )
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal mengambil lokasi')
+    } finally {
+      setLocating(false)
     }
   }
 
@@ -164,6 +200,37 @@ export default function SettingsClient() {
               <Label>Durasi Kerja (menit)</Label>
               <Input type="number" value={settings.required_minutes} onChange={(e) => setSettings({ ...settings, required_minutes: Number(e.target.value || 0) })} />
             </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid gap-2">
+              <Label>Latitude Kantor</Label>
+              <Input
+                placeholder="-6.2"
+                value={settings.office_latitude ?? ''}
+                onChange={(e) => setSettings({ ...settings, office_latitude: e.target.value === '' ? null : Number(e.target.value) })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Longitude Kantor</Label>
+              <Input
+                placeholder="106.8"
+                value={settings.office_longitude ?? ''}
+                onChange={(e) => setSettings({ ...settings, office_longitude: e.target.value === '' ? null : Number(e.target.value) })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Radius Geofence (meter)</Label>
+              <Input
+                type="number"
+                value={settings.office_radius_meters ?? 100}
+                onChange={(e) => setSettings({ ...settings, office_radius_meters: Number(e.target.value || 0) })}
+              />
+            </div>
+          </div>
+          <div>
+            <Button type="button" variant="outline" onClick={useMyLocation} disabled={locating}>
+              {locating ? 'Mengambil lokasi...' : 'Gunakan Lokasi Saya'}
+            </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="grid gap-2">

@@ -17,6 +17,10 @@ urlpatterns = [
     path('auth/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/verify', TokenVerifyView.as_view(), name='token_verify'),
     path('auth/me', views.me, name='auth-me'),
+    # Attendance
+    path('attendance/precheck', views.attendance_precheck, name='attendance-precheck'),
+    path('attendance/check-in', views.attendance_check_in, name='attendance-check-in'),
+    path('attendance/check-out', views.attendance_check_out, name='attendance-check-out'),
 ]
 
 router = DefaultRouter()
@@ -25,6 +29,7 @@ router.register(r'positions', views.PositionViewSet, basename='position')
 router.register(r'employees', views.EmployeeViewSet, basename='employee')
 router.register(r'settings/work', views.WorkSettingsViewSet, basename='work-settings')
 router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
+router.register(r'attendance', views.AttendanceViewSet, basename='attendance')
 
 urlpatterns += [
     path('', include(router.urls)),
