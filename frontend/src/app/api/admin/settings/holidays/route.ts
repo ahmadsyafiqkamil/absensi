@@ -15,10 +15,12 @@ async function ensureAdmin() {
   return { ok: isAdmin, status: isAdmin ? 200 : 403, accessToken, backendBase }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/settings/holidays/`, {
+  const url = new URL(req.url)
+  const search = url.search ? url.search : ''
+  const resp = await fetch(`${chk.backendBase}/api/settings/holidays/${search}`, {
     headers: { Authorization: `Bearer ${chk.accessToken}` },
     cache: 'no-store',
   })

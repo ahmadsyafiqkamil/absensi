@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import CalendarClient from '@/app/admin/calendar/CalendarClient'
+import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 
 type WorkSettings = {
   id: number
@@ -17,6 +19,7 @@ type WorkSettings = {
 }
 
 type Holiday = { id: number; date: string; note?: string }
+type PaginatedHolidays = { count: number; next: string | null; previous: string | null; results: Holiday[] }
 
 const IANA_TIMEZONES = [
   'Asia/Dubai', 'UTC', 'Asia/Jakarta', 'Asia/Singapore', 'Asia/Kuala_Lumpur', 'Asia/Riyadh', 'Europe/London'
@@ -28,6 +31,10 @@ export default function SettingsClient() {
   const [error, setError] = useState<string | null>(null)
   const [settings, setSettings] = useState<WorkSettings | null>(null)
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [holidaysCount, setHolidaysCount] = useState(0)
+  const [holidaysPage, setHolidaysPage] = useState(1)
+  const [holidaysPageSize, setHolidaysPageSize] = useState(10)
+  const [holidaysLoading, setHolidaysLoading] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -36,10 +43,13 @@ export default function SettingsClient() {
       try {
         const [s, h] = await Promise.all([
           fetch('/api/admin/settings/work').then(r => r.json()),
-          fetch('/api/admin/settings/holidays').then(r => r.json()),
+          fetch(`/api/admin/settings/holidays?page=${1}&page_size=${10}`).then(r => r.json()),
         ])
         setSettings(s)
         setHolidays(h?.results ?? [])
+        setHolidaysCount(h?.count ?? 0)
+        setHolidaysPage(1)
+        setHolidaysPageSize(10)
       } catch (e) {
         setError('Gagal memuat settings')
       } finally {
@@ -47,6 +57,20 @@ export default function SettingsClient() {
       }
     })()
   }, [])
+
+  async function loadHolidays(page: number, pageSize: number) {
+    setHolidaysLoading(true)
+    try {
+      const resp = await fetch(`/api/admin/settings/holidays?page=${page}&page_size=${pageSize}`)
+      const data: PaginatedHolidays = await resp.json().catch(() => ({ count: 0, next: null, previous: null, results: [] }))
+      setHolidays(data.results)
+      setHolidaysCount(data.count || 0)
+      setHolidaysPage(page)
+      setHolidaysPageSize(pageSize)
+    } finally {
+      setHolidaysLoading(false)
+    }
+  }
 
   const workdayFlags = useMemo(() => {
     const base = new Set(settings?.workdays ?? [])
@@ -85,7 +109,8 @@ export default function SettingsClient() {
       setError((data as any)?.detail || 'Gagal menambah libur')
       return
     }
-    setHolidays(prev => [...prev, data])
+    // reload current page
+    await loadHolidays(holidaysPage, holidaysPageSize)
   }
 
   async function deleteHoliday(id: number) {
@@ -96,7 +121,7 @@ export default function SettingsClient() {
       setError((data as any)?.detail || 'Gagal menghapus libur')
       return
     }
-    setHolidays(prev => prev.filter(h => h.id !== id))
+    await loadHolidays(holidaysPage, holidaysPageSize)
   }
 
   if (loading) {
@@ -171,33 +196,23 @@ export default function SettingsClient() {
         </CardHeader>
         <CardContent className="grid gap-4">
           <AddHolidayForm onAdd={addHoliday} />
-          <div className="overflow-x-auto border rounded">
-            <table className="min-w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs text-gray-600 px-3 py-2">Tanggal</th>
-                  <th className="text-left text-xs text-gray-600 px-3 py-2">Catatan</th>
-                  <th className="text-left text-xs text-gray-600 px-3 py-2">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holidays.map(h => (
-                  <tr key={h.id} className="border-t">
-                    <td className="px-3 py-2 text-sm">{h.date}</td>
-                    <td className="px-3 py-2 text-sm">{h.note || '-'}</td>
-                    <td className="px-3 py-2 text-sm">
-                      <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={() => deleteHoliday(h.id)}>Hapus</Button>
-                    </td>
-                  </tr>
-                ))}
-                {holidays.length === 0 && (
-                  <tr><td className="px-3 py-6 text-center text-gray-500" colSpan={3}>Belum ada data libur</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <HolidaysTable
+            data={holidays}
+            loading={holidaysLoading}
+            page={holidaysPage}
+            pageSize={holidaysPageSize}
+            total={holidaysCount}
+            onDelete={deleteHoliday}
+            onPageChange={(p) => loadHolidays(p, holidaysPageSize)}
+            onPageSizeChange={(ps) => loadHolidays(1, ps)}
+          />
         </CardContent>
       </Card>
+
+      <div className="grid gap-2">
+        <div className="text-lg font-semibold">Kalender Hari Libur</div>
+        <CalendarClient />
+      </div>
     </div>
   )
 }
@@ -221,5 +236,96 @@ function AddHolidayForm({ onAdd }: { onAdd: (date: string, note: string) => void
     </form>
   )
 }
+
+function HolidaysTable({
+  data,
+  loading,
+  page,
+  pageSize,
+  total,
+  onDelete,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  data: Holiday[]
+  loading: boolean
+  page: number
+  pageSize: number
+  total: number
+  onDelete: (id: number) => void
+  onPageChange: (page: number) => void
+  onPageSizeChange: (ps: number) => void
+}) {
+  const columns = useMemo<ColumnDef<Holiday>[]>(() => [
+    { header: 'Tanggal', accessorKey: 'date', cell: ({ getValue }) => <span className="text-sm">{String(getValue<string>())}</span> },
+    { header: 'Catatan', accessorKey: 'note', cell: ({ getValue }) => <span className="text-sm">{String(getValue<string>() || '-')}</span> },
+    {
+      header: 'Aksi',
+      id: 'actions',
+      cell: ({ row }) => (
+        <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={() => onDelete(row.original.id)}>Hapus</Button>
+      ),
+    },
+  ], [onDelete])
+
+  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() })
+
+  const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize))
+  const prevPage = Math.max(1, page - 1)
+  const nextPage = Math.min(totalPages, page + 1)
+
+  return (
+    <div className="grid gap-3">
+      <div className="overflow-x-auto border rounded">
+        <table className="min-w-full">
+          <thead className="bg-gray-50">
+            {table.getHeaderGroups().map(hg => (
+              <tr key={hg.id}>
+                {hg.headers.map(h => (
+                  <th key={h.id} className="text-left text-xs text-gray-600 px-3 py-2">
+                    {flexRender(h.column.columnDef.header, h.getContext())}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={columns.length} className="px-3 py-6 text-center text-gray-500">Memuat...</td></tr>
+            ) : (
+              table.getRowModel().rows.map(r => (
+                <tr key={r.id} className="border-t">
+                  {r.getVisibleCells().map(c => (
+                    <td key={c.id} className="px-3 py-2">
+                      {flexRender(c.column.columnDef.cell, c.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+            {!loading && table.getRowModel().rows.length === 0 && (
+              <tr><td colSpan={columns.length} className="px-3 py-6 text-center text-gray-500">Belum ada data libur</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-600">Total: {total} • Page {page} of {totalPages}</div>
+        <div className="flex items-center gap-2">
+          <select
+            className="h-9 border rounded px-2 text-sm"
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value || 10))}
+          >
+            {[10, 20, 50].map(ps => <option key={ps} value={ps}>{ps} / page</option>)}
+          </select>
+          <Button variant="outline" onClick={() => onPageChange(prevPage)} disabled={page <= 1}>Prev</Button>
+          <Button variant="outline" onClick={() => onPageChange(nextPage)} disabled={page >= totalPages}>Next</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 
