@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 import Header from '@/components/Header';
+import AttendanceWidget from './AttendanceWidget'
+import TodayAttendance from './TodayAttendance'
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -51,12 +53,7 @@ export default async function PegawaiPage() {
               <CardDescription>Record your daily attendance</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Link href="/pegawai/check-in">
-                <Button className="w-full">Check In</Button>
-              </Link>
-              <Link href="/pegawai/check-out">
-                <Button variant="outline" className="w-full">Check Out</Button>
-              </Link>
+              <AttendanceWidget />
             </CardContent>
           </Card>
 
@@ -125,28 +122,9 @@ export default async function PegawaiPage() {
         </div>
 
         {/* Quick Stats */}
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Overview</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-blue-600">0</div>
-                <div className="text-sm text-gray-600">Days Present</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-green-600">0</div>
-                <div className="text-sm text-gray-600">Hours Worked</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-purple-600">0</div>
-                <div className="text-sm text-gray-600">Leave Balance</div>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="mt-8 grid gap-4">
+          <h2 className="text-xl font-semibold text-gray-900">Your Overview</h2>
+          <TodayAttendance />
         </div>
 
       </div>
