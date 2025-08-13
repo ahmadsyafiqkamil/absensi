@@ -1,4 +1,5 @@
 from django.contrib.auth.models import Group, Permission
+from .models import WorkSettings
 
 
 def ensure_default_groups(sender, **kwargs):
@@ -21,5 +22,8 @@ def ensure_default_groups(sender, **kwargs):
     # Ensure default groups
     for name in ["admin", "supervisor", "pegawai"]:
         Group.objects.get_or_create(name=name)
+
+    # Ensure WorkSettings singleton exists with defaults
+    WorkSettings.objects.get_or_create()
 
 

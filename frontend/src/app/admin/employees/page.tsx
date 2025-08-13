@@ -10,6 +10,10 @@ type EmployeeRow = {
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
   position?: { id: number; name: string } | null;
+  gaji_pokok?: number | null;
+  tmt_kerja?: string | null;
+  tempat_lahir?: string | null;
+  tanggal_lahir?: string | null;
 }
 
 type PaginatedEmployees = {

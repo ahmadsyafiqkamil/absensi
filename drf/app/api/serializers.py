@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Division, Position, Employee
+from .models import Division, Position, Employee, WorkSettings, Holiday
 
 
 class DivisionSerializer(serializers.ModelSerializer):
@@ -52,4 +52,23 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "tanggal_lahir",
         ]
 
+
+class WorkSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkSettings
+        fields = [
+            "id",
+            "timezone",
+            "start_time",
+            "end_time",
+            "required_minutes",
+            "grace_minutes",
+            "workdays",
+        ]
+
+
+class HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Holiday
+        fields = ["id", "date", "note"]
 

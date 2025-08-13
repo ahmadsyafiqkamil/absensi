@@ -7,8 +7,14 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import viewsets, permissions
-from .models import Division, Position, Employee
-from .serializers import DivisionSerializer, PositionSerializer, EmployeeSerializer
+from .models import Division, Position, Employee, WorkSettings, Holiday
+from .serializers import (
+    DivisionSerializer,
+    PositionSerializer,
+    EmployeeSerializer,
+    WorkSettingsSerializer,
+    HolidaySerializer,
+)
 from .pagination import DefaultPagination
 
 def health(request):
@@ -135,6 +141,15 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
 
 
+class IsAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        # Allow superuser or users in 'admin' group
+        return bool(user.is_superuser or user.groups.filter(name='admin').exists())
+
+
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -152,5 +167,36 @@ class PositionViewSet(viewsets.ModelViewSet):
 class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.select_related('user', 'division', 'position').all()
     serializer_class = EmployeeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+
+class WorkSettingsViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdmin]
+
+    def list(self, request):
+        obj, _ = WorkSettings.objects.get_or_create()
+        return JsonResponse(WorkSettingsSerializer(obj).data, safe=False)
+
+    def update(self, request, pk=None):
+        obj, _ = WorkSettings.objects.get_or_create()
+        serializer = WorkSettingsSerializer(obj, data=request.data, partial=False)
+        if serializer.is_valid():
+            # Basic validation: start < end (no overnight for now)
+            start = serializer.validated_data.get("start_time", obj.start_time)
+            end = serializer.validated_data.get("end_time", obj.end_time)
+            if start >= end:
+                return JsonResponse({"detail": "start_time must be earlier than end_time"}, status=400)
+            workdays = serializer.validated_data.get("workdays", obj.workdays)
+            if not isinstance(workdays, list) or not all(isinstance(x, int) and 0 <= x <= 6 for x in workdays):
+                return JsonResponse({"detail": "workdays must be a list of integers 0..6"}, status=400)
+            serializer.save()
+            return JsonResponse(serializer.data)
+        return JsonResponse(serializer.errors, status=400)
+
+
+class HolidayViewSet(viewsets.ModelViewSet):
+    queryset = Holiday.objects.all()
+    serializer_class = HolidaySerializer
+    permission_classes = [IsAdmin]
     pagination_class = DefaultPagination

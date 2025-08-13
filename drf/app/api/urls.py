@@ -23,6 +23,8 @@ router = DefaultRouter()
 router.register(r'divisions', views.DivisionViewSet, basename='division')
 router.register(r'positions', views.PositionViewSet, basename='position')
 router.register(r'employees', views.EmployeeViewSet, basename='employee')
+router.register(r'settings/work', views.WorkSettingsViewSet, basename='work-settings')
+router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
 
 urlpatterns += [
     path('', include(router.urls)),
