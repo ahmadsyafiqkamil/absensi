@@ -191,6 +191,13 @@ class WorkSettingsViewSet(viewsets.ViewSet):
             end = serializer.validated_data.get("end_time", obj.end_time)
             if start >= end:
                 return JsonResponse({"detail": "start_time must be earlier than end_time"}, status=400)
+            
+            # Friday-specific validation
+            friday_start = serializer.validated_data.get("friday_start_time", obj.friday_start_time)
+            friday_end = serializer.validated_data.get("friday_end_time", obj.friday_end_time)
+            if friday_start >= friday_end:
+                return JsonResponse({"detail": "friday_start_time must be earlier than friday_end_time"}, status=400)
+            
             workdays = serializer.validated_data.get("workdays", obj.workdays)
             if not isinstance(workdays, list) or not all(isinstance(x, int) and 0 <= x <= 6 for x in workdays):
                 return JsonResponse({"detail": "workdays must be a list of integers 0..6"}, status=400)

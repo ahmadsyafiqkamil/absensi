@@ -35,6 +35,7 @@ def evaluate_lateness(check_in: datetime) -> LatenessResult:
     - If check-in <= base start + grace: on time.
     - If check-in > base start + grace: late, minutes above grace threshold.
     - Earliest checkout is always check-in + required_minutes (flex 8 hours).
+    - Friday has special hours: 9:00-13:00 (4 hours total)
 
     Input `check_in` can be naive or aware; naive is assumed to be in UTC.
     Output `earliest_checkout_local_iso` is in settings.timezone ISO format.
@@ -67,16 +68,26 @@ def evaluate_lateness(check_in: datetime) -> LatenessResult:
             settings_timezone=tzname,
         )
 
-    base_start_local = datetime.combine(local_date, settings.start_time, tz)
-    grace = timedelta(minutes=int(settings.grace_minutes or 0))
+    # Check if it's Friday (weekday 4 in Python)
+    is_friday = weekday == 4
+    
+    if is_friday:
+        # Friday-specific settings
+        base_start_local = datetime.combine(local_date, settings.friday_start_time, tz)
+        grace = timedelta(minutes=int(settings.friday_grace_minutes or 0))
+        required = timedelta(minutes=int(settings.friday_required_minutes or 0))
+    else:
+        # Regular workday settings
+        base_start_local = datetime.combine(local_date, settings.start_time, tz)
+        grace = timedelta(minutes=int(settings.grace_minutes or 0))
+        required = timedelta(minutes=int(settings.required_minutes or 0))
 
     # Determine lateness
     is_late = check_in_local > (base_start_local + grace)
     late_delta = check_in_local - base_start_local - grace
     minutes_late = int(max(0, round(late_delta.total_seconds() / 60))) if is_late else 0
 
-    # Earliest checkout is always 8 hours (required_minutes) after check-in (flex)
-    required = timedelta(minutes=int(settings.required_minutes or 0))
+    # Earliest checkout is always required_minutes after check-in (flex)
     earliest_checkout_local = check_in_local + required
 
     return LatenessResult(

@@ -16,6 +16,10 @@ type WorkSettings = {
   required_minutes: number
   grace_minutes: number
   workdays: number[]
+  friday_start_time: string
+  friday_end_time: string
+  friday_required_minutes: number
+  friday_grace_minutes: number
   office_latitude?: number | null
   office_longitude?: number | null
   office_radius_meters?: number
@@ -247,6 +251,38 @@ export default function SettingsClient() {
                     onClick={(e) => { e.preventDefault(); const set = new Set(settings.workdays); if (set.has(idx)) set.delete(idx); else set.add(idx); setSettings({ ...settings, workdays: Array.from(set).sort() as number[] }) }}
                   >{label}</button>
                 ))}
+              </div>
+            </div>
+          </div>
+          
+          {/* Friday-specific settings */}
+          <div className="border-t pt-4">
+            <div className="text-lg font-semibold mb-4 text-blue-600">🕌 Pengaturan Khusus Hari Jumat</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid gap-2">
+                <Label>Jam Masuk Jumat</Label>
+                <Input type="time" value={settings.friday_start_time} onChange={(e) => setSettings({ ...settings, friday_start_time: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Jam Keluar Jumat</Label>
+                <Input type="time" value={settings.friday_end_time} onChange={(e) => setSettings({ ...settings, friday_end_time: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Durasi Kerja Jumat (menit)</Label>
+                <Input type="number" value={settings.friday_required_minutes} onChange={(e) => setSettings({ ...settings, friday_required_minutes: Number(e.target.value || 0) })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div className="grid gap-2">
+                <Label>Grace Jumat (menit)</Label>
+                <Input type="number" value={settings.friday_grace_minutes} onChange={(e) => setSettings({ ...settings, friday_grace_minutes: Number(e.target.value || 0) })} />
+              </div>
+              <div className="grid gap-2">
+                <Label className="text-sm text-gray-600">Info</Label>
+                <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
+                  Hari Jumat menggunakan jam kerja khusus: {settings.friday_start_time} - {settings.friday_end_time} 
+                  ({Math.floor(settings.friday_required_minutes / 60)} jam {settings.friday_required_minutes % 60} menit)
+                </div>
               </div>
             </div>
           </div>

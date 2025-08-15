@@ -79,6 +79,13 @@ class WorkSettings(models.Model):
         return [0, 1, 2, 3, 4]
 
     workdays = models.JSONField(default=_default_workdays)
+    
+    # Friday-specific settings
+    friday_start_time = models.TimeField(default=time(9, 0), verbose_name="Friday Start Time")
+    friday_end_time = models.TimeField(default=time(13, 0), verbose_name="Friday End Time")
+    friday_required_minutes = models.PositiveIntegerField(default=240, verbose_name="Friday Required Minutes")  # 4 hours (9:00-13:00)
+    friday_grace_minutes = models.PositiveIntegerField(default=0, verbose_name="Friday Grace Minutes")
+    
     # Office geofence settings (single office)
     office_latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     office_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
