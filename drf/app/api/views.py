@@ -23,6 +23,7 @@ from .utils import evaluate_lateness_as_dict, haversine_meters
 from zoneinfo import ZoneInfo
 from django.utils import timezone as dj_timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.db import models
 
 def health(request):
     return JsonResponse({"status": "ok"})
@@ -388,6 +389,256 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
         corr.decision_note = request.data.get("decision_note")
         corr.save(update_fields=["status", "reviewed_by", "reviewed_at", "decision_note"])
         return Response(AttendanceCorrectionSerializer(corr).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def supervisor_team_attendance(request):
+    """Get attendance data for supervisor's team members."""
+    user = request.user
+    
+    # Check if user is supervisor or admin
+    if not (user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+        return JsonResponse({"detail": "forbidden"}, status=403)
+    
+    # Get supervisor's division
+    try:
+        supervisor_division_id = user.employee.division_id
+        if not supervisor_division_id:
+            return JsonResponse({"detail": "supervisor_division_not_configured"}, status=400)
+    except Exception:
+        return JsonResponse({"detail": "supervisor_employee_record_not_found"}, status=400)
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    employee_id = request.GET.get('employee_id')
+    
+    # Build base queryset for team members in same division
+    team_employees = Employee.objects.filter(
+        division_id=supervisor_division_id
+    ).select_related('user', 'division', 'position')
+    
+    # Filter by specific employee if requested
+    if employee_id:
+        team_employees = team_employees.filter(id=employee_id)
+    
+    # Get attendance data for team members
+    attendance_data = []
+    
+    for employee in team_employees:
+        # Get attendance records for this employee
+        attendance_qs = Attendance.objects.filter(
+            user=employee.user
+        ).select_related('user', 'user__employee', 'user__employee__division', 'user__employee__position')
+        
+        # Apply date filters
+        if start_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+        if end_date:
+            attendance_qs = attendance_qs.filter(date_local__lte=end_date)
+        
+        # Get attendance records
+        attendances = attendance_qs.order_by('-date_local')
+        
+        # Calculate summary statistics
+        total_days = attendances.count()
+        present_days = attendances.filter(check_in_at_utc__isnull=False).count()
+        late_days = attendances.filter(minutes_late__gt=0).count()
+        absent_days = total_days - present_days
+        
+        # Get recent attendance (last 7 days)
+        recent_attendance = attendances[:7]
+        
+        employee_data = {
+            "employee": {
+                "id": employee.id,
+                "nip": employee.nip,
+                "user": {
+                    "id": employee.user.id,
+                    "username": employee.user.username,
+                    "first_name": employee.user.first_name,
+                    "last_name": employee.user.last_name,
+                    "email": employee.user.email,
+                },
+                "division": {
+                    "id": employee.division.id,
+                    "name": employee.division.name
+                } if employee.division else None,
+                "position": {
+                    "id": employee.position.id,
+                    "name": employee.position.name
+                } if employee.position else None,
+            },
+            "summary": {
+                "total_days": total_days,
+                "present_days": present_days,
+                "late_days": late_days,
+                "absent_days": absent_days,
+                "attendance_rate": round((present_days / total_days * 100) if total_days > 0 else 0, 2)
+            },
+            "recent_attendance": [
+                {
+                    "id": att.id,
+                    "date_local": str(att.date_local),
+                    "check_in_at_utc": att.check_in_at_utc.isoformat() if att.check_in_at_utc else None,
+                    "check_out_at_utc": att.check_out_at_utc.isoformat() if att.check_out_at_utc else None,
+                    "minutes_late": att.minutes_late,
+                    "total_work_minutes": att.total_work_minutes,
+                    "is_holiday": att.is_holiday,
+                    "within_geofence": att.within_geofence,
+                    "note": att.note,
+                    "employee_note": att.employee_note,
+                }
+                for att in recent_attendance
+            ]
+        }
+        
+        attendance_data.append(employee_data)
+    
+    return JsonResponse({
+        "team_attendance": attendance_data,
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "employee_id": employee_id,
+            "division_id": supervisor_division_id
+        }
+    }, safe=False)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def supervisor_attendance_detail(request, employee_id):
+    """Get detailed attendance data for a specific team member."""
+    user = request.user
+    
+    # Check if user is supervisor or admin
+    if not (user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+        return JsonResponse({"detail": "forbidden"}, status=403)
+    
+    # Get supervisor's division
+    try:
+        supervisor_division_id = user.employee.division_id
+        if not supervisor_division_id:
+            return JsonResponse({"detail": "supervisor_division_not_configured"}, status=400)
+    except Exception:
+        return JsonResponse({"detail": "supervisor_employee_record_not_found"}, status=400)
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    month = request.GET.get('month')  # Format: YYYY-MM
+    
+    # Get the employee and verify they're in supervisor's division
+    try:
+        employee = Employee.objects.select_related(
+            'user', 'division', 'position'
+        ).get(
+            id=employee_id,
+            division_id=supervisor_division_id
+        )
+    except Employee.DoesNotExist:
+        return JsonResponse({"detail": "employee_not_found_or_not_in_team"}, status=404)
+    
+    # Build attendance queryset
+    attendance_qs = Attendance.objects.filter(
+        user=employee.user
+    ).select_related('user', 'user__employee', 'user__employee__division', 'user__employee__position')
+    
+    # Apply date filters
+    if start_date:
+        attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+    if end_date:
+        attendance_qs = attendance_qs.filter(date_local__lte=end_date)
+    if month:
+        # Parse month and filter by year-month
+        try:
+            year, month_num = month.split('-')
+            attendance_qs = attendance_qs.filter(
+                date_local__year=year,
+                date_local__month=month_num
+            )
+        except ValueError:
+            return JsonResponse({"detail": "invalid_month_format_use_yyyy_mm"}, status=400)
+    
+    # Get attendance records
+    attendances = attendance_qs.order_by('-date_local')
+    
+    # Calculate detailed statistics
+    total_days = attendances.count()
+    present_days = attendances.filter(check_in_at_utc__isnull=False).count()
+    late_days = attendances.filter(minutes_late__gt=0).count()
+    absent_days = total_days - present_days
+    total_late_minutes = attendances.filter(minutes_late__gt=0).aggregate(
+        total=models.Sum('minutes_late')
+    )['total'] or 0
+    total_work_minutes = attendances.filter(
+        total_work_minutes__gt=0
+    ).aggregate(
+        total=models.Sum('total_work_minutes')
+    )['total'] or 0
+    
+    # Get all attendance records for the period
+    attendance_records = [
+        {
+            "id": att.id,
+            "date_local": str(att.date_local),
+            "check_in_at_utc": att.check_in_at_utc.isoformat() if att.check_in_at_utc else None,
+            "check_out_at_utc": att.check_out_at_utc.isoformat() if att.check_out_at_utc else None,
+            "check_in_lat": float(att.check_in_lat) if att.check_in_lat else None,
+            "check_in_lng": float(att.check_in_lng) if att.check_in_lng else None,
+            "check_out_lat": float(att.check_out_lat) if att.check_out_lat else None,
+            "check_out_lng": float(att.check_out_lng) if att.check_out_lng else None,
+            "minutes_late": att.minutes_late,
+            "total_work_minutes": att.total_work_minutes,
+            "is_holiday": att.is_holiday,
+            "within_geofence": att.within_geofence,
+            "note": att.note,
+            "employee_note": att.employee_note,
+            "created_at": att.created_at.isoformat(),
+            "updated_at": att.updated_at.isoformat(),
+        }
+        for att in attendances
+    ]
+    
+    return JsonResponse({
+        "employee": {
+            "id": employee.id,
+            "nip": employee.nip,
+            "user": {
+                "id": employee.user.id,
+                "username": employee.user.username,
+                "first_name": employee.user.first_name,
+                "last_name": employee.user.last_name,
+                "email": employee.user.email,
+            },
+            "division": {
+                "id": employee.division.id,
+                "name": employee.division.name
+            } if employee.division else None,
+            "position": {
+                "id": employee.position.id,
+                "name": employee.position.name
+            } if employee.position else None,
+        },
+        "summary": {
+            "total_days": total_days,
+            "present_days": present_days,
+            "late_days": late_days,
+            "absent_days": absent_days,
+            "attendance_rate": round((present_days / total_days * 100) if total_days > 0 else 0, 2),
+            "total_late_minutes": total_late_minutes,
+            "total_work_minutes": total_work_minutes,
+            "average_work_minutes": round(total_work_minutes / present_days, 2) if present_days > 0 else 0
+        },
+        "attendance_records": attendance_records,
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "month": month
+        }
+    }, safe=False)
 
 
 @api_view(['POST'])

@@ -37,6 +37,9 @@ urlpatterns += [
     # Custom actions for corrections approval
     path('attendance-corrections/<int:pk>/approve', views.AttendanceCorrectionViewSet.as_view({'post': 'approve'}), name='attendance-correction-approve'),
     path('attendance-corrections/<int:pk>/reject', views.AttendanceCorrectionViewSet.as_view({'post': 'reject'}), name='attendance-correction-reject'),
+    # Supervisor attendance endpoints
+    path('supervisor/team-attendance', views.supervisor_team_attendance, name='supervisor-team-attendance'),
+    path('supervisor/attendance-detail/<int:employee_id>', views.supervisor_attendance_detail, name='supervisor-attendance-detail'),
 ]
 
 

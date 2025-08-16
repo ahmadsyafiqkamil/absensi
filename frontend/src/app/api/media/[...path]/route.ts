@@ -12,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: { path: string[] 
 		const encoded = parts.map(encodeURIComponent).join('/')
 		const safePath = `media/${encoded}`
 
-		const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+		const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
 		const url = `${backendBase}/${safePath}`
 
 		const resp = await fetch(url, { cache: 'no-store' })

@@ -158,6 +158,15 @@ docker-compose -f docker-compose.prod.yml down
 - `POST /api/v1/attendance/check-out` - Check out
 - `GET /api/v1/attendance/user/{user_id}` - Get user attendance
 
+### Supervisor
+- `GET /api/supervisor/team-attendance` - Get team attendance overview (supervisor/admin only)
+- `GET /api/supervisor/attendance-detail/{employee_id}` - Get detailed attendance for specific employee (supervisor/admin only)
+
+### Corrections
+- `GET /api/attendance-corrections/` - List corrections
+- `POST /api/attendance-corrections/[id]/approve` - Approve correction
+- `POST /api/attendance-corrections/[id]/reject` - Reject correction
+
 ## 🛠️ Development
 
 ### Backend Development

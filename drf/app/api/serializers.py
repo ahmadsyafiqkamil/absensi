@@ -154,3 +154,46 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class SupervisorTeamAttendanceSerializer(serializers.ModelSerializer):
+    """Serializer for supervisor team attendance overview."""
+    user = UserBasicSerializer(read_only=True)
+    division = DivisionSerializer(read_only=True)
+    position = PositionSerializer(read_only=True)
+    
+    class Meta:
+        model = Employee
+        fields = [
+            "id",
+            "nip",
+            "user",
+            "division",
+            "position",
+        ]
+
+
+class SupervisorAttendanceDetailSerializer(serializers.ModelSerializer):
+    """Serializer for detailed attendance records."""
+    user = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = Attendance
+        fields = [
+            "id",
+            "date_local",
+            "check_in_at_utc",
+            "check_out_at_utc",
+            "check_in_lat",
+            "check_in_lng",
+            "check_out_lat",
+            "check_out_lng",
+            "minutes_late",
+            "total_work_minutes",
+            "is_holiday",
+            "within_geofence",
+            "note",
+            "employee_note",
+            "created_at",
+            "updated_at",
+        ]
