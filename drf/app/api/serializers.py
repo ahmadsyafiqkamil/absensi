@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection
 
 
 class DivisionSerializer(serializers.ModelSerializer):
@@ -122,3 +122,31 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+
+class AttendanceCorrectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AttendanceCorrection
+        fields = [
+            "id",
+            "user",
+            "date_local",
+            "type",
+            "proposed_check_in_local",
+            "proposed_check_out_local",
+            "reason",
+            "status",
+            "reviewed_by",
+            "reviewed_at",
+            "decision_note",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "user",
+            "status",
+            "reviewed_by",
+            "reviewed_at",
+            "decision_note",
+            "created_at",
+            "updated_at",
+        ]

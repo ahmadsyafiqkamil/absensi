@@ -61,6 +61,9 @@ export default async function PegawaiPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <AttendanceWidget />
+              <Link href="/pegawai/corrections">
+                <Button variant="outline" className="w-full">Ajukan Perbaikan Absensi</Button>
+              </Link>
             </CardContent>
           </Card>
 

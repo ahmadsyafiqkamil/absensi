@@ -6,8 +6,9 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from rest_framework import viewsets, permissions
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance
+from rest_framework import viewsets, permissions, status
+from rest_framework.response import Response
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -15,6 +16,7 @@ from .serializers import (
     WorkSettingsSerializer,
     HolidaySerializer,
     AttendanceSerializer,
+    AttendanceCorrectionSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -154,6 +156,16 @@ class IsAdmin(permissions.BasePermission):
         return bool(user.is_superuser or user.groups.filter(name='admin').exists())
 
 
+class IsSupervisorOrAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return bool(
+            user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()
+        )
+
+
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -228,6 +240,127 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         if end:
             qs = qs.filter(date_local__lte=end)
         return qs.order_by('-date_local')
+
+
+class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
+    serializer_class = AttendanceCorrectionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = AttendanceCorrection.objects.all()
+        # Pegawai hanya bisa melihat miliknya; admin bisa melihat semua
+        if not (user.is_superuser or user.groups.filter(name='admin').exists()):
+            qs = qs.filter(user=user)
+        status_ = self.request.query_params.get('status')
+        if status_:
+            qs = qs.filter(status=status_)
+        return qs.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        # Force owner to current user
+        serializer.save(user=self.request.user)
+
+    @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
+    def approve(self, request, pk=None):
+        """Approve a pending correction (supervisor/admin only). Applies changes to Attendance."""
+        if not IsSupervisorOrAdmin().has_permission(request, self):
+            return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            corr = AttendanceCorrection.objects.get(pk=pk)
+        except AttendanceCorrection.DoesNotExist:
+            return Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+        if corr.status != AttendanceCorrection.CorrectionStatus.PENDING:
+            return Response({"detail": "invalid_status"}, status=status.HTTP_400_BAD_REQUEST)
+
+        ws, _ = WorkSettings.objects.get_or_create()
+        tzname = ws.timezone or dj_timezone.get_current_timezone_name()
+        tz = ZoneInfo(tzname)
+
+        # Prepare target Attendance record
+        att, _ = Attendance.objects.get_or_create(
+            user=corr.user,
+            date_local=corr.date_local,
+            defaults={"timezone": tzname},
+        )
+
+        # Convert proposed local datetimes to UTC
+        def to_utc(local_dt):
+            if not local_dt:
+                return None
+            # Treat stored value as naive local time
+            aware_local = local_dt.replace(tzinfo=tz)
+            return aware_local.astimezone(ZoneInfo("UTC"))
+
+        cin_utc = to_utc(corr.proposed_check_in_local)
+        cout_utc = to_utc(corr.proposed_check_out_local)
+
+        # Apply based on type
+        if corr.type == AttendanceCorrection.CorrectionType.MISSING_CHECK_IN:
+            if not cin_utc:
+                return Response({"detail": "proposed_check_in_local_required"}, status=status.HTTP_400_BAD_REQUEST)
+            att.check_in_at_utc = att.check_in_at_utc or cin_utc
+        elif corr.type == AttendanceCorrection.CorrectionType.MISSING_CHECK_OUT:
+            if not cout_utc:
+                return Response({"detail": "proposed_check_out_local_required"}, status=status.HTTP_400_BAD_REQUEST)
+            att.check_out_at_utc = att.check_out_at_utc or cout_utc
+        else:  # EDIT
+            if not cin_utc and not cout_utc:
+                return Response({"detail": "one_of_check_in_or_out_required"}, status=status.HTTP_400_BAD_REQUEST)
+            if cin_utc:
+                att.check_in_at_utc = cin_utc
+            if cout_utc:
+                att.check_out_at_utc = cout_utc
+
+        # Recompute is_holiday and lateness
+        is_holiday = Holiday.objects.filter(date=corr.date_local).exists()
+        att.is_holiday = is_holiday
+        if att.check_in_at_utc:
+            late_res = evaluate_lateness_as_dict(att.check_in_at_utc)
+            att.minutes_late = int(late_res.get("minutes_late") or 0)
+
+        # Recompute total_work_minutes when possible
+        if att.check_in_at_utc and att.check_out_at_utc and att.check_out_at_utc > att.check_in_at_utc:
+            delta = att.check_out_at_utc - att.check_in_at_utc
+            att.total_work_minutes = max(0, int(delta.total_seconds() // 60))
+
+        # Mark manual and attach reason into employee_note (append)
+        try:
+            reason = (corr.reason or "").strip()
+            if reason:
+                att.employee_note = ((att.employee_note or "").strip() + ("\n" if att.employee_note else "") + f"[Correction]: {reason}")
+        except Exception:
+            pass
+
+        att.save()
+
+        # Close correction
+        corr.status = AttendanceCorrection.CorrectionStatus.APPROVED
+        corr.reviewed_by = request.user
+        corr.reviewed_at = dj_timezone.now()
+        corr.decision_note = (request.data.get("decision_note") or corr.decision_note)
+        corr.save(update_fields=["status", "reviewed_by", "reviewed_at", "decision_note"])
+
+        return Response(AttendanceCorrectionSerializer(corr).data)
+
+    @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
+    def reject(self, request, pk=None):
+        """Reject a pending correction (supervisor/admin only)."""
+        if not IsSupervisorOrAdmin().has_permission(request, self):
+            return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            corr = AttendanceCorrection.objects.get(pk=pk)
+        except AttendanceCorrection.DoesNotExist:
+            return Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+        if corr.status != AttendanceCorrection.CorrectionStatus.PENDING:
+            return Response({"detail": "invalid_status"}, status=status.HTTP_400_BAD_REQUEST)
+        corr.status = AttendanceCorrection.CorrectionStatus.REJECTED
+        corr.reviewed_by = request.user
+        corr.reviewed_at = dj_timezone.now()
+        corr.decision_note = request.data.get("decision_note")
+        corr.save(update_fields=["status", "reviewed_by", "reviewed_at", "decision_note"])
+        return Response(AttendanceCorrectionSerializer(corr).data)
 
 
 @api_view(['POST'])

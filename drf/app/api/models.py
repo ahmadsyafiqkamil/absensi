@@ -142,3 +142,34 @@ class Attendance(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Attendance {self.user_id} {self.date_local}"
+
+
+class AttendanceCorrection(models.Model):
+    class CorrectionType(models.TextChoices):
+        MISSING_CHECK_IN = "missing_check_in", "Missing Check-in"
+        MISSING_CHECK_OUT = "missing_check_out", "Missing Check-out"
+        EDIT = "edit", "Edit"
+
+    class CorrectionStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attendance_corrections")
+    date_local = models.DateField()
+    type = models.CharField(max_length=32, choices=CorrectionType.choices)
+    proposed_check_in_local = models.DateTimeField(null=True, blank=True)
+    proposed_check_out_local = models.DateTimeField(null=True, blank=True)
+    reason = models.TextField()
+    status = models.CharField(max_length=16, choices=CorrectionStatus.choices, default=CorrectionStatus.PENDING)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="reviewed_corrections")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"Correction {self.user_id} {self.date_local} {self.type} {self.status}"
