@@ -161,6 +161,7 @@ class AttendanceCorrection(models.Model):
     proposed_check_in_local = models.DateTimeField(null=True, blank=True)
     proposed_check_out_local = models.DateTimeField(null=True, blank=True)
     reason = models.TextField()
+    attachment = models.FileField(upload_to='corrections/', null=True, blank=True, verbose_name="Surat Pendukung")
     status = models.CharField(max_length=16, choices=CorrectionStatus.choices, default=CorrectionStatus.PENDING)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="reviewed_corrections")
     reviewed_at = models.DateTimeField(null=True, blank=True)

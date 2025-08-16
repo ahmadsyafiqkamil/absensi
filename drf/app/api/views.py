@@ -22,6 +22,7 @@ from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
 from zoneinfo import ZoneInfo
 from django.utils import timezone as dj_timezone
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 def health(request):
     return JsonResponse({"status": "ok"})
@@ -246,6 +247,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceCorrectionSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = DefaultPagination
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         user = self.request.user

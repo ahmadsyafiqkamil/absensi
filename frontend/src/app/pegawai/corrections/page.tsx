@@ -13,6 +13,7 @@ type Correction = {
   proposed_check_in_local?: string | null
   proposed_check_out_local?: string | null
   reason: string
+  attachment?: string | null
   status: 'pending' | 'approved' | 'rejected'
   decision_note?: string | null
   created_at: string
@@ -30,6 +31,7 @@ export default function CorrectionsPage() {
   const [timeIn, setTimeIn] = useState<string>('')
   const [timeOut, setTimeOut] = useState<string>('')
   const [reason, setReason] = useState<string>('')
+  const [attachment, setAttachment] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -72,18 +74,25 @@ export default function CorrectionsPage() {
       if (type === 'missing_check_in' && !timeIn.trim()) throw new Error('Jam check-in usulan wajib diisi untuk tipe Lupa Check-in')
       if (type === 'missing_check_out' && !timeOut.trim()) throw new Error('Jam check-out usulan wajib diisi untuk tipe Lupa Check-out')
 
-      const payload: any = { date_local: dateLocal, type, reason }
-      if (timeIn) payload.proposed_check_in_local = `${dateLocal}T${timeIn}:00`
-      if (timeOut) payload.proposed_check_out_local = `${dateLocal}T${timeOut}:00`
+      // Create FormData for file upload
+      const formData = new FormData()
+      formData.append('date_local', dateLocal)
+      formData.append('type', type)
+      formData.append('reason', reason)
+      if (timeIn) formData.append('proposed_check_in_local', `${dateLocal}T${timeIn}:00`)
+      if (timeOut) formData.append('proposed_check_out_local', `${dateLocal}T${timeOut}:00`)
+      if (attachment) {
+        formData.append('attachment', attachment)
+      }
+
       const resp = await fetch('/api/attendance-corrections', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: formData, // Don't set Content-Type header, let browser set it with boundary
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal mengajukan koreksi')
       // reset form
-      setDateLocal(''); setTimeIn(''); setTimeOut(''); setReason(''); setType('missing_check_in')
+      setDateLocal(''); setTimeIn(''); setTimeOut(''); setReason(''); setType('missing_check_in'); setAttachment(null)
       setOpen(false)
       await load()
     } catch (e) {
@@ -98,6 +107,26 @@ export default function CorrectionsPage() {
   const weekAgoISO = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10) })()
   const isDateInRange = !!dateLocal && dateLocal >= weekAgoISO && dateLocal <= todayISO
   const disableSubmit = submitting || !dateLocal || !isDateInRange || !reason.trim() || (type === 'missing_check_in' && !timeIn) || (type === 'missing_check_out' && !timeOut)
+
+  // Function to get filename from attachment path
+  function getFilename(attachmentPath: string) {
+    if (!attachmentPath) return ''
+    const parts = attachmentPath.split('/')
+    return parts[parts.length - 1] || attachmentPath
+  }
+
+  // Function to construct full media URL
+  function getMediaUrl(attachmentPath: string) {
+    if (!attachmentPath) return ''
+    try {
+      const url = new URL(attachmentPath)
+      const pathname = url.pathname.startsWith('/media/') ? url.pathname : `/media${url.pathname}`
+      return `/api/media${pathname}`
+    } catch {
+      const path = attachmentPath.startsWith('/media/') ? attachmentPath : (attachmentPath.startsWith('media/') ? `/${attachmentPath}` : `/media/${attachmentPath}`)
+      return `/api/media${path}`
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -139,6 +168,21 @@ export default function CorrectionsPage() {
                     {type === 'missing_check_out' && !timeOut && <div className="text-xs text-red-600">Wajib diisi untuk Lupa Check-out</div>}
                   </div>
                   <div className="grid gap-2">
+                    <label className="text-sm">Surat Pendukung (Opsional)</label>
+                    <input 
+                      type="file" 
+                      onChange={(e) => setAttachment(e.target.files?.[0] || null)} 
+                      className="border rounded p-2 text-sm file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    />
+                    <div className="text-xs text-gray-500">Format yang didukung: PDF, DOC, DOCX, JPG, JPEG, PNG. Maksimal 5MB.</div>
+                    {attachment && (
+                      <div className="text-xs text-green-600">
+                        File dipilih: {attachment.name} ({(attachment.size / 1024 / 1024).toFixed(2)} MB)
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid gap-2">
                     <label className="text-sm">Alasan</label>
                     <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="border rounded p-2 text-sm" placeholder="Jelaskan alasan Anda"></textarea>
                     {!reason.trim() && <div className="text-xs text-red-600">Alasan wajib diisi</div>}
@@ -178,6 +222,19 @@ export default function CorrectionsPage() {
                       {it.proposed_check_in_local && <div>Usulan In: {it.proposed_check_in_local}</div>}
                       {it.proposed_check_out_local && <div>Usulan Out: {it.proposed_check_out_local}</div>}
                       <div>Alasan: {it.reason}</div>
+                      {it.attachment && (
+                        <div className="mt-2">
+                          <span className="text-xs text-gray-600">Surat Pendukung: </span>
+                          <a 
+                            href={getMediaUrl(it.attachment)} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline text-xs"
+                          >
+                            {getFilename(it.attachment)}
+                          </a>
+                        </div>
+                      )}
                       {it.decision_note && <div>Catatan Reviewer: {it.decision_note}</div>}
                     </div>
                   ))}

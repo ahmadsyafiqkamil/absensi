@@ -14,7 +14,12 @@ type Item = {
   created_at: string
   proposed_check_in_local?: string | null
   proposed_check_out_local?: string | null
-  user?: number
+  attachment?: string | null
+  user?: {
+    username: string
+    first_name: string
+    last_name: string
+  }
 }
 
 export default function ApprovalsPage() {
@@ -53,14 +58,40 @@ export default function ApprovalsPage() {
     setError(null)
     try {
       const path = action === 'approve' ? `/api/attendance-corrections/${id}/approve` : `/api/attendance-corrections/${id}/reject`
+      console.log('APPROVAL_ACTION', { id, action, path })
       const resp = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision_note: action === 'approve' ? 'Disetujui' : 'Ditolak' }) })
       const d = await resp.json().catch(() => ({}))
+      console.log('APPROVAL_RESPONSE', { status: resp.status, ok: resp.ok, body: d })
       if (!resp.ok) throw new Error(d?.detail || 'Gagal memproses')
       await load()
     } catch (e) {
+      console.error('APPROVAL_ERROR', e)
       setError(e instanceof Error ? e.message : 'Gagal memproses')
     } finally {
       setSubmittingId(null)
+    }
+  }
+
+  // Function to get filename from attachment path
+  function getFilename(attachmentPath: string) {
+    if (!attachmentPath) return ''
+    const parts = attachmentPath.split('/')
+    return parts[parts.length - 1] || attachmentPath
+  }
+
+  // Function to construct full media URL through proxy
+  function getMediaUrl(attachmentPath: string) {
+    if (!attachmentPath) return ''
+    // If absolute URL, return as-is routed through proxy if same host
+    try {
+      const url = new URL(attachmentPath)
+      // If already absolute to backend, strip origin and route via proxy
+      const pathname = url.pathname.startsWith('/media/') ? url.pathname : `/media${url.pathname}`
+      return `/api/media${pathname}`
+    } catch {
+      // Not an absolute URL
+      const path = attachmentPath.startsWith('/media/') ? attachmentPath : (attachmentPath.startsWith('media/') ? `/${attachmentPath}` : `/media/${attachmentPath}`)
+      return `/api/media${path}`
     }
   }
 
@@ -89,13 +120,45 @@ export default function ApprovalsPage() {
                       <div className="font-medium">{it.date_local} — {it.type.replaceAll('_',' ')}</div>
                       <div className="text-xs text-amber-600">{it.status}</div>
                     </div>
+                    {it.user && (
+                      <div className="text-xs text-gray-600">
+                        Diajukan oleh: {it.user.first_name} {it.user.last_name} ({it.user.username})
+                      </div>
+                    )}
                     <div className="text-xs text-gray-600">Diajukan: {new Date(it.created_at).toLocaleString()}</div>
                     {it.proposed_check_in_local && <div>Usulan In: {it.proposed_check_in_local}</div>}
                     {it.proposed_check_out_local && <div>Usulan Out: {it.proposed_check_out_local}</div>}
-                    <div>Alasan: {it.reason}</div>
-                    <div className="mt-2 flex gap-2">
-                      <Button onClick={() => act(it.id, 'approve')} disabled={submittingId === it.id || (it.type === 'missing_check_in' && !it.proposed_check_in_local) || (it.type === 'missing_check_out' && !it.proposed_check_out_local)}>Approve</Button>
-                      <Button variant="outline" onClick={() => act(it.id, 'reject')} disabled={submittingId === it.id}>Reject</Button>
+                    {it.attachment && (
+                      <div className="mt-2">
+                        <span className="text-xs text-gray-600">Surat Pendukung: </span>
+                        <a 
+                          href={getMediaUrl(it.attachment)} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-blue-600 hover:underline text-xs font-medium"
+                          title={`Download ${getFilename(it.attachment)}`}
+                        >
+                          📎 {getFilename(it.attachment)}
+                        </a>
+                      </div>
+                    )}
+                    <div className="mt-2">Alasan: {it.reason}</div>
+                    <div className="mt-3 flex gap-2">
+                      <Button 
+                        onClick={() => act(it.id, 'approve')} 
+                        disabled={it.status !== 'pending' || submittingId === it.id || (it.type === 'missing_check_in' && !it.proposed_check_in_local) || (it.type === 'missing_check_out' && !it.proposed_check_out_local)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        Approve
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => act(it.id, 'reject')} 
+                        disabled={it.status !== 'pending' || submittingId === it.id}
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                      >
+                        Reject
+                      </Button>
                     </div>
                   </div>
                 ))}

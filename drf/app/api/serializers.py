@@ -18,7 +18,7 @@ class PositionSerializer(serializers.ModelSerializer):
 class UserBasicSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ["id", "username", "email"]
+        fields = ["id", "username", "first_name", "last_name", "email"]
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
@@ -124,6 +124,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
 
 class AttendanceCorrectionSerializer(serializers.ModelSerializer):
+    user = UserBasicSerializer(read_only=True)
+    reviewed_by = UserBasicSerializer(read_only=True)
+    
     class Meta:
         model = AttendanceCorrection
         fields = [
@@ -134,6 +137,7 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
             "proposed_check_in_local",
             "proposed_check_out_local",
             "reason",
+            "attachment",
             "status",
             "reviewed_by",
             "reviewed_at",
