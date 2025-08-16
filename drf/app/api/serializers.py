@@ -102,6 +102,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "minutes_late",
             "total_work_minutes",
             "note",
+            "employee_note",
             "created_at",
             "updated_at",
         ]
@@ -116,6 +117,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "within_geofence",
             "minutes_late",
             "total_work_minutes",
+            "employee_note",
             "created_at",
             "updated_at",
         ]

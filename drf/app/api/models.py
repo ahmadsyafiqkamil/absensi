@@ -131,6 +131,7 @@ class Attendance(models.Model):
     minutes_late = models.IntegerField(default=0)
     total_work_minutes = models.IntegerField(default=0)
     note = models.CharField(max_length=200, null=True, blank=True)
+    employee_note = models.TextField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

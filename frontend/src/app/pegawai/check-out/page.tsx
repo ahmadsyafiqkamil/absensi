@@ -13,6 +13,7 @@ export default function CheckOutPage() {
   const [error, setError] = useState<string | null>(null)
   const [loc, setLoc] = useState<{ lat: number; lng: number; acc: number } | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function CheckOutPage() {
       const resp = await fetch('/api/attendance/check-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy_m: loc.acc }),
+        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy_m: loc.acc, employee_note: note || undefined }),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal check-out')
@@ -98,6 +99,10 @@ export default function CheckOutPage() {
               {loc && (
                 <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>
               )}
+              <div className="grid gap-2">
+                <span className="text-xs text-gray-600">Keterangan (opsional)</span>
+                <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan kurang jam kerja (jika kurang)"></textarea>
+              </div>
               <Button disabled={!loc} onClick={() => setConfirming(true)}>Konfirmasi Check Out</Button>
               {confirming && (
                 <div className="border rounded p-3">

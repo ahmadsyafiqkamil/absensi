@@ -257,7 +257,7 @@ export default function SettingsClient() {
           
           {/* Friday-specific settings */}
           <div className="border-t pt-4">
-            <div className="text-lg font-semibold mb-4 text-blue-600">🕌 Pengaturan Khusus Hari Jumat</div>
+            <div className="text-lg font-semibold mb-4 text-blue-600">Pengaturan Khusus Hari Jumat</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="grid gap-2">
                 <Label>Jam Masuk Jumat</Label>

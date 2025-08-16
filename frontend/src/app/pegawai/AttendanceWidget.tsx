@@ -67,6 +67,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const { loc, locating, error: geoError, getLocation, setError: setGeoError } = useGeo()
+  const [note, setNote] = useState('')
 
   const title = kind === 'in' ? 'Konfirmasi Check In' : 'Konfirmasi Check Out'
 
@@ -93,6 +94,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       setGeoError(null)
       setError(null)
       setPrecheck(null)
+      setNote('')
       setLoading(true)
       load()
     }
@@ -107,7 +109,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       const resp = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy_m: loc.acc }),
+        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy_m: loc.acc, employee_note: note || undefined }),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal submit')
@@ -119,7 +121,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       setSubmitting(false)
       setConfirming(false)
     }
-  }, [kind, loc, onClose])
+  }, [kind, loc, onClose, note])
 
   return (
     <Dialog.Portal>
@@ -141,6 +143,10 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
                   <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
                   <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
                   {loc && <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>}
+                  <div className="grid gap-2">
+                    <label className="text-xs text-gray-600">Keterangan (opsional)</label>
+                    <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan keterlambatan (jika terlambat)"></textarea>
+                  </div>
                   <Button disabled={!loc} onClick={() => setConfirming(true)}>Check In</Button>
                 </>
               )
@@ -153,6 +159,10 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
                 <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
                 <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
                 {loc && <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>}
+                <div className="grid gap-2">
+                  <label className="text-xs text-gray-600">Keterangan (opsional)</label>
+                  <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan kurang jam kerja (jika kurang)"></textarea>
+                </div>
                 <Button disabled={!loc} onClick={() => setConfirming(true)}>Check Out</Button>
               </>
             )}

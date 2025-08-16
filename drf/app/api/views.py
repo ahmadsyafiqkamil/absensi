@@ -209,7 +209,7 @@ class WorkSettingsViewSet(viewsets.ViewSet):
 class HolidayViewSet(viewsets.ModelViewSet):
     queryset = Holiday.objects.all()
     serializer_class = HolidaySerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrReadOnly]
     pagination_class = DefaultPagination
 
 
@@ -299,6 +299,22 @@ def attendance_check_in(request):
     att.within_geofence = within
     att.is_holiday = is_holiday
     att.minutes_late = minutes_late
+    # Mark off-day attendance if today is not a configured workday and not a holiday
+    try:
+        workdays = ws.workdays or []
+        weekday = local_now.weekday()
+        is_workday = weekday in workdays
+        if (not is_workday) and (not is_holiday):
+            att.note = (att.note or 'Off-day attendance')
+    except Exception:
+        pass
+    # Optional employee note for lateness
+    try:
+        employee_note = (data.get('employee_note') or '').strip()
+        if minutes_late > 0 and employee_note:
+            att.employee_note = employee_note
+    except Exception:
+        pass
     # Try link to employee
     try:
         att.employee = user.employee
@@ -346,5 +362,15 @@ def attendance_check_out(request):
     # Compute total work minutes
     delta = now - (att.check_in_at_utc or now)
     att.total_work_minutes = max(0, int(delta.total_seconds() // 60))
-    att.save(update_fields=['check_out_at_utc', 'check_out_lat', 'check_out_lng', 'check_out_accuracy_m', 'total_work_minutes'])
+    # Optional employee note for underwork (less than required minutes)
+    try:
+        employee_note = (data.get('employee_note') or '').strip()
+        # Determine required minutes based on weekday (Friday special)
+        weekday = local_now.weekday()  # Monday=0..Sunday=6
+        required = int(ws.friday_required_minutes or 0) if weekday == 4 else int(ws.required_minutes or 0)
+        if att.total_work_minutes < required and employee_note:
+            att.employee_note = employee_note
+    except Exception:
+        pass
+    att.save(update_fields=['check_out_at_utc', 'check_out_lat', 'check_out_lng', 'check_out_accuracy_m', 'total_work_minutes', 'employee_note'])
     return JsonResponse(AttendanceSerializer(att).data)

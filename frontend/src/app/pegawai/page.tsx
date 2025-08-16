@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import AttendanceWidget from './AttendanceWidget'
 import TodayAttendance from './TodayAttendance'
+import PegawaiCalendar from './PegawaiCalendar'
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -39,6 +40,12 @@ export default async function PegawaiPage() {
       />
       
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Quick Stats */}
+        <div className="mb-8 grid gap-4">
+          <h2 className="text-xl font-semibold text-gray-900">Your Overview</h2>
+          <TodayAttendance />
+        </div>
+
         {/* Employee Functions Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Attendance */}
@@ -121,10 +128,10 @@ export default async function PegawaiPage() {
           </Card>
         </div>
 
-        {/* Quick Stats */}
+        {/* Calendar Attendance */}
         <div className="mt-8 grid gap-4">
-          <h2 className="text-xl font-semibold text-gray-900">Your Overview</h2>
-          <TodayAttendance />
+          <h2 className="text-xl font-semibold text-gray-900">Kalender Kehadiran</h2>
+          <PegawaiCalendar />
         </div>
 
       </div>
