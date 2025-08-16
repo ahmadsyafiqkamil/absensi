@@ -26,9 +26,9 @@ export default function CorrectionsPage() {
 
   // form state
   const [dateLocal, setDateLocal] = useState<string>('')
-  const [type, setType] = useState<'missing_check_in' | 'missing_check_out' | 'edit'>('missing_check_in')
-  const [checkInLocal, setCheckInLocal] = useState<string>('')
-  const [checkOutLocal, setCheckOutLocal] = useState<string>('')
+  const [type, setType] = useState<'missing_check_in' | 'missing_check_out'>('missing_check_in')
+  const [timeIn, setTimeIn] = useState<string>('')
+  const [timeOut, setTimeOut] = useState<string>('')
   const [reason, setReason] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [open, setOpen] = useState(false)
@@ -66,9 +66,15 @@ export default function CorrectionsPage() {
     setSubmitting(true)
     setError(null)
     try {
+      if (!dateLocal.trim()) throw new Error('Tanggal wajib diisi')
+      if (!(dateLocal >= weekAgoISO && dateLocal <= todayISO)) throw new Error('Tanggal harus dalam 7 hari terakhir')
+      if (!reason.trim()) throw new Error('Alasan wajib diisi')
+      if (type === 'missing_check_in' && !timeIn.trim()) throw new Error('Jam check-in usulan wajib diisi untuk tipe Lupa Check-in')
+      if (type === 'missing_check_out' && !timeOut.trim()) throw new Error('Jam check-out usulan wajib diisi untuk tipe Lupa Check-out')
+
       const payload: any = { date_local: dateLocal, type, reason }
-      if (checkInLocal) payload.proposed_check_in_local = checkInLocal
-      if (checkOutLocal) payload.proposed_check_out_local = checkOutLocal
+      if (timeIn) payload.proposed_check_in_local = `${dateLocal}T${timeIn}:00`
+      if (timeOut) payload.proposed_check_out_local = `${dateLocal}T${timeOut}:00`
       const resp = await fetch('/api/attendance-corrections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,7 +83,7 @@ export default function CorrectionsPage() {
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal mengajukan koreksi')
       // reset form
-      setDateLocal(''); setCheckInLocal(''); setCheckOutLocal(''); setReason(''); setType('missing_check_in')
+      setDateLocal(''); setTimeIn(''); setTimeOut(''); setReason(''); setType('missing_check_in')
       setOpen(false)
       await load()
     } catch (e) {
@@ -88,6 +94,10 @@ export default function CorrectionsPage() {
   }
 
   const role = me?.is_superuser ? 'admin' : (me?.groups?.includes('admin') ? 'admin' : (me?.groups?.includes('supervisor') ? 'supervisor' : 'pegawai'))
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const weekAgoISO = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10) })()
+  const isDateInRange = !!dateLocal && dateLocal >= weekAgoISO && dateLocal <= todayISO
+  const disableSubmit = submitting || !dateLocal || !isDateInRange || !reason.trim() || (type === 'missing_check_in' && !timeIn) || (type === 'missing_check_out' && !timeOut)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -107,33 +117,37 @@ export default function CorrectionsPage() {
                   {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{error}</div>}
                   <div className="grid gap-2">
                     <label className="text-sm">Tanggal (YYYY-MM-DD)</label>
-                    <input value={dateLocal} onChange={(e) => setDateLocal(e.target.value)} className="border rounded p-2 text-sm" placeholder="2025-08-16" />
+                    <input type="date" value={dateLocal} onChange={(e) => setDateLocal(e.target.value)} className="border rounded p-2 text-sm" max={todayISO} min={weekAgoISO} />
+                    {!isDateInRange && dateLocal && <div className="text-xs text-red-600">Tanggal harus dalam 7 hari terakhir</div>}
+                    <div className="text-xs text-gray-500">Rentang yang diizinkan: {weekAgoISO} s/d {todayISO}</div>
                   </div>
                   <div className="grid gap-2">
                     <label className="text-sm">Jenis Koreksi</label>
                     <select value={type} onChange={(e) => setType(e.target.value as any)} className="border rounded p-2 text-sm">
                       <option value="missing_check_in">Lupa Check-in</option>
                       <option value="missing_check_out">Lupa Check-out</option>
-                      <option value="edit">Ubah Jam Masuk/Pulang</option>
                     </select>
                   </div>
                   <div className="grid gap-2">
-                    <label className="text-sm">Jam Check-in (lokal) - opsional</label>
-                    <input value={checkInLocal} onChange={(e) => setCheckInLocal(e.target.value)} className="border rounded p-2 text-sm" placeholder="2025-08-16T09:15:00" />
+                    <label className="text-sm">Jam Check-in (lokal) {type === 'missing_check_in' ? '- wajib' : '- opsional'}</label>
+                    <input type="time" value={timeIn} onChange={(e) => setTimeIn(e.target.value)} className="border rounded p-2 text-sm" />
+                    {type === 'missing_check_in' && !timeIn && <div className="text-xs text-red-600">Wajib diisi untuk Lupa Check-in</div>}
                   </div>
                   <div className="grid gap-2">
-                    <label className="text-sm">Jam Check-out (lokal) - opsional</label>
-                    <input value={checkOutLocal} onChange={(e) => setCheckOutLocal(e.target.value)} className="border rounded p-2 text-sm" placeholder="2025-08-16T17:05:00" />
+                    <label className="text-sm">Jam Check-out (lokal) {type === 'missing_check_out' ? '- wajib' : '- opsional'}</label>
+                    <input type="time" value={timeOut} onChange={(e) => setTimeOut(e.target.value)} className="border rounded p-2 text-sm" />
+                    {type === 'missing_check_out' && !timeOut && <div className="text-xs text-red-600">Wajib diisi untuk Lupa Check-out</div>}
                   </div>
                   <div className="grid gap-2">
                     <label className="text-sm">Alasan</label>
                     <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="border rounded p-2 text-sm" placeholder="Jelaskan alasan Anda"></textarea>
+                    {!reason.trim() && <div className="text-xs text-red-600">Alasan wajib diisi</div>}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Dialog.Close asChild>
                       <Button variant="outline" onClick={() => setError(null)} disabled={submitting}>Batal</Button>
                     </Dialog.Close>
-                    <Button onClick={submit} disabled={submitting}>{submitting ? 'Mengirim...' : 'Kirim Pengajuan'}</Button>
+                    <Button onClick={submit} disabled={disableSubmit}>{submitting ? 'Mengirim...' : 'Kirim Pengajuan'}</Button>
                   </div>
                 </div>
               </Dialog.Content>

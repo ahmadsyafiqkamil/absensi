@@ -249,9 +249,23 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = AttendanceCorrection.objects.all()
-        # Pegawai hanya bisa melihat miliknya; admin bisa melihat semua
-        if not (user.is_superuser or user.groups.filter(name='admin').exists()):
+        qs = AttendanceCorrection.objects.select_related('user', 'user__employee__division').all()
+        # Scope by role:
+        # - admin/superuser: see all
+        # - supervisor: only corrections of users within same division
+        # - employee: only own corrections
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            pass
+        elif user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
+            except Exception:
+                supervisor_division_id = None
+            if supervisor_division_id is None:
+                qs = qs.none()
+            else:
+                qs = qs.filter(user__employee__division_id=supervisor_division_id)
+        else:
             qs = qs.filter(user=user)
         status_ = self.request.query_params.get('status')
         if status_:
@@ -273,6 +287,17 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
             return Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
         if corr.status != AttendanceCorrection.CorrectionStatus.PENDING:
             return Response({"detail": "invalid_status"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Division-based authorization for supervisors: must match division of the correction's user
+        user = request.user
+        if (not (user.is_superuser or user.groups.filter(name='admin').exists())) and user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
+                employee_division_id = corr.user.employee.division_id  # type: ignore[attr-defined]
+            except Exception:
+                return Response({"detail": "division_not_configured"}, status=status.HTTP_403_FORBIDDEN)
+            if not supervisor_division_id or not employee_division_id or supervisor_division_id != employee_division_id:
+                return Response({"detail": "forbidden_division_scope"}, status=status.HTTP_403_FORBIDDEN)
 
         ws, _ = WorkSettings.objects.get_or_create()
         tzname = ws.timezone or dj_timezone.get_current_timezone_name()
