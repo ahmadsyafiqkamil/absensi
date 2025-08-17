@@ -40,6 +40,7 @@ from .permissions import (
     IsEmployee,
     IsAdminOrSupervisor,
     IsAdminOrSupervisorWithApproval,
+    IsAdminOrSupervisorOvertimeApproval,
     IsAdminOrSupervisorReadOnly,
     IsAdminOrReadOnly,
     IsOwnerOrAdmin,
@@ -529,6 +530,56 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
         if att.check_in_at_utc and att.check_out_at_utc and att.check_out_at_utc > att.check_in_at_utc:
             delta = att.check_out_at_utc - att.check_in_at_utc
             att.total_work_minutes = max(0, int(delta.total_seconds() // 60))
+
+        # Link employee if possible (needed for overtime pay calculation)
+        try:
+            if not att.employee and hasattr(corr.user, "employee"):
+                att.employee = corr.user.employee  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+        # Recalculate overtime based on total work duration and work settings
+        try:
+            # Determine required minutes for the day (Friday may differ)
+            weekday = int(att.date_local.weekday())
+            if weekday == 4:  # Friday
+                required_minutes = int(ws.friday_required_minutes or 240)
+            else:
+                required_minutes = int(ws.required_minutes or 480)
+
+            if att.total_work_minutes and att.total_work_minutes > required_minutes:
+                att.overtime_minutes = att.total_work_minutes - required_minutes
+
+                # Calculate overtime amount if employee has salary information
+                if att.employee and att.employee.gaji_pokok:
+                    monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
+                    hourly_wage = float(att.employee.gaji_pokok) / monthly_hours
+
+                    # Determine overtime rate based on holiday vs workday
+                    if att.is_holiday:
+                        rate = float(ws.overtime_rate_holiday or 0.75)
+                    else:
+                        rate = float(ws.overtime_rate_workday or 0.50)
+
+                    overtime_hours = att.overtime_minutes / 60
+                    att.overtime_amount = overtime_hours * hourly_wage * rate
+                else:
+                    att.overtime_amount = 0
+
+                # Overtime requires manual approval; keep pending
+                att.overtime_approved = False
+                att.overtime_approved_by = None
+                att.overtime_approved_at = None
+            else:
+                # No overtime for this approval
+                att.overtime_minutes = 0
+                att.overtime_amount = 0
+                att.overtime_approved = False
+                att.overtime_approved_by = None
+                att.overtime_approved_at = None
+        except Exception:
+            # Fail-safe: do not block approval due to overtime calc error
+            pass
 
         # Mark manual and attach reason into employee_note (append)
         try:
@@ -1812,7 +1863,7 @@ def supervisor_team_attendance_pdf_alt(request):
 # ============================================================================
 
 @api_view(['POST'])
-@permission_classes([IsAdminOrSupervisor])
+@permission_classes([IsAdminOrSupervisorOvertimeApproval])
 def approve_overtime(request, attendance_id):
     """Approve overtime for specific attendance record"""
     try:

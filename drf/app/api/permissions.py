@@ -139,7 +139,7 @@ class IsAdminOrSupervisorWithApproval(permissions.BasePermission):
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return True
         
-        # Supervisor: read access + approval actions
+        # Supervisor: read access + approval actions (approve/reject)
         if user.groups.filter(name='supervisor').exists():
             # Allow GET, HEAD, OPTIONS for read access
             if request.method in ("GET", "HEAD", "OPTIONS"):
@@ -155,6 +155,35 @@ class IsAdminOrSupervisorWithApproval(permissions.BasePermission):
             return False
         
         return False
+
+
+class IsAdminOrSupervisorOvertimeApproval(permissions.BasePermission):
+    """
+    Permission class untuk admin dan supervisor untuk approval overtime.
+    
+    Access Control:
+    - Admin: full access
+    - Supervisor: can approve overtime for their division
+    - Employee: no access
+    
+    Use Case:
+    - Overtime approval (function-based view)
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        
+        # Admin: full access
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return True
+        
+        # Supervisor: can approve overtime
+        if user.groups.filter(name='supervisor').exists():
+            return True
+        
+        return False
+
 
 class IsAdminOrSupervisorReadOnly(permissions.BasePermission):
     """

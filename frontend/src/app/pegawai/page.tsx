@@ -142,10 +142,10 @@ export default async function PegawaiPage() {
         </div>
 
         {/* Overtime Summary */}
-        <div className="mt-8 grid gap-4">
+        {/* <div className="mt-8 grid gap-4">
           <h2 className="text-xl font-semibold text-gray-900">Overtime Summary</h2>
           <OvertimeSummary />
-        </div>
+        </div> */}
 
       </div>
     </div>
