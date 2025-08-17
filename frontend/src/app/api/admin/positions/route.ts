@@ -27,8 +27,8 @@ export async function GET() {
       return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Fetch positions from backend
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/positions/`, {
+    // Fetch positions from backend (namespaced admin route)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/positions/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const resp = await fetch(`${backendBase}/api/positions/`, {
+    const resp = await fetch(`${backendBase}/api/admin/positions/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

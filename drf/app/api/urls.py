@@ -17,7 +17,7 @@ urlpatterns = [
     path('auth/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/verify', TokenVerifyView.as_view(), name='token_verify'),
     path('auth/me', views.me, name='auth-me'),
-    # Attendance
+    # Attendance (legacy/common)
     path('attendance/precheck', views.attendance_precheck, name='attendance-precheck'),
     path('attendance/check-in', views.attendance_check_in, name='attendance-check-in'),
     path('attendance/check-out', views.attendance_check_out, name='attendance-check-out'),
@@ -25,6 +25,7 @@ urlpatterns = [
     path('attendance/report/pdf', views.attendance_report_pdf, name='attendance-report-pdf'),
 ]
 
+# Legacy router (kept for backward compatibility)
 router = DefaultRouter()
 router.register(r'divisions', views.DivisionViewSet, basename='division')
 router.register(r'positions', views.PositionViewSet, basename='position')
@@ -34,16 +35,55 @@ router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
 router.register(r'attendance', views.AttendanceViewSet, basename='attendance')
 router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='attendance-correction')
 
+# Role-specific routers
+admin_router = DefaultRouter()
+admin_router.register(r'divisions', views.AdminDivisionViewSet, basename='admin-division')
+admin_router.register(r'positions', views.AdminPositionViewSet, basename='admin-position')
+admin_router.register(r'employees', views.AdminEmployeeViewSet, basename='admin-employee')
+admin_router.register(r'settings/work', views.AdminWorkSettingsViewSet, basename='admin-work-settings')
+admin_router.register(r'settings/holidays', views.AdminHolidayViewSet, basename='admin-holiday')
+
+supervisor_router = DefaultRouter()
+supervisor_router.register(r'divisions', views.SupervisorDivisionViewSet, basename='supervisor-division')
+supervisor_router.register(r'positions', views.SupervisorPositionViewSet, basename='supervisor-position')
+supervisor_router.register(r'employees', views.SupervisorEmployeeViewSet, basename='supervisor-employee')
+supervisor_router.register(r'settings/work', views.SupervisorWorkSettingsViewSet, basename='supervisor-work-settings')
+supervisor_router.register(r'settings/holidays', views.SupervisorHolidayViewSet, basename='supervisor-holiday')
+# Map attendance corrections under supervisor prefix (scoped by ViewSet logic)
+supervisor_router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='supervisor-attendance-correction')
+
+employee_router = DefaultRouter()
+employee_router.register(r'divisions', views.EmployeeDivisionViewSet, basename='employee-division')
+employee_router.register(r'positions', views.EmployeePositionViewSet, basename='employee-position')
+employee_router.register(r'employees', views.EmployeeEmployeeViewSet, basename='employee-employee')
+employee_router.register(r'settings/holidays', views.EmployeeHolidayViewSet, basename='employee-holiday')
+# Map my attendance list under employee prefix
+employee_router.register(r'attendance', views.AttendanceViewSet, basename='employee-attendance')
+# Map my attendance corrections under employee prefix
+employee_router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='employee-attendance-correction')
+
 urlpatterns += [
     path('', include(router.urls)),
+    # Admin role-specific endpoints (namespaced)
+    path('admin/', include((admin_router.urls, 'admin'), namespace='admin')),
+    # Supervisor role-specific endpoints (namespaced)
+    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='supervisor')),
+    # Employee role-specific endpoints (namespaced)
+    path('employee/', include((employee_router.urls, 'employee'), namespace='employee')),
     # Custom actions for corrections approval
     path('attendance-corrections/<int:pk>/approve', views.AttendanceCorrectionViewSet.as_view({'post': 'approve'}), name='attendance-correction-approve'),
     path('attendance-corrections/<int:pk>/reject', views.AttendanceCorrectionViewSet.as_view({'post': 'reject'}), name='attendance-correction-reject'),
-    # Supervisor attendance endpoints
+    # Supervisor attendance endpoints (function-based)
     path('supervisor/team-attendance', views.supervisor_team_attendance, name='supervisor-team-attendance'),
     path('supervisor/team-attendance/pdf', views.supervisor_team_attendance_pdf, name='supervisor-team-attendance-pdf'),
     path('supervisor/team-attendance/pdf-alt', views.supervisor_team_attendance_pdf_alt, name='supervisor-team-attendance-pdf-alt'),
     path('supervisor/attendance-detail/<int:employee_id>', views.supervisor_attendance_detail, name='supervisor-attendance-detail'),
+    # Employee convenience routes duplicating common attendance endpoints
+    path('employee/attendance/precheck', views.attendance_precheck, name='employee-attendance-precheck'),
+    path('employee/attendance/check-in', views.attendance_check_in, name='employee-attendance-check-in'),
+    path('employee/attendance/check-out', views.attendance_check_out, name='employee-attendance-check-out'),
+    path('employee/attendance/report', views.attendance_report, name='employee-attendance-report'),
+    path('employee/attendance/report/pdf', views.attendance_report_pdf, name='employee-attendance-report-pdf'),
 ]
 
 

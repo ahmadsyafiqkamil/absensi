@@ -38,8 +38,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call backend employee creation API
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/employees/`, {
+    // Call backend employee creation API (namespaced admin route)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,8 +93,8 @@ export async function GET() {
       return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Fetch employees from backend
-    const response = await fetch(`${backendBase}/api/employees/`, {
+    // Fetch employees from backend (namespaced admin route)
+    const response = await fetch(`${backendBase}/api/admin/employees/`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });

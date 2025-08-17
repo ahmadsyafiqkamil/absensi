@@ -18,7 +18,7 @@ async function ensureAdmin() {
 export async function GET() {
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/settings/work/`, {
+  const resp = await fetch(`${chk.backendBase}/api/admin/settings/work/`, {
     headers: { Authorization: `Bearer ${chk.accessToken}` },
     cache: 'no-store',
   })
@@ -32,7 +32,7 @@ export async function PUT(req: Request) {
   const body = await req.json().catch(() => ({}))
   const id = body?.id
   if (!id) return NextResponse.json({ detail: 'id is required' }, { status: 400 })
-  const resp = await fetch(`${chk.backendBase}/api/settings/work/${id}/`, {
+  const resp = await fetch(`${chk.backendBase}/api/admin/settings/work/${id}/`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
     body: JSON.stringify(body),

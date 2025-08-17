@@ -17,9 +17,33 @@ from .serializers import (
     HolidaySerializer,
     AttendanceSerializer,
     AttendanceCorrectionSerializer,
+    # Role-based serializers
+    EmployeeAdminSerializer,
+    EmployeeSupervisorSerializer,
+    EmployeeEmployeeSerializer,
+    WorkSettingsAdminSerializer,
+    WorkSettingsSupervisorSerializer,
+    AttendanceAdminSerializer,
+    AttendanceSupervisorSerializer,
+    AttendanceEmployeeSerializer,
+    AttendanceCorrectionAdminSerializer,
+    AttendanceCorrectionSupervisorSerializer,
+    AttendanceCorrectionEmployeeSerializer,
+    HolidayAdminSerializer,
+    HolidayPublicSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
+from .permissions import (
+    IsAdmin,
+    IsSupervisor,
+    IsEmployee,
+    IsAdminOrSupervisor,
+    IsAdminOrSupervisorReadOnly,
+    IsAdminOrReadOnly,
+    IsOwnerOrAdmin,
+    IsDivisionMemberOrAdmin,
+)
 from zoneinfo import ZoneInfo
 from django.utils import timezone as dj_timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -33,6 +57,10 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from io import BytesIO
 import datetime
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def format_work_hours(minutes, use_indonesian=True):
     """Format work hours from minutes to human-readable format"""
@@ -176,52 +204,6 @@ def provision_user(request):
     })
 
 
-class IsAdminOrReadOnly(permissions.BasePermission):
-    def has_permission(self, request, view):
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            return True
-        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
-
-
-class IsAdmin(permissions.BasePermission):
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        # Allow superuser or users in 'admin' group
-        return bool(user.is_superuser or user.groups.filter(name='admin').exists())
-
-
-class IsSupervisorOrAdmin(permissions.BasePermission):
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        return bool(
-            user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()
-        )
-
-
-class IsAdminOrSupervisorReadOnly(permissions.BasePermission):
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        
-        # Allow read access for admin and supervisor
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            return bool(
-                user.is_superuser or 
-                user.groups.filter(name__in=['admin', 'supervisor']).exists()
-            )
-        
-        # Only admin can modify
-        return bool(
-            user.is_superuser or 
-            user.groups.filter(name='admin').exists()
-        )
-
-
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -278,6 +260,133 @@ class HolidayViewSet(viewsets.ModelViewSet):
     queryset = Holiday.objects.all()
     serializer_class = HolidaySerializer
     permission_classes = [IsAdminOrReadOnly]
+    pagination_class = DefaultPagination
+
+# -----------------------------
+# Role-specific ViewSets (Stage 3)
+# -----------------------------
+
+# Admin ViewSets
+class AdminDivisionViewSet(viewsets.ModelViewSet):
+    queryset = Division.objects.all()
+    serializer_class = DivisionSerializer
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+class AdminPositionViewSet(viewsets.ModelViewSet):
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+class AdminEmployeeViewSet(viewsets.ModelViewSet):
+    queryset = Employee.objects.select_related('user', 'division', 'position').all()
+    serializer_class = EmployeeAdminSerializer
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+class AdminWorkSettingsViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdmin]
+
+    def list(self, request):
+        obj, _ = WorkSettings.objects.get_or_create()
+        return JsonResponse(WorkSettingsAdminSerializer(obj).data, safe=False)
+
+    def update(self, request, pk=None):
+        obj, _ = WorkSettings.objects.get_or_create()
+        serializer = WorkSettingsAdminSerializer(obj, data=request.data, partial=False)
+        if serializer.is_valid():
+            # Basic validation: start < end (no overnight for now)
+            start = serializer.validated_data.get("start_time", obj.start_time)
+            end = serializer.validated_data.get("end_time", obj.end_time)
+            if start >= end:
+                return JsonResponse({"detail": "start_time must be earlier than end_time"}, status=400)
+
+            # Friday-specific validation
+            friday_start = serializer.validated_data.get("friday_start_time", obj.friday_start_time)
+            friday_end = serializer.validated_data.get("friday_end_time", obj.friday_end_time)
+            if friday_start >= friday_end:
+                return JsonResponse({"detail": "friday_start_time must be earlier than friday_end_time"}, status=400)
+
+            workdays = serializer.validated_data.get("workdays", obj.workdays)
+            if not isinstance(workdays, list) or not all(isinstance(x, int) and 0 <= x <= 6 for x in workdays):
+                return JsonResponse({"detail": "workdays must be a list of integers 0..6"}, status=400)
+            serializer.save()
+            return JsonResponse(serializer.data)
+        return JsonResponse(serializer.errors, status=400)
+
+class AdminHolidayViewSet(viewsets.ModelViewSet):
+    queryset = Holiday.objects.all()
+    serializer_class = HolidayAdminSerializer
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+# Supervisor ViewSets (read-only or scoped)
+class SupervisorDivisionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Division.objects.all()
+    serializer_class = DivisionSerializer
+    permission_classes = [IsAdminOrSupervisorReadOnly]
+    pagination_class = DefaultPagination
+
+class SupervisorPositionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    permission_classes = [IsAdminOrSupervisorReadOnly]
+    pagination_class = DefaultPagination
+
+class SupervisorEmployeeViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = EmployeeSupervisorSerializer
+    permission_classes = [IsAdminOrSupervisor]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        try:
+            division_id = user.employee.division_id  # type: ignore[attr-defined]
+        except Exception:
+            division_id = None
+        if not division_id:
+            return Employee.objects.none()
+        return Employee.objects.select_related('user', 'division', 'position').filter(division_id=division_id)
+
+class SupervisorWorkSettingsViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminOrSupervisorReadOnly]
+
+    def list(self, request):
+        obj, _ = WorkSettings.objects.get_or_create()
+        return JsonResponse(WorkSettingsSupervisorSerializer(obj).data, safe=False)
+
+class SupervisorHolidayViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Holiday.objects.all()
+    serializer_class = HolidayPublicSerializer
+    permission_classes = [IsAdminOrSupervisorReadOnly]
+    pagination_class = DefaultPagination
+
+# Employee ViewSets (read-only minimal)
+class EmployeeDivisionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Division.objects.all()
+    serializer_class = DivisionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
+
+class EmployeePositionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
+
+class EmployeeEmployeeViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = EmployeeEmployeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        return Employee.objects.select_related('user', 'division', 'position').filter(user=self.request.user)
+
+class EmployeeHolidayViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Holiday.objects.all()
+    serializer_class = HolidayPublicSerializer
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
 
 
@@ -349,7 +458,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
     def approve(self, request, pk=None):
         """Approve a pending correction (supervisor/admin only). Applies changes to Attendance."""
-        if not IsSupervisorOrAdmin().has_permission(request, self):
+        if not IsAdminOrSupervisor().has_permission(request, self):
             return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             corr = AttendanceCorrection.objects.get(pk=pk)
@@ -442,7 +551,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
     def reject(self, request, pk=None):
         """Reject a pending correction (supervisor/admin only)."""
-        if not IsSupervisorOrAdmin().has_permission(request, self):
+        if not IsAdminOrSupervisor().has_permission(request, self):
             return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             corr = AttendanceCorrection.objects.get(pk=pk)
