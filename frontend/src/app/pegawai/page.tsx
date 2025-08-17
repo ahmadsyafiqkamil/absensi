@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import AttendanceWidget from './AttendanceWidget'
 import TodayAttendance from './TodayAttendance'
 import PegawaiCalendar from './PegawaiCalendar'
+import OvertimeSummary from './OvertimeSummary'
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -124,6 +125,9 @@ export default async function PegawaiPage() {
               <Link href="/pegawai/attendance-report">
                 <Button variant="outline" className="w-full">Attendance Report</Button>
               </Link>
+              <Link href="/pegawai/overtime">
+                <Button variant="outline" className="w-full">Overtime Management</Button>
+              </Link>
               {/* <Link href="/pegawai/monthly-summary">
                 <Button variant="outline" className="w-full">Monthly Summary</Button>
               </Link> */}
@@ -135,6 +139,12 @@ export default async function PegawaiPage() {
         <div className="mt-8 grid gap-4">
           <h2 className="text-xl font-semibold text-gray-900">Kalender Kehadiran</h2>
           <PegawaiCalendar />
+        </div>
+
+        {/* Overtime Summary */}
+        <div className="mt-8 grid gap-4">
+          <h2 className="text-xl font-semibold text-gray-900">Overtime Summary</h2>
+          <OvertimeSummary />
         </div>
 
       </div>

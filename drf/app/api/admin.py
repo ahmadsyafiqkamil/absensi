@@ -37,6 +37,10 @@ class WorkSettingsAdmin(admin.ModelAdmin):
         ('Office Location', {
             'fields': ('office_latitude', 'office_longitude', 'office_radius_meters')
         }),
+        ('Overtime Settings', {
+            'fields': ('overtime_rate_workday', 'overtime_rate_holiday'),
+            'description': 'Overtime rates as multipliers of hourly base wage'
+        }),
     )
     
     def has_add_permission(self, request):
@@ -58,8 +62,31 @@ class HolidayAdmin(admin.ModelAdmin):
 
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
-    list_display = ("user", "date_local", "check_in_at_utc", "check_out_at_utc", "is_holiday", "minutes_late")
-    list_filter = ("date_local", "is_holiday", "within_geofence")
+    list_display = ("user", "date_local", "check_in_at_utc", "check_out_at_utc", "is_holiday", "minutes_late", "overtime_minutes", "overtime_approved")
+    list_filter = ("date_local", "is_holiday", "within_geofence", "overtime_approved")
     search_fields = ("user__username", "user__email")
     date_hierarchy = "date_local"
     readonly_fields = ("created_at", "updated_at")
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('user', 'employee', 'date_local', 'timezone')
+        }),
+        ('Check-in Details', {
+            'fields': ('check_in_at_utc', 'check_in_lat', 'check_in_lng', 'check_in_accuracy_m')
+        }),
+        ('Check-out Details', {
+            'fields': ('check_out_at_utc', 'check_out_lat', 'check_out_lng', 'check_out_accuracy_m')
+        }),
+        ('Work Status', {
+            'fields': ('is_holiday', 'within_geofence', 'minutes_late', 'total_work_minutes')
+        }),
+        ('Overtime Information', {
+            'fields': ('overtime_minutes', 'overtime_amount', 'overtime_approved', 'overtime_approved_by', 'overtime_approved_at')
+        }),
+        ('Notes', {
+            'fields': ('note', 'employee_note')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
