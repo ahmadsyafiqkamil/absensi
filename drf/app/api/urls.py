@@ -21,6 +21,8 @@ urlpatterns = [
     path('attendance/precheck', views.attendance_precheck, name='attendance-precheck'),
     path('attendance/check-in', views.attendance_check_in, name='attendance-check-in'),
     path('attendance/check-out', views.attendance_check_out, name='attendance-check-out'),
+    path('attendance/report', views.attendance_report, name='attendance-report'),
+    path('attendance/report/pdf', views.attendance_report_pdf, name='attendance-report-pdf'),
 ]
 
 router = DefaultRouter()
@@ -39,6 +41,8 @@ urlpatterns += [
     path('attendance-corrections/<int:pk>/reject', views.AttendanceCorrectionViewSet.as_view({'post': 'reject'}), name='attendance-correction-reject'),
     # Supervisor attendance endpoints
     path('supervisor/team-attendance', views.supervisor_team_attendance, name='supervisor-team-attendance'),
+    path('supervisor/team-attendance/pdf', views.supervisor_team_attendance_pdf, name='supervisor-team-attendance-pdf'),
+    path('supervisor/team-attendance/pdf-alt', views.supervisor_team_attendance_pdf_alt, name='supervisor-team-attendance-pdf-alt'),
     path('supervisor/attendance-detail/<int:employee_id>', views.supervisor_attendance_detail, name='supervisor-attendance-detail'),
 ]
 

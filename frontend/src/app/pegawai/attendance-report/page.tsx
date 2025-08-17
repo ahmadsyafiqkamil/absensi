@@ -1,32 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Header from '@/components/Header';
 import Link from 'next/link';
 import { formatWorkHoursEN } from '@/lib/utils';
-
-interface Employee {
-  id: number;
-  nip: string;
-  user: {
-    id: number;
-    username: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-  };
-  division: {
-    id: number;
-    name: string;
-  } | null;
-  position: {
-    id: number;
-    name: string;
-  } | null;
-}
 
 interface AttendanceRecord {
   id: number;
@@ -47,8 +26,7 @@ interface AttendanceRecord {
   updated_at: string;
 }
 
-interface AttendanceDetailResponse {
-  employee: Employee;
+interface AttendanceReportResponse {
   summary: {
     total_days: number;
     present_days: number;
@@ -67,12 +45,8 @@ interface AttendanceDetailResponse {
   };
 }
 
-export default function SupervisorAttendanceDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const employeeId = params.employeeId as string;
-  
-  const [attendanceData, setAttendanceData] = useState<AttendanceDetailResponse | null>(null);
+export default function PegawaiAttendanceReportPage() {
+  const [attendanceData, setAttendanceData] = useState<AttendanceReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
@@ -82,12 +56,10 @@ export default function SupervisorAttendanceDetailPage() {
   });
 
   useEffect(() => {
-    if (employeeId) {
-      fetchAttendanceDetail();
-    }
-  }, [employeeId, filters]);
+    fetchAttendanceReport();
+  }, [filters]);
 
-  const fetchAttendanceDetail = async () => {
+  const fetchAttendanceReport = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -97,14 +69,14 @@ export default function SupervisorAttendanceDetailPage() {
       if (filters.end_date) params.append('end_date', filters.end_date);
       if (filters.month) params.append('month', filters.month);
       
-      const response = await fetch(`/api/supervisor/attendance-detail/${employeeId}?${params.toString()}`);
+      const response = await fetch(`/api/attendance/report?${params.toString()}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to fetch attendance detail');
+        throw new Error(errorData.detail || 'Failed to fetch attendance report');
       }
       
-      const data: AttendanceDetailResponse = await response.json();
+      const data: AttendanceReportResponse = await response.json();
       setAttendanceData(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -178,16 +150,16 @@ export default function SupervisorAttendanceDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header 
-          title="Employee Attendance Detail" 
-          subtitle="Detailed attendance records"
+          title="Attendance Report" 
+          subtitle="Your attendance records and statistics"
           username="Loading..."
-          role="supervisor"
+          role="pegawai"
         />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading attendance detail...</p>
+              <p className="text-gray-600">Loading attendance report...</p>
             </div>
           </div>
         </div>
@@ -199,17 +171,17 @@ export default function SupervisorAttendanceDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header 
-          title="Employee Attendance Detail" 
-          subtitle="Detailed attendance records"
+          title="Attendance Report" 
+          subtitle="Your attendance records and statistics"
           username="Error"
-          role="supervisor"
+          role="pegawai"
         />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
             <h3 className="font-semibold">Error Loading Data</h3>
             <p>{error}</p>
             <Button 
-              onClick={fetchAttendanceDetail}
+              onClick={fetchAttendanceReport}
               className="mt-2"
             >
               Try Again
@@ -224,10 +196,10 @@ export default function SupervisorAttendanceDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header 
-          title="Employee Attendance Detail" 
-          subtitle="Detailed attendance records"
+          title="Attendance Report" 
+          subtitle="Your attendance records and statistics"
           username="No Data"
-          role="supervisor"
+          role="pegawai"
         />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="text-center">
@@ -241,41 +213,47 @@ export default function SupervisorAttendanceDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
-        title="Employee Attendance Detail" 
-        subtitle="Detailed attendance records"
-        username="Supervisor"
-        role="supervisor"
+        title="Attendance Report" 
+        subtitle="Your attendance records and statistics"
+        username="Pegawai"
+        role="pegawai"
       />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Back Button */}
         <div className="mb-6">
-          <Link href="/supervisor/attendance">
+          <Link href="/pegawai">
             <Button variant="outline" className="flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to Team Attendance
+              Back to Employee Dashboard
             </Button>
           </Link>
         </div>
 
-        {/* Employee Info */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        {/* Download PDF Button */}
+        {attendanceData && (
+          <div className="mb-6 flex justify-end">
+            <Button 
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (filters.start_date) params.append('start_date', filters.start_date);
+                if (filters.end_date) params.append('end_date', filters.end_date);
+                if (filters.month) params.append('month', filters.month);
+                
+                const url = `/api/attendance/report/pdf?${params.toString()}`;
+                window.open(url, '_blank');
+              }}
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              {attendanceData.employee.user.first_name} {attendanceData.employee.user.last_name}
-            </CardTitle>
-            <CardDescription>
-              NIP: {attendanceData.employee.nip} | 
-              Division: {attendanceData.employee.division?.name || 'Not Assigned'} | 
-              Position: {attendanceData.employee.position?.name || 'Not Assigned'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+              Download PDF Report
+            </Button>
+          </div>
+        )}
 
         {/* Filters */}
         <Card className="mb-6">

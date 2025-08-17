@@ -122,11 +122,11 @@ export default async function PegawaiPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/pegawai/attendance-report">
-                <Button className="w-full">Attendance Report</Button>
+                <Button variant="outline" className="w-full">Attendance Report</Button>
               </Link>
-              <Link href="/pegawai/monthly-summary">
+              {/* <Link href="/pegawai/monthly-summary">
                 <Button variant="outline" className="w-full">Monthly Summary</Button>
-              </Link>
+              </Link> */}
             </CardContent>
           </Card>
         </div>

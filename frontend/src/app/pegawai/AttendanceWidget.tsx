@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button'
 
 type Precheck = { date_local: string; has_check_in: boolean; has_check_out: boolean }
 
+// Custom event untuk refresh attendance data
+const ATTENDANCE_REFRESH_EVENT = 'attendance-refresh'
+
+export function triggerAttendanceRefresh() {
+  window.dispatchEvent(new CustomEvent(ATTENDANCE_REFRESH_EVENT))
+}
+
 function useGeo() {
   const [loc, setLoc] = useState<{ lat: number; lng: number; acc: number } | null>(null)
   const [locating, setLocating] = useState(false)
@@ -113,8 +120,17 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal submit')
+      
+      // Close modal
       onClose()
-      window.location.reload()
+      
+      // Trigger refresh event instead of reloading page
+      triggerAttendanceRefresh()
+      
+      // Show success message briefly
+      const successMsg = kind === 'in' ? 'Check In berhasil!' : 'Check Out berhasil!'
+      console.log(successMsg)
+      
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal submit')
     } finally {
@@ -157,7 +173,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
             ) : (
               <>
                 <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
-                <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
+                                  <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
                 {loc && <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>}
                 <div className="grid gap-2">
                   <label className="text-xs text-gray-600">Keterangan (opsional)</label>

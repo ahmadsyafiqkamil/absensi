@@ -24,6 +24,40 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone as dj_timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import models
+from django.http import HttpResponse
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+from io import BytesIO
+import datetime
+
+def format_work_hours(minutes, use_indonesian=True):
+    """Format work hours from minutes to human-readable format"""
+    if not minutes or minutes <= 0:
+        return '-'
+    
+    hours = int(minutes // 60)
+    mins = round(minutes % 60)
+    
+    # Handle edge case where minutes rounds up to 60
+    if mins == 60:
+        hours += 1
+        mins = 0
+    
+    # Format based on whether we have hours and/or minutes
+    hour_symbol = 'j' if use_indonesian else 'h'
+    
+    if hours > 0 and mins > 0:
+        return f"{hours}{hour_symbol} {mins}m"
+    elif hours > 0:
+        return f"{hours}{hour_symbol}"
+    elif mins > 0:
+        return f"{mins}m"
+    else:
+        return '0m'
 
 def health(request):
     return JsonResponse({"status": "ok"})
@@ -168,6 +202,26 @@ class IsSupervisorOrAdmin(permissions.BasePermission):
         )
 
 
+class IsAdminOrSupervisorReadOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        
+        # Allow read access for admin and supervisor
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return bool(
+                user.is_superuser or 
+                user.groups.filter(name__in=['admin', 'supervisor']).exists()
+            )
+        
+        # Only admin can modify
+        return bool(
+            user.is_superuser or 
+            user.groups.filter(name='admin').exists()
+        )
+
+
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -190,7 +244,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
 
 class WorkSettingsViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrSupervisorReadOnly]
 
     def list(self, request):
         obj, _ = WorkSettings.objects.get_or_create()
@@ -237,10 +291,23 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         qs = Attendance.objects.select_related('employee').filter(user=user)
         start = self.request.query_params.get('start')
         end = self.request.query_params.get('end')
+        month = self.request.query_params.get('month')
+        
         if start:
             qs = qs.filter(date_local__gte=start)
         if end:
             qs = qs.filter(date_local__lte=end)
+        if month:
+            # Parse month and filter by year-month
+            try:
+                year, month_num = month.split('-')
+                qs = qs.filter(
+                    date_local__year=year,
+                    date_local__month=month_num
+                )
+            except ValueError:
+                pass  # Ignore invalid month format
+        
         return qs.order_by('-date_local')
 
 
@@ -785,3 +852,798 @@ def attendance_check_out(request):
         pass
     att.save(update_fields=['check_out_at_utc', 'check_out_lat', 'check_out_lng', 'check_out_accuracy_m', 'total_work_minutes', 'employee_note'])
     return JsonResponse(AttendanceSerializer(att).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_report(request):
+    """Get detailed attendance report with summary statistics for the current user."""
+    user = request.user
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    month = request.GET.get('month')  # Format: YYYY-MM
+    
+    # Build attendance queryset
+    attendance_qs = Attendance.objects.filter(user=user)
+    
+    # Apply date filters
+    if start_date:
+        attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+    if end_date:
+        attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+    if month:
+        # Parse month and filter by year-month
+        try:
+            year, month_num = month.split('-')
+            attendance_qs = attendance_qs.filter(
+                date_local__year=year,
+                date_local__month=month_num
+            )
+        except ValueError:
+            return JsonResponse({"detail": "invalid_month_format_use_yyyy_mm"}, status=400)
+    
+    # Get attendance records
+    attendances = attendance_qs.order_by('-date_local')
+    
+    # Calculate detailed statistics
+    total_days = attendances.count()
+    present_days = attendances.filter(check_in_at_utc__isnull=False).count()
+    late_days = attendances.filter(minutes_late__gt=0).count()
+    absent_days = total_days - present_days
+    total_late_minutes = attendances.filter(minutes_late__gt=0).aggregate(
+        total=models.Sum('minutes_late')
+    )['total'] or 0
+    total_work_minutes = attendances.filter(
+        total_work_minutes__gt=0
+    ).aggregate(
+        total=models.Sum('total_work_minutes')
+    )['total'] or 0
+    
+    # Get all attendance records for the period
+    attendance_records = [
+        {
+            "id": att.id,
+            "date_local": str(att.date_local),
+            "check_in_at_utc": att.check_in_at_utc.isoformat() if att.check_in_at_utc else None,
+            "check_out_at_utc": att.check_out_at_utc.isoformat() if att.check_out_at_utc else None,
+            "check_in_lat": float(att.check_in_lat) if att.check_in_lat else None,
+            "check_in_lng": float(att.check_in_lng) if att.check_in_lng else None,
+            "check_out_lat": float(att.check_out_lat) if att.check_out_lat else None,
+            "check_out_lng": float(att.check_out_lng) if att.check_out_lng else None,
+            "minutes_late": att.minutes_late,
+            "total_work_minutes": att.total_work_minutes,
+            "is_holiday": att.is_holiday,
+            "within_geofence": att.within_geofence,
+            "note": att.note,
+            "employee_note": att.employee_note,
+            "created_at": att.created_at.isoformat(),
+            "updated_at": att.updated_at.isoformat(),
+        }
+        for att in attendances
+    ]
+    
+    return JsonResponse({
+        "summary": {
+            "total_days": total_days,
+            "present_days": present_days,
+            "late_days": late_days,
+            "absent_days": absent_days,
+            "attendance_rate": round((present_days / total_days * 100) if total_days > 0 else 0, 2),
+            "total_late_minutes": total_late_minutes,
+            "total_work_minutes": total_work_minutes,
+            "average_work_minutes": round(total_work_minutes / present_days, 2) if present_days > 0 else 0
+        },
+        "attendance_records": attendance_records,
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "month": month
+        }
+    }, safe=False)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_report_pdf(request):
+    """Generate PDF report for attendance data."""
+    user = request.user
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    month = request.GET.get('month')
+    
+    # Build attendance queryset
+    attendance_qs = Attendance.objects.filter(user=user)
+    
+    # Apply date filters
+    if start_date:
+        attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+    if end_date:
+        attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+    if month:
+        try:
+            year, month_num = month.split('-')
+            attendance_qs = attendance_qs.filter(
+                date_local__year=year,
+                date_local__month=month_num
+            )
+        except ValueError:
+            return JsonResponse({"detail": "invalid_month_format_use_yyyy_mm"}, status=400)
+    
+    # Get attendance records
+    attendances = attendance_qs.order_by('-date_local')
+    
+    # Calculate statistics
+    total_days = attendances.count()
+    present_days = attendances.filter(check_in_at_utc__isnull=False).count()
+    late_days = attendances.filter(minutes_late__gt=0).count()
+    absent_days = total_days - present_days
+    total_late_minutes = attendances.filter(minutes_late__gt=0).aggregate(
+        total=models.Sum('minutes_late')
+    )['total'] or 0
+    total_work_minutes = attendances.filter(
+        total_work_minutes__gt=0
+    ).aggregate(
+        total=models.Sum('total_work_minutes')
+    )['total'] or 0
+    
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=1  # Center alignment
+    )
+    
+    # Title
+    title = Paragraph("Laporan Absensi Pegawai", title_style)
+    elements.append(title)
+    
+    # Employee Info
+    try:
+        employee = user.employee
+        employee_info = f"""
+        <b>Nama:</b> {user.first_name} {user.last_name}<br/>
+        <b>NIP:</b> {employee.nip if employee else 'N/A'}<br/>
+        <b>Divisi:</b> {employee.division.name if employee and employee.division else 'N/A'}<br/>
+        <b>Jabatan:</b> {employee.position.name if employee and employee.position else 'N/A'}<br/>
+        <b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}
+        """
+        if month:
+            employee_info += f"<br/><b>Bulan:</b> {month}"
+    except:
+        employee_info = f"<b>Nama:</b> {user.first_name} {user.last_name}<br/><b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}"
+    
+    employee_para = Paragraph(employee_info, styles['Normal'])
+    elements.append(employee_para)
+    elements.append(Spacer(1, 20))
+    
+    # Summary Statistics
+    summary_title = Paragraph("Ringkasan Statistik", styles['Heading2'])
+    elements.append(summary_title)
+    elements.append(Spacer(1, 10))
+    
+    summary_data = [
+        ['Total Hari', 'Hadir', 'Terlambat', 'Tidak Hadir', 'Tingkat Kehadiran'],
+        [
+            str(total_days),
+            str(present_days),
+            str(late_days),
+            str(absent_days),
+            f"{round((present_days / total_days * 100) if total_days > 0 else 0, 2)}%"
+        ]
+    ]
+    
+    summary_table = Table(summary_data)
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 20))
+    
+    # Work Hours Summary
+    work_hours_title = Paragraph("Ringkasan Jam Kerja", styles['Heading2'])
+    elements.append(work_hours_title)
+    elements.append(Spacer(1, 10))
+    
+    work_hours_data = [
+        ['Total Jam Kerja', 'Total Keterlambatan', 'Rata-rata Jam Kerja/Hari'],
+        [
+            format_work_hours(total_work_minutes),
+            format_work_hours(total_late_minutes),
+            format_work_hours(total_work_minutes / present_days) if present_days > 0 else '0m'
+        ]
+    ]
+    
+    work_hours_table = Table(work_hours_data)
+    work_hours_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(work_hours_table)
+    elements.append(Spacer(1, 20))
+    
+    # Detailed Records
+    if attendances.exists():
+        records_title = Paragraph("Detail Absensi", styles['Heading2'])
+        elements.append(records_title)
+        elements.append(Spacer(1, 10))
+        
+        # Prepare table data
+        table_data = [['Tanggal', 'Status', 'Check-in', 'Check-out', 'Terlambat', 'Jam Kerja']]
+        
+        for att in attendances[:50]:  # Limit to 50 records to avoid PDF too large
+            # Determine status
+            if att.is_holiday:
+                status = 'Hari Libur'
+            elif att.minutes_late > 0:
+                status = f'Terlambat {att.minutes_late}m'
+            elif att.check_in_at_utc and att.check_out_at_utc:
+                status = 'Hadir Lengkap'
+            elif att.check_in_at_utc:
+                status = 'Hanya Check-in'
+            else:
+                status = 'Tidak Hadir'
+            
+            # Format times
+            check_in = att.check_in_at_utc.strftime('%H:%M') if att.check_in_at_utc else '-'
+            check_out = att.check_out_at_utc.strftime('%H:%M') if att.check_out_at_utc else '-'
+            
+            # Format work hours
+            work_hours = format_work_hours(att.total_work_minutes)
+            
+            table_data.append([
+                att.date_local.strftime('%d/%m/%Y'),
+                status,
+                check_in,
+                check_out,
+                f"{att.minutes_late}m" if att.minutes_late > 0 else '-',
+                work_hours
+            ])
+        
+        # Create table
+        records_table = Table(table_data, colWidths=[1*inch, 1.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
+        records_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(records_table)
+        
+        if attendances.count() > 50:
+            elements.append(Spacer(1, 10))
+            note = Paragraph(f"<i>Catatan: Ditampilkan 50 record terbaru dari total {attendances.count()} record</i>", styles['Normal'])
+            elements.append(note)
+    
+    # Footer
+    elements.append(Spacer(1, 30))
+    footer = Paragraph(f"<i>Dibuat pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+    elements.append(footer)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    # Create response
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="attendance-report-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+    
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def supervisor_team_attendance_pdf(request):
+    """Generate PDF report for supervisor team attendance."""
+    user = request.user
+    
+    # Check if user is supervisor or admin
+    if not (user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+        return HttpResponse("Forbidden", status=403)
+    
+    # Get supervisor's division
+    try:
+        supervisor_division_id = user.employee.division_id
+        if not supervisor_division_id:
+            return HttpResponse("Supervisor division not configured", status=400)
+    except Exception:
+        return HttpResponse("Supervisor employee record not found", status=400)
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    employee_id = request.GET.get('employee_id')
+    
+    # Build base queryset for team members in same division
+    team_employees = Employee.objects.filter(
+        division_id=supervisor_division_id
+    ).select_related('user', 'division', 'position')
+    
+    # Filter by specific employee if requested
+    if employee_id:
+        team_employees = team_employees.filter(id=employee_id)
+    
+    # Get attendance data for team members
+    attendance_data = []
+    
+    for employee in team_employees:
+        # Get attendance records for this employee
+        attendance_qs = Attendance.objects.filter(
+            user=employee.user
+        ).select_related('user', 'user__employee', 'user__employee__division', 'user__employee__position')
+        
+        # Apply date filters
+        if start_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+        if end_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+        
+        # Get attendance records
+        attendances = attendance_qs.order_by('-date_local')
+        
+        # Calculate summary statistics
+        total_days = attendances.count()
+        present_days = attendances.filter(check_in_at_utc__isnull=False).count()
+        late_days = attendances.filter(minutes_late__gt=0).count()
+        absent_days = total_days - present_days
+        
+        employee_data = {
+            "employee": employee,
+            "summary": {
+                "total_days": total_days,
+                "present_days": present_days,
+                "late_days": late_days,
+                "absent_days": absent_days,
+                "attendance_rate": round((present_days / total_days * 100) if total_days > 0 else 0, 2)
+            },
+            "attendances": attendances
+        }
+        
+        attendance_data.append(employee_data)
+    
+    try:
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            spaceAfter=30,
+            alignment=1  # Center alignment
+        )
+        
+        # Title
+        title = Paragraph("Laporan Absensi Tim Supervisor", title_style)
+        elements.append(title)
+        
+        # Supervisor Info
+        try:
+            supervisor_info = f"""
+            <b>Supervisor:</b> {user.first_name} {user.last_name}<br/>
+            <b>Divisi:</b> {user.employee.division.name if user.employee and user.employee.division else 'N/A'}<br/>
+            <b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}
+            """
+            if employee_id:
+                supervisor_info += f"<br/><b>Employee ID:</b> {employee_id}"
+        except:
+            supervisor_info = f"<b>Supervisor:</b> {user.first_name} {user.last_name}<br/><b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}"
+        
+        supervisor_para = Paragraph(supervisor_info, styles['Normal'])
+        elements.append(supervisor_para)
+        elements.append(Spacer(1, 20))
+        
+        # Team Summary Statistics
+        summary_title = Paragraph("Ringkasan Tim", styles['Heading2'])
+        elements.append(summary_title)
+        elements.append(Spacer(1, 10))
+        
+        total_members = len(attendance_data)
+        total_present_days = sum(member['summary']['present_days'] for member in attendance_data)
+        total_late_days = sum(member['summary']['late_days'] for member in attendance_data)
+        avg_attendance_rate = sum(member['summary']['attendance_rate'] for member in attendance_data) / total_members if total_members > 0 else 0
+        
+        summary_data = [
+            ['Total Anggota Tim', 'Total Hari Hadir', 'Total Hari Terlambat', 'Rata-rata Tingkat Kehadiran'],
+            [
+                str(total_members),
+                str(total_present_days),
+                str(total_late_days),
+                f"{round(avg_attendance_rate, 2)}%"
+            ]
+        ]
+        
+        summary_table = Table(summary_data)
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 20))
+        
+        # Individual Employee Summary
+        if attendance_data:
+            employee_title = Paragraph("Ringkasan per Anggota Tim", styles['Heading2'])
+            elements.append(employee_title)
+            elements.append(Spacer(1, 10))
+            
+            # Prepare table data
+            table_data = [['Nama', 'NIP', 'Divisi', 'Jabatan', 'Total Hari', 'Hadir', 'Terlambat', 'Rate (%)']]
+            
+            for member in attendance_data:
+                employee = member['employee']
+                summary = member['summary']
+                
+                table_data.append([
+                    f"{employee.user.first_name} {employee.user.last_name}",
+                    employee.nip,
+                    employee.division.name if employee.division else '-',
+                    employee.position.name if employee.position else '-',
+                    str(summary['total_days']),
+                    str(summary['present_days']),
+                    str(summary['late_days']),
+                    f"{summary['attendance_rate']}%"
+                ])
+            
+            # Create table
+            employee_table = Table(table_data, colWidths=[1.2*inch, 0.8*inch, 1*inch, 1*inch, 0.7*inch, 0.6*inch, 0.7*inch, 0.6*inch])
+            employee_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(employee_table)
+            elements.append(Spacer(1, 20))
+            
+            # Recent Attendance Records (first 3 employees only to avoid PDF too large)
+            if len(attendance_data) <= 3:
+                records_title = Paragraph("Detail Absensi Terbaru", styles['Heading2'])
+                elements.append(records_title)
+                elements.append(Spacer(1, 10))
+                
+                for member in attendance_data:
+                    employee = member['employee']
+                    attendances = member['attendances'][:7]  # Last 7 days
+                    
+                    if attendances.exists():
+                        employee_name = f"{employee.user.first_name} {employee.user.last_name}"
+                        employee_header = Paragraph(f"<b>{employee_name} ({employee.nip})</b>", styles['Heading3'])
+                        elements.append(employee_header)
+                        elements.append(Spacer(1, 5))
+                        
+                        # Prepare records table
+                        records_data = [['Tanggal', 'Status', 'Check-in', 'Check-out', 'Jam Kerja', 'Keterlambatan']]
+                        
+                        for att in attendances:
+                            # Determine status
+                            if att.is_holiday:
+                                status = 'Hari Libur'
+                            elif att.minutes_late > 0:
+                                status = f'Terlambat {att.minutes_late}m'
+                            elif att.check_in_at_utc and att.check_out_at_utc:
+                                status = 'Hadir Lengkap'
+                            elif att.check_in_at_utc:
+                                status = 'Hanya Check-in'
+                            else:
+                                status = 'Tidak Hadir'
+                            
+                            # Format times
+                            check_in = att.check_in_at_utc.strftime('%H:%M') if att.check_in_at_utc else '-'
+                            check_out = att.check_out_at_utc.strftime('%H:%M') if att.check_out_at_utc else '-'
+                            
+                            # Format work hours
+                            work_hours = format_work_hours(att.total_work_minutes)
+                            
+                            records_data.append([
+                                att.date_local.strftime('%d/%m/%Y'),
+                                status,
+                                check_in,
+                                check_out,
+                                work_hours,
+                                f"{att.minutes_late}m" if att.minutes_late > 0 else '-'
+                            ])
+                        
+                        # Create records table
+                        records_table = Table(records_data, colWidths=[0.8*inch, 1.2*inch, 0.7*inch, 0.7*inch, 0.8*inch, 0.8*inch])
+                        records_table.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 8),
+                            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                            ('FONTSIZE', (0, 1), (-1, -1), 7),
+                            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ]))
+                        elements.append(records_table)
+                        elements.append(Spacer(1, 15))
+        
+        # Footer
+        elements.append(Spacer(1, 30))
+        footer = Paragraph(f"<i>Dibuat pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+        elements.append(footer)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Create response with proper headers
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        
+        return response
+        
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating PDF: {str(e)}")
+        
+        # Return error response
+        return HttpResponse(f"Error generating PDF: {str(e)}", status=500)
+
+
+def supervisor_team_attendance_pdf_alt(request):
+    """Alternative PDF generation function without DRF decorators to avoid Accept header issues."""
+    from django.contrib.auth.decorators import login_required
+    from django.views.decorators.http import require_http_methods
+    
+    # Check if user is authenticated
+    if not request.user.is_authenticated:
+        return HttpResponse("Unauthorized", status=401)
+    
+    # Check if user is supervisor or admin
+    if not (request.user.is_superuser or request.user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+        return HttpResponse("Forbidden", status=403)
+    
+    user = request.user
+    
+    # Get supervisor's division
+    try:
+        supervisor_division_id = user.employee.division_id
+        if not supervisor_division_id:
+            return HttpResponse("Supervisor division not configured", status=400)
+    except Exception:
+        return HttpResponse("Supervisor employee record not found", status=400)
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    employee_id = request.GET.get('employee_id')
+    
+    # Build base queryset for team members in same division
+    team_employees = Employee.objects.filter(
+        division_id=supervisor_division_id
+    ).select_related('user', 'division', 'position')
+    
+    # Filter by specific employee if requested
+    if employee_id:
+        team_employees = team_employees.filter(id=employee_id)
+    
+    # Get attendance data for team members
+    attendance_data = []
+    
+    for employee in team_employees:
+        # Get attendance records for this employee
+        attendance_qs = Attendance.objects.filter(
+            user=employee.user
+        ).select_related('user', 'user__employee', 'user__employee__division', 'user__employee__position')
+        
+        # Apply date filters
+        if start_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+        if end_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+        
+        # Get attendance records
+        attendances = attendance_qs.order_by('-date_local')
+        
+        # Calculate summary statistics
+        total_days = attendances.count()
+        present_days = attendances.filter(check_in_at_utc__isnull=False).count()
+        late_days = attendances.filter(minutes_late__gt=0).count()
+        absent_days = total_days - present_days
+        
+        employee_data = {
+            "employee": employee,
+            "summary": {
+                "total_days": total_days,
+                "present_days": present_days,
+                "late_days": late_days,
+                "absent_days": absent_days,
+                "attendance_rate": round((present_days / total_days * 100) if total_days > 0 else 0, 2)
+            },
+            "attendances": attendances
+        }
+        
+        attendance_data.append(employee_data)
+    
+    try:
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            spaceAfter=30,
+            alignment=1  # Center alignment
+        )
+        
+        # Title
+        title = Paragraph("Laporan Absensi Tim Supervisor", title_style)
+        elements.append(title)
+        
+        # Supervisor Info
+        try:
+            supervisor_info = f"""
+            <b>Supervisor:</b> {user.first_name} {user.last_name}<br/>
+            <b>Divisi:</b> {user.employee.division.name if user.employee and user.employee.division else 'N/A'}<br/>
+            <b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}
+            """
+            if employee_id:
+                supervisor_info += f"<br/><b>Employee ID:</b> {employee_id}"
+        except:
+            supervisor_info = f"<b>Supervisor:</b> {user.first_name} {user.last_name}<br/><b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}"
+        
+        supervisor_para = Paragraph(supervisor_info, styles['Normal'])
+        elements.append(supervisor_para)
+        elements.append(Spacer(1, 20))
+        
+        # Team Summary Statistics
+        summary_title = Paragraph("Ringkasan Tim", styles['Heading2'])
+        elements.append(summary_title)
+        elements.append(Spacer(1, 10))
+        
+        total_members = len(attendance_data)
+        total_present_days = sum(member['summary']['present_days'] for member in attendance_data)
+        total_late_days = sum(member['summary']['late_days'] for member in attendance_data)
+        avg_attendance_rate = sum(member['summary']['attendance_rate'] for member in attendance_data) / total_members if total_members > 0 else 0
+        
+        summary_data = [
+            ['Total Anggota Tim', 'Total Hari Hadir', 'Total Hari Terlambat', 'Rata-rata Tingkat Kehadiran'],
+            [
+                str(total_members),
+                str(total_present_days),
+                str(total_late_days),
+                f"{round(avg_attendance_rate, 2)}%"
+            ]
+        ]
+        
+        summary_table = Table(summary_data)
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 20))
+        
+        # Individual Employee Summary
+        if attendance_data:
+            employee_title = Paragraph("Ringkasan per Anggota Tim", styles['Heading2'])
+            elements.append(employee_title)
+            elements.append(Spacer(1, 10))
+            
+            # Prepare table data
+            table_data = [['Nama', 'NIP', 'Divisi', 'Jabatan', 'Total Hari', 'Hadir', 'Terlambat', 'Rate (%)']]
+            
+            for member in attendance_data:
+                employee = member['employee']
+                summary = member['summary']
+                
+                table_data.append([
+                    f"{employee.user.first_name} {employee.user.last_name}",
+                    employee.nip,
+                    employee.division.name if employee.division else '-',
+                    employee.position.name if employee.position else '-',
+                    str(summary['total_days']),
+                    str(summary['present_days']),
+                    str(summary['late_days']),
+                    f"{summary['attendance_rate']}%"
+                ])
+            
+            # Create table
+            employee_table = Table(table_data, colWidths=[1.2*inch, 0.8*inch, 1*inch, 1*inch, 0.7*inch, 0.6*inch, 0.7*inch, 0.6*inch])
+            employee_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(employee_table)
+            elements.append(Spacer(1, 20))
+        
+        # Footer
+        elements.append(Spacer(1, 30))
+        footer = Paragraph(f"<i>Dibuat pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+        elements.append(footer)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Create response with proper headers
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        
+        return response
+        
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating PDF: {str(e)}")
+        
+        # Return error response
+        return HttpResponse(f"Error generating PDF: {str(e)}", status=500)

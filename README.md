@@ -157,6 +157,8 @@ docker-compose -f docker-compose.prod.yml down
 - `POST /api/v1/attendance/check-in` - Check in
 - `POST /api/v1/attendance/check-out` - Check out
 - `GET /api/v1/attendance/user/{user_id}` - Get user attendance
+- `GET /api/attendance/report` - Get detailed attendance report with summary statistics
+- `GET /api/attendance/report/pdf` - Download attendance report as PDF
 
 ### Supervisor
 - `GET /api/supervisor/team-attendance` - Get team attendance overview (supervisor/admin only)
@@ -268,3 +270,48 @@ For support and questions:
 - Create an issue on GitHub
 - Check documentation at `/docs`
 - Review API documentation at `/docs`
+
+## Fitur Utama
+
+### 1. **Sistem Absensi dengan Geolocation**
+- Check-in dan Check-out dengan GPS coordinates
+- Geofencing untuk memastikan kehadiran di kantor
+- Perhitungan otomatis keterlambatan dan jam kerja
+- Support untuk hari kerja khusus (Jumat) dan hari libur
+
+### 2. **Auto-Reset Data Absensi Harian**
+- Data absensi hari ini (check-in, check-out, total kerja, keterlambatan) otomatis di-reset setiap hari
+- Reset berdasarkan timezone kantor (default: Asia/Dubai)
+- Refresh data real-time tanpa reload halaman setelah check-in/check-out
+- Event system untuk sinkronisasi data antar komponen
+
+### 3. **Format Jam Kerja yang Rapi**
+- Utility function untuk format jam kerja yang konsisten di seluruh aplikasi
+- Support format Indonesia (6j 30m) dan English (6h 30m)
+- Auto-rounding menit untuk menghindari angka desimal yang tidak rapi
+- Handling edge case untuk menit yang round up ke 60
+
+### 4. **Filter System dengan Reset Button**
+- Filter data berdasarkan date range, month, dan employee ID
+- Tombol reset filter untuk mengosongkan semua filter sekaligus
+- Konsisten di semua halaman attendance (pegawai, supervisor, admin)
+- User experience yang lebih baik dengan kemudahan reset filter
+
+### 5. **PDF Report Generation**
+- Generate PDF report untuk data absensi
+- Include summary statistics, work hours, dan detailed records
+- Support filtering berdasarkan date range dan month
+- Professional PDF layout dengan tables dan styling
+- Auto-download dengan nama file yang informatif
+- Utility function untuk format jam kerja yang konsisten (6j 30m bukan 6.0j 50.329999999999984m)
+
+### 6. **Supervisor Attendance System**
+- Fitur check-in dan check-out untuk supervisor
+- Status absensi hari ini dengan real-time updates
+- Geolocation tracking untuk verifikasi lokasi
+- Auto-reset data setiap hari seperti pegawai
+- Integration dengan existing attendance system
+- Event-based refresh untuk sinkronisasi data
+- Layout yang konsisten dengan halaman pegawai (Your Overview + Functions Grid)
+- Monthly summary untuk ringkasan absensi bulanan supervisor
+- Permission access untuk work settings (read-only) untuk supervisor

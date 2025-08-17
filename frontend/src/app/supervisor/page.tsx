@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 import Header from '@/components/Header';
+import TodayAttendance from '../pegawai/TodayAttendance';
+import AttendanceWidget from '../pegawai/AttendanceWidget';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -54,6 +56,26 @@ export default async function SupervisorPage() {
       />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
+
+        {/* Your Attendance (Supervisor can also check-in/out) */}
+        <div className="grid gap-4 mb-8">
+          <h2 className="text-xl font-semibold text-gray-900">Your Attendance</h2>
+          <TodayAttendance />
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Attendance Actions
+              </CardTitle>
+              <CardDescription>Record your own attendance</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <AttendanceWidget />
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Supervisor Functions Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -114,8 +136,8 @@ export default async function SupervisorPage() {
               <Link href="/supervisor/reports">
                 <Button className="w-full">View Reports</Button>
               </Link>
-              <Link href="/supervisor/analytics">
-                <Button variant="outline" className="w-full">Analytics</Button>
+              <Link href="/supervisor/monthly-summary">
+                <Button variant="outline" className="w-full">Monthly Summary</Button>
               </Link>
             </CardContent>
           </Card>
@@ -147,7 +169,7 @@ export default async function SupervisorPage() {
               <CardTitle className="flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 Settings
               </CardTitle>
@@ -163,8 +185,6 @@ export default async function SupervisorPage() {
             </CardContent>
           </Card>
         </div>
-
-
 
         {/* Quick Stats */}
         <div className="mt-8">

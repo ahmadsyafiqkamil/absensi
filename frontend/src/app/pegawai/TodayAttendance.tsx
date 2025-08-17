@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 type Attendance = {
@@ -67,57 +67,128 @@ export default function TodayAttendance() {
   const [isHoliday, setIsHoliday] = useState<boolean>(false)
   const [now, setNow] = useState<Date>(new Date())
   const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
+  const [currentDate, setCurrentDate] = useState<string>('')
 
   function toISODate(d: Date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
 
-  useEffect(() => {
-    ;(async () => {
-      setLoading(true)
-      const today = new Date()
-      const q = `?start=${toISODate(today)}&end=${toISODate(today)}`
+  // Function to fetch today's attendance data
+  const fetchTodayData = useCallback(async (targetDate: string) => {
+    setLoading(true)
+    const q = `?start=${targetDate}&end=${targetDate}`
+    
+    try {
+      const [attResp, holResp, settingsResp] = await Promise.all([
+        fetch('/api/attendance/me?page=1&page_size=1'),
+        fetch(`/api/attendance/holidays/${q}`),
+        fetch('/api/settings/work'),
+      ])
       
-      try {
-        const [attResp, holResp, settingsResp] = await Promise.all([
-          fetch('/api/attendance/me?page=1&page_size=1'),
-          fetch(`/api/attendance/holidays/${q}`),
-          fetch('/api/settings/work'),
-        ])
-        
-        const d = await attResp.json().catch(() => ({}))
-        const att = Array.isArray(d) ? (d[0] || null) : (d?.results?.[0] || null)
-        setData(att || null)
-
-        const holD = await holResp.json().catch(() => ({}))
-        const holItems = Array.isArray(holD) ? holD : (d?.results || [])
-        setIsHoliday((holItems?.length || 0) > 0)
-
-        const settingsData = await settingsResp.json().catch(() => ({}))
-        if (settingsResp.ok && settingsData.results && settingsData.results.length > 0) {
-          setWorkSettings(settingsData.results[0])
-        }
-      } catch (error) {
-        console.error('Error loading data:', error)
-      } finally {
-        setLoading(false)
+      const d = await attResp.json().catch(() => ({}))
+      const att = Array.isArray(d) ? (d[0] || null) : (d?.results?.[0] || null)
+      
+      // Only set data if it's for the current date
+      if (att && att.date_local === targetDate) {
+        setData(att)
+      } else {
+        setData(null)
       }
-    })()
+
+      const holD = await holResp.json().catch(() => ({}))
+      const holItems = Array.isArray(holD) ? holD : (d?.results || [])
+      setIsHoliday((holItems?.length || 0) > 0)
+
+      const settingsData = await settingsResp.json().catch(() => ({}))
+      if (settingsResp.ok && settingsData.results && settingsData.results.length > 0) {
+        setWorkSettings(settingsData.results[0])
+      }
+    } catch (error) {
+      console.error('Error loading data:', error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
+  // Initial data fetch
   useEffect(() => {
-    const tick = setInterval(() => setNow(new Date()), 1000)
+    const today = toISODate(new Date())
+    setCurrentDate(today)
+    fetchTodayData(today)
+  }, [fetchTodayData])
+
+  // Listen for attendance refresh events (from check-in/check-out)
+  useEffect(() => {
+    const handleAttendanceRefresh = () => {
+      console.log('Attendance refresh event received, refreshing data...')
+      const today = toISODate(new Date())
+      fetchTodayData(today)
+    }
+
+    window.addEventListener('attendance-refresh', handleAttendanceRefresh)
+    return () => window.removeEventListener('attendance-refresh', handleAttendanceRefresh)
+  }, [fetchTodayData])
+
+  // Update current time every second and check for date changes
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const newNow = new Date()
+      setNow(newNow)
+      
+      // Check if date has changed
+      const newDate = toISODate(newNow)
+      if (newDate !== currentDate) {
+        console.log('Date changed, resetting attendance data')
+        setCurrentDate(newDate)
+        setData(null) // Reset attendance data immediately
+        setIsHoliday(false) // Reset holiday status
+        fetchTodayData(newDate) // Fetch new day's data
+      }
+    }, 1000)
+    
     return () => clearInterval(tick)
-  }, [])
+  }, [currentDate, fetchTodayData])
 
+  // Calculate time until next midnight in the work timezone
   useEffect(() => {
-    const nowDate = new Date()
-    const nextMidnight = new Date(nowDate)
-    nextMidnight.setHours(24, 0, 0, 0)
-    const ms = nextMidnight.getTime() - nowDate.getTime()
-    const t = setTimeout(() => window.location.reload(), ms)
-    return () => clearTimeout(t)
-  }, [])
+    if (!workSettings?.timezone) return
+    
+    const calculateNextMidnight = () => {
+      const nowDate = new Date()
+      const tz = workSettings.timezone || 'Asia/Dubai'
+      
+      // Get current time in the work timezone
+      const tzDate = new Date(nowDate.toLocaleString("en-US", {timeZone: tz}))
+      
+      // Calculate next midnight in that timezone
+      const nextMidnight = new Date(tzDate)
+      nextMidnight.setHours(24, 0, 0, 0)
+      
+      // Convert back to local time for setTimeout
+      const localMidnight = new Date(nextMidnight.toLocaleString("en-US", {timeZone: tz}))
+      const ms = localMidnight.getTime() - nowDate.getTime()
+      
+      return Math.max(ms, 1000) // Ensure at least 1 second
+    }
+
+    const scheduleNextReset = () => {
+      const ms = calculateNextMidnight()
+      const t = setTimeout(() => {
+        console.log('Scheduled reset triggered')
+        const newDate = toISODate(new Date())
+        setCurrentDate(newDate)
+        setData(null)
+        setIsHoliday(false)
+        fetchTodayData(newDate)
+        scheduleNextReset() // Schedule next reset
+      }, ms)
+      
+      return () => clearTimeout(t)
+    }
+
+    const cleanup = scheduleNextReset()
+    return cleanup
+  }, [workSettings?.timezone, fetchTodayData])
 
   const workHours = useMemo(() => {
     if (!data || !data.total_work_minutes) return '-'

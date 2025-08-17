@@ -237,6 +237,26 @@ export default function SupervisorAttendancePage() {
                 />
               </div>
             </div>
+            
+            {/* Reset Filter Button */}
+            <div className="mt-4 flex justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setFilters({
+                    start_date: '',
+                    end_date: '',
+                    employee_id: ''
+                  });
+                }}
+                className="flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reset Filter
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -276,6 +296,29 @@ export default function SupervisorAttendancePage() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+        )}
+
+        {/* Download PDF Button */}
+        {teamData && teamData.team_attendance.length > 0 && (
+          <div className="mb-6 flex justify-end">
+            <Button 
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (filters.start_date) params.append('start_date', filters.start_date);
+                if (filters.end_date) params.append('end_date', filters.end_date);
+                if (filters.employee_id) params.append('employee_id', filters.employee_id);
+                
+                const url = `/api/supervisor/team-attendance/pdf?${params.toString()}`;
+                window.open(url, '_blank');
+              }}
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download PDF Report
+            </Button>
           </div>
         )}
 

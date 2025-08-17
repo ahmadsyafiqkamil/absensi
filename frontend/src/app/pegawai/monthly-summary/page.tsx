@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Header from '@/components/Header'
+import { formatWorkHoursID } from '@/lib/utils'
 
 type MonthlySummary = {
   month: string
@@ -177,7 +178,7 @@ export default function MonthlySummaryPage() {
           holiday_note: holidayNote || (isWeekend ? 'Libur Akhir Pekan' : undefined),
           check_in_time: attendance.check_in_at_utc ? formatTime(attendance.check_in_at_utc, attendance.timezone) : undefined,
           check_out_time: attendance.check_out_at_utc ? formatTime(attendance.check_out_at_utc, attendance.timezone) : undefined,
-          work_hours: formatWorkHours(attendance.total_work_minutes),
+          work_hours: formatWorkHoursID(attendance.total_work_minutes),
           is_late: attendance.minutes_late > 0,
           late_minutes: attendance.minutes_late || 0,
           is_early_departure: attendance.total_work_minutes < 480,
@@ -255,12 +256,7 @@ export default function MonthlySummaryPage() {
     }
   }
 
-  function formatWorkHours(minutes: number): string {
-    if (!minutes && minutes !== 0) return '-'
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return `${hours}j ${mins}m`
-  }
+
 
   function formatPercentage(value: number): string {
     return `${value.toFixed(1)}%`
