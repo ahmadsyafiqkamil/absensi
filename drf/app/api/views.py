@@ -39,6 +39,7 @@ from .permissions import (
     IsSupervisor,
     IsEmployee,
     IsAdminOrSupervisor,
+    IsAdminOrSupervisorWithApproval,
     IsAdminOrSupervisorReadOnly,
     IsAdminOrReadOnly,
     IsOwnerOrAdmin,
@@ -458,7 +459,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
     def approve(self, request, pk=None):
         """Approve a pending correction (supervisor/admin only). Applies changes to Attendance."""
-        if not IsAdminOrSupervisor().has_permission(request, self):
+        if not IsAdminOrSupervisorWithApproval().has_permission(request, self):
             return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             corr = AttendanceCorrection.objects.get(pk=pk)
@@ -551,7 +552,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
     def reject(self, request, pk=None):
         """Reject a pending correction (supervisor/admin only)."""
-        if not IsAdminOrSupervisor().has_permission(request, self):
+        if not IsAdminOrSupervisorWithApproval().has_permission(request, self):
             return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             corr = AttendanceCorrection.objects.get(pk=pk)

@@ -117,6 +117,44 @@ class IsAdminOrSupervisor(permissions.BasePermission):
         
         return False
 
+class IsAdminOrSupervisorWithApproval(permissions.BasePermission):
+    """
+    Permission class untuk admin dan supervisor dengan akses approval.
+    
+    Access Control:
+    - Admin: full access (CRUD operations)
+    - Supervisor: read access + approval actions (POST for approve/reject)
+    - Employee: no access
+    
+    Use Case:
+    - Attendance correction approval/rejection
+    - Supervisor actions that require write access
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        
+        # Admin: full access
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return True
+        
+        # Supervisor: read access + approval actions
+        if user.groups.filter(name='supervisor').exists():
+            # Allow GET, HEAD, OPTIONS for read access
+            if request.method in ("GET", "HEAD", "OPTIONS"):
+                return True
+            
+            # Allow POST for approval actions (approve/reject)
+            if request.method == "POST":
+                # Check if this is an approval action
+                action = getattr(view, 'action', None)
+                if action in ['approve', 'reject']:
+                    return True
+            
+            return False
+        
+        return False
 
 class IsAdminOrSupervisorReadOnly(permissions.BasePermission):
     """
