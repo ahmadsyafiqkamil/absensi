@@ -131,6 +131,8 @@ class WorkSettingsAdminSerializer(serializers.ModelSerializer):
             "office_latitude",
             "office_longitude",
             "office_radius_meters",
+            "overtime_rate_workday",
+            "overtime_rate_holiday",
         ]
 
 
@@ -155,6 +157,8 @@ class WorkSettingsSupervisorSerializer(serializers.ModelSerializer):
             "office_latitude",
             "office_longitude",
             "office_radius_meters",
+            "overtime_rate_workday",
+            "overtime_rate_holiday",
         ]
         read_only_fields = fields  # Semua field read-only untuk supervisor
 
@@ -189,6 +193,11 @@ class AttendanceAdminSerializer(serializers.ModelSerializer):
             "total_work_minutes",
             "note",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
+            "overtime_approved_by",
+            "overtime_approved_at",
             "created_at",
             "updated_at",
         ]
@@ -221,6 +230,11 @@ class AttendanceSupervisorSerializer(serializers.ModelSerializer):
             "total_work_minutes",
             "note",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
+            "overtime_approved_by",
+            "overtime_approved_at",
             "created_at",
             "updated_at",
         ]
@@ -236,6 +250,11 @@ class AttendanceSupervisorSerializer(serializers.ModelSerializer):
             "minutes_late",
             "total_work_minutes",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
+            "overtime_approved_by",
+            "overtime_approved_at",
             "created_at",
             "updated_at",
         ]
@@ -265,6 +284,9 @@ class AttendanceEmployeeSerializer(serializers.ModelSerializer):
             "total_work_minutes",
             "note",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
             "created_at",
             "updated_at",
         ]
@@ -280,6 +302,9 @@ class AttendanceEmployeeSerializer(serializers.ModelSerializer):
             "minutes_late",
             "total_work_minutes",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
             "created_at",
             "updated_at",
         ]
@@ -521,6 +546,8 @@ class WorkSettingsSerializer(serializers.ModelSerializer):
             "office_latitude",
             "office_longitude",
             "office_radius_meters",
+            "overtime_rate_workday",
+            "overtime_rate_holiday",
         ]
 
 
@@ -550,6 +577,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "total_work_minutes",
             "note",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
             "created_at",
             "updated_at",
         ]
@@ -565,6 +595,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "minutes_late",
             "total_work_minutes",
             "employee_note",
+            "overtime_minutes",
+            "overtime_amount",
+            "overtime_approved",
             "created_at",
             "updated_at",
         ]

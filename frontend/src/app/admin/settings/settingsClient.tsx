@@ -23,6 +23,8 @@ type WorkSettings = {
   office_latitude?: number | null
   office_longitude?: number | null
   office_radius_meters?: number
+  overtime_rate_workday: number | string
+  overtime_rate_holiday: number | string
 }
 
 type Holiday = { id: number; date: string; note?: string }
@@ -203,6 +205,30 @@ export default function SettingsClient() {
             <div className="grid gap-2">
               <Label>Durasi Kerja (menit)</Label>
               <Input type="number" value={settings.required_minutes} onChange={(e) => setSettings({ ...settings, required_minutes: Number(e.target.value || 0) })} />
+            </div>
+          </div>
+
+          {/* Overtime Settings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label>Rate Lembur Hari Kerja (kali gaji per jam)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={String(settings.overtime_rate_workday || 0.50)}
+                onChange={(e) => setSettings({ ...settings, overtime_rate_workday: Number(e.target.value || 0) })}
+              />
+              <div className="text-xs text-gray-500">Contoh: 0.50 = 2/4 dari gaji per jam</div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Rate Lembur Hari Libur (kali gaji per jam)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={String(settings.overtime_rate_holiday || 0.75)}
+                onChange={(e) => setSettings({ ...settings, overtime_rate_holiday: Number(e.target.value || 0) })}
+              />
+              <div className="text-xs text-gray-500">Contoh: 0.75 = 3/4 dari gaji per jam</div>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

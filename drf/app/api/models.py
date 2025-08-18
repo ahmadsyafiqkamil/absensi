@@ -91,6 +91,23 @@ class WorkSettings(models.Model):
     office_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     office_radius_meters = models.PositiveIntegerField(default=100)
 
+    # Overtime settings (multipliers of hourly base wage)
+    # Default: workday 2/4 (=0.50), holiday 3/4 (=0.75)
+    overtime_rate_workday = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0.50,
+        verbose_name="Overtime Rate (Workday)",
+        help_text="Multiplier of hourly base wage for overtime on workdays (e.g., 0.50 = 2/4)",
+    )
+    overtime_rate_holiday = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0.75,
+        verbose_name="Overtime Rate (Holiday)",
+        help_text="Multiplier of hourly base wage for overtime on holidays (e.g., 0.75 = 3/4)",
+    )
+
     class Meta:
         verbose_name = "Work Settings"
         verbose_name_plural = "Work Settings"
@@ -132,6 +149,38 @@ class Attendance(models.Model):
     total_work_minutes = models.IntegerField(default=0)
     note = models.CharField(max_length=200, null=True, blank=True)
     employee_note = models.TextField(null=True, blank=True)
+
+    # Overtime fields
+    overtime_minutes = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Overtime Minutes",
+        help_text="Minutes worked beyond required work hours"
+    )
+    overtime_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Overtime Amount",
+        help_text="Calculated overtime pay amount"
+    )
+    overtime_approved = models.BooleanField(
+        default=False,
+        verbose_name="Overtime Approved",
+        help_text="Whether overtime has been approved by supervisor"
+    )
+    overtime_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_overtimes",
+        verbose_name="Overtime Approved By"
+    )
+    overtime_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Overtime Approved At"
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

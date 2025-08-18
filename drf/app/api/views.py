@@ -39,6 +39,8 @@ from .permissions import (
     IsSupervisor,
     IsEmployee,
     IsAdminOrSupervisor,
+    IsAdminOrSupervisorWithApproval,
+    IsAdminOrSupervisorOvertimeApproval,
     IsAdminOrSupervisorReadOnly,
     IsAdminOrReadOnly,
     IsOwnerOrAdmin,
@@ -458,7 +460,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
     def approve(self, request, pk=None):
         """Approve a pending correction (supervisor/admin only). Applies changes to Attendance."""
-        if not IsAdminOrSupervisor().has_permission(request, self):
+        if not IsAdminOrSupervisorWithApproval().has_permission(request, self):
             return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             corr = AttendanceCorrection.objects.get(pk=pk)
@@ -529,6 +531,56 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
             delta = att.check_out_at_utc - att.check_in_at_utc
             att.total_work_minutes = max(0, int(delta.total_seconds() // 60))
 
+        # Link employee if possible (needed for overtime pay calculation)
+        try:
+            if not att.employee and hasattr(corr.user, "employee"):
+                att.employee = corr.user.employee  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+        # Recalculate overtime based on total work duration and work settings
+        try:
+            # Determine required minutes for the day (Friday may differ)
+            weekday = int(att.date_local.weekday())
+            if weekday == 4:  # Friday
+                required_minutes = int(ws.friday_required_minutes or 240)
+            else:
+                required_minutes = int(ws.required_minutes or 480)
+
+            if att.total_work_minutes and att.total_work_minutes > required_minutes:
+                att.overtime_minutes = att.total_work_minutes - required_minutes
+
+                # Calculate overtime amount if employee has salary information
+                if att.employee and att.employee.gaji_pokok:
+                    monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
+                    hourly_wage = float(att.employee.gaji_pokok) / monthly_hours
+
+                    # Determine overtime rate based on holiday vs workday
+                    if att.is_holiday:
+                        rate = float(ws.overtime_rate_holiday or 0.75)
+                    else:
+                        rate = float(ws.overtime_rate_workday or 0.50)
+
+                    overtime_hours = att.overtime_minutes / 60
+                    att.overtime_amount = overtime_hours * hourly_wage * rate
+                else:
+                    att.overtime_amount = 0
+
+                # Overtime requires manual approval; keep pending
+                att.overtime_approved = False
+                att.overtime_approved_by = None
+                att.overtime_approved_at = None
+            else:
+                # No overtime for this approval
+                att.overtime_minutes = 0
+                att.overtime_amount = 0
+                att.overtime_approved = False
+                att.overtime_approved_by = None
+                att.overtime_approved_at = None
+        except Exception:
+            # Fail-safe: do not block approval due to overtime calc error
+            pass
+
         # Mark manual and attach reason into employee_note (append)
         try:
             reason = (corr.reason or "").strip()
@@ -551,7 +603,7 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: AttendanceCorrectionSerializer})
     def reject(self, request, pk=None):
         """Reject a pending correction (supervisor/admin only)."""
-        if not IsAdminOrSupervisor().has_permission(request, self):
+        if not IsAdminOrSupervisorWithApproval().has_permission(request, self):
             return Response({"detail": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             corr = AttendanceCorrection.objects.get(pk=pk)
@@ -949,17 +1001,65 @@ def attendance_check_out(request):
     # Compute total work minutes
     delta = now - (att.check_in_at_utc or now)
     att.total_work_minutes = max(0, int(delta.total_seconds() // 60))
+    
+    # Calculate overtime based on total work duration
+    weekday = local_now.weekday()  # Monday=0..Sunday=6
+    
+    # Get required minutes based on weekday
+    if weekday == 4:  # Friday
+        required_minutes = int(ws.friday_required_minutes or 240)  # Default 4 jam
+    else:  # Monday-Thursday
+        required_minutes = int(ws.required_minutes or 480)  # Default 8 jam
+    
+    # Overtime calculation: total work minutes - required minutes
+    if att.total_work_minutes > required_minutes:
+        att.overtime_minutes = att.total_work_minutes - required_minutes
+        
+        # Calculate overtime amount if employee has salary
+        if att.employee and att.employee.gaji_pokok:
+            # Calculate hourly wage (assuming monthly salary)
+            monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
+            hourly_wage = float(att.employee.gaji_pokok) / monthly_hours
+            
+            # Determine overtime rate
+            if att.is_holiday:
+                rate = float(ws.overtime_rate_holiday or 0.75)
+            else:
+                rate = float(ws.overtime_rate_workday or 0.50)
+            
+            # Calculate overtime amount
+            overtime_hours = att.overtime_minutes / 60
+            att.overtime_amount = overtime_hours * hourly_wage * rate
+        else:
+            att.overtime_amount = 0
+            
+        # For now, all overtime needs manual approval
+        att.overtime_approved = False
+        att.overtime_approved_by = None
+        att.overtime_approved_at = None
+        
+    else:
+        # No overtime
+        att.overtime_minutes = 0
+        att.overtime_amount = 0
+        att.overtime_approved = False
+        att.overtime_approved_by = None
+        att.overtime_approved_at = None
+    
     # Optional employee note for underwork (less than required minutes)
     try:
         employee_note = (data.get('employee_note') or '').strip()
-        # Determine required minutes based on weekday (Friday special)
-        weekday = local_now.weekday()  # Monday=0..Sunday=6
-        required = int(ws.friday_required_minutes or 0) if weekday == 4 else int(ws.required_minutes or 0)
-        if att.total_work_minutes < required and employee_note:
+        if att.total_work_minutes < required_minutes and employee_note:
             att.employee_note = employee_note
     except Exception:
         pass
-    att.save(update_fields=['check_out_at_utc', 'check_out_lat', 'check_out_lng', 'check_out_accuracy_m', 'total_work_minutes', 'employee_note'])
+    
+    att.save(update_fields=[
+        'check_out_at_utc', 'check_out_lat', 'check_out_lng', 
+        'check_out_accuracy_m', 'total_work_minutes', 'employee_note',
+        'overtime_minutes', 'overtime_amount', 'overtime_approved',
+        'overtime_approved_by', 'overtime_approved_at'
+    ])
     return JsonResponse(AttendanceSerializer(att).data)
 
 
@@ -1756,3 +1856,205 @@ def supervisor_team_attendance_pdf_alt(request):
         
         # Return error response
         return HttpResponse(f"Error generating PDF: {str(e)}", status=500)
+
+
+# ============================================================================
+# OVERTIME FUNCTIONS
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAdminOrSupervisorOvertimeApproval])
+def approve_overtime(request, attendance_id):
+    """Approve overtime for specific attendance record"""
+    try:
+        attendance = Attendance.objects.get(id=attendance_id)
+    except Attendance.DoesNotExist:
+        return Response({"detail": "Attendance not found"}, status=404)
+    
+    # Check if there's overtime to approve
+    if attendance.overtime_minutes <= 0:
+        return Response({"detail": "No overtime to approve"}, status=400)
+    
+    # Check if already approved
+    if attendance.overtime_approved:
+        return Response({"detail": "Overtime already approved"}, status=400)
+    
+    # Division-based authorization for supervisors
+    user = request.user
+    if user.groups.filter(name='supervisor').exists():
+        try:
+            supervisor_division = user.employee.division
+            employee_division = attendance.employee.division
+            if supervisor_division != employee_division:
+                return Response({"detail": "Can only approve overtime for your division"}, status=403)
+        except Exception:
+            return Response({"detail": "Division not configured"}, status=400)
+    
+    # Approve overtime
+    attendance.overtime_approved = True
+    attendance.overtime_approved_by = user
+    attendance.overtime_approved_at = dj_timezone.now()
+    attendance.save()
+    
+    return Response({
+        "detail": "Overtime approved successfully",
+        "attendance_id": attendance.id,
+        "date": str(attendance.date_local),
+        "employee": attendance.user.get_full_name() or attendance.user.username,
+        "overtime_minutes": attendance.overtime_minutes,
+        "overtime_amount": float(attendance.overtime_amount),
+        "approved_by": user.username,
+        "approved_at": attendance.overtime_approved_at.isoformat()
+    })
+
+
+@extend_schema(
+    tags=['Overtime'],
+    summary='Get overtime report',
+    description='Get overtime report with filtering options',
+    responses={200: dict},
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def overtime_report(request):
+    """Get overtime report with filtering options"""
+    user = request.user
+    
+    # Get query parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    month = request.GET.get('month')
+    employee_id = request.GET.get('employee_id')
+    approved_only = request.GET.get('approved_only', 'false').lower() == 'true'
+    pending_only = request.GET.get('pending_only', 'false').lower() == 'true'
+    
+    # Build base queryset
+    if user.is_superuser or user.groups.filter(name='admin').exists():
+        # Admin can see all overtime
+        qs = Attendance.objects.filter(overtime_minutes__gt=0)
+    elif user.groups.filter(name='supervisor').exists():
+        # Supervisor can see overtime for their division
+        try:
+            supervisor_division = user.employee.division
+            qs = Attendance.objects.filter(
+                overtime_minutes__gt=0,
+                employee__division=supervisor_division
+            )
+        except Exception:
+            return Response({"detail": "Division not configured"}, status=400)
+    else:
+        # Employee can only see their own overtime
+        qs = Attendance.objects.filter(
+            user=user,
+            overtime_minutes__gt=0
+        )
+    
+    # Apply filters
+    if start_date:
+        qs = qs.filter(date_local__gte=start_date)
+    if end_date:
+        qs = qs.filter(date_local__lte=end_date)
+    if month:
+        try:
+            year, month_num = month.split('-')
+            qs = qs.filter(
+                date_local__year=year,
+                date_local__month=month_num
+            )
+        except ValueError:
+            return Response({"detail": "Invalid month format"}, status=400)
+    if employee_id:
+        qs = qs.filter(employee_id=employee_id)
+    if approved_only:
+        qs = qs.filter(overtime_approved=True)
+    if pending_only:
+        qs = qs.filter(overtime_approved=False)
+    
+    # Get overtime records
+    overtime_records = []
+    total_overtime_minutes = 0
+    total_overtime_amount = 0
+    pending_overtime_count = 0
+    
+    for att in qs.select_related('user', 'employee', 'employee__division', 'overtime_approved_by'):
+        # Determine required minutes for this day
+        weekday = att.date_local.weekday()
+        if weekday == 4:  # Friday
+            required_minutes = 240  # 4 jam
+        else:  # Monday-Thursday
+            required_minutes = 480  # 8 jam
+        
+        overtime_records.append({
+            "id": att.id,
+            "date": str(att.date_local),
+            "weekday": ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'][weekday],
+            "employee": {
+                "name": att.user.get_full_name() or att.user.username,
+                "nip": att.employee.nip if att.employee else None,
+                "division": att.employee.division.name if att.employee and att.employee.division else None
+            },
+            "check_in": att.check_in_at_utc.isoformat() if att.check_in_at_utc else None,
+            "check_out": att.check_out_at_utc.isoformat() if att.check_out_at_utc else None,
+            "total_work_minutes": att.total_work_minutes,
+            "required_minutes": required_minutes,
+            "overtime_minutes": att.overtime_minutes,
+            "overtime_amount": float(att.overtime_amount),
+            "is_holiday": att.is_holiday,
+            "overtime_approved": att.overtime_approved,
+            "approved_by": att.overtime_approved_by.username if att.overtime_approved_by else None,
+            "approved_at": att.overtime_approved_at.isoformat() if att.overtime_approved_at else None
+        })
+        
+        total_overtime_minutes += att.overtime_minutes
+        total_overtime_amount += float(att.overtime_amount or 0)
+        if not att.overtime_approved:
+            pending_overtime_count += 1
+    
+    return Response({
+        "summary": {
+            "total_records": len(overtime_records),
+            "total_overtime_minutes": total_overtime_minutes,
+            "total_overtime_amount": total_overtime_amount,
+            "pending_overtime_count": pending_overtime_count,
+            "average_overtime_per_day": round(total_overtime_minutes / len(overtime_records), 2) if overtime_records else 0
+        },
+        "overtime_records": overtime_records,
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "month": month,
+            "employee_id": employee_id,
+            "approved_only": approved_only,
+            "pending_only": pending_only
+        }
+    })
+
+
+@extend_schema(
+    tags=['Settings'],
+    summary='Get work settings for employee',
+    description='Get work settings that employees need for overtime calculation',
+    responses={200: dict},
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def employee_work_settings(request):
+    """Get work settings that employees need for overtime calculation"""
+    try:
+        # Get work settings
+        work_settings, _ = WorkSettings.objects.get_or_create()
+        
+        # Return only the fields needed for overtime calculation
+        settings_data = {
+            'start_time': work_settings.start_time,
+            'end_time': work_settings.end_time,
+            'friday_start_time': work_settings.friday_start_time,
+            'friday_end_time': work_settings.friday_end_time,
+            'workdays': work_settings.workdays,
+            'overtime_rate_workday': work_settings.overtime_rate_workday,
+            'overtime_rate_holiday': work_settings.overtime_rate_holiday,
+        }
+        
+        return Response(settings_data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

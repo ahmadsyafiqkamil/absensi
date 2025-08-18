@@ -84,6 +84,13 @@ urlpatterns += [
     path('employee/attendance/check-out', views.attendance_check_out, name='employee-attendance-check-out'),
     path('employee/attendance/report', views.attendance_report, name='employee-attendance-report'),
     path('employee/attendance/report/pdf', views.attendance_report_pdf, name='employee-attendance-report-pdf'),
+    
+    # Overtime endpoints
+    path('overtime/<int:attendance_id>/approve', views.approve_overtime, name='approve-overtime'),
+    path('overtime/report', views.overtime_report, name='overtime-report'),
+    
+    # Employee work settings endpoint
+    path('employee/settings/work', views.employee_work_settings, name='employee-work-settings'),
 ]
 
 

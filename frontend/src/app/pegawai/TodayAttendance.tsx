@@ -17,6 +17,9 @@ type Attendance = {
   total_work_minutes: number
   within_geofence?: boolean
   employee_note?: string | null
+  overtime_minutes?: number
+  overtime_amount?: number
+  overtime_approved?: boolean
 }
 
 type WorkSettings = {
@@ -62,12 +65,13 @@ function fmtTimeOnly(date: Date, timezone: string) {
 }
 
 export default function TodayAttendance() {
-  const [data, setData] = useState<Attendance | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [isHoliday, setIsHoliday] = useState<boolean>(false)
-  const [now, setNow] = useState<Date>(new Date())
-  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
-  const [currentDate, setCurrentDate] = useState<string>('')
+        const [data, setData] = useState<Attendance | null>(null)
+      const [loading, setLoading] = useState(true)
+      const [isHoliday, setIsHoliday] = useState<boolean>(false)
+      const [now, setNow] = useState<Date>(new Date())
+      const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
+      const [currentDate, setCurrentDate] = useState<string>('')
+      const [overtimeData, setOvertimeData] = useState<any>(null)
 
   function toISODate(d: Date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -79,10 +83,11 @@ export default function TodayAttendance() {
     const q = `?start=${targetDate}&end=${targetDate}`
     
     try {
-      const [attResp, holResp, settingsResp] = await Promise.all([
+      const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
         fetch('/api/attendance/me?page=1&page_size=1'),
         fetch(`/api/attendance/holidays/${q}`),
-        fetch('/api/settings/work'),
+        fetch('/api/employee/settings/work'),
+        fetch(`/api/overtime/report?start_date=${targetDate}&end_date=${targetDate}`),
       ])
       
       const d = await attResp.json().catch(() => ({}))
@@ -99,9 +104,23 @@ export default function TodayAttendance() {
       const holItems = Array.isArray(holD) ? holD : (d?.results || [])
       setIsHoliday((holItems?.length || 0) > 0)
 
+      // Fetch overtime data for today
+      try {
+        const overtimeD = await overtimeResp.json().catch(() => ({}))
+        if (overtimeD.overtime_records && overtimeD.overtime_records.length > 0) {
+          const todayOvertime = overtimeD.overtime_records[0];
+          setOvertimeData(todayOvertime);
+        } else {
+          setOvertimeData(null);
+        }
+      } catch (error) {
+        console.error('Error fetching overtime data:', error);
+        setOvertimeData(null);
+      }
+
       const settingsData = await settingsResp.json().catch(() => ({}))
-      if (settingsResp.ok && settingsData.results && settingsData.results.length > 0) {
-        setWorkSettings(settingsData.results[0])
+      if (settingsResp.ok && settingsData) {
+        setWorkSettings(settingsData)
       }
     } catch (error) {
       console.error('Error loading data:', error)
@@ -288,6 +307,41 @@ export default function TodayAttendance() {
                 </div>
               </div>
             </div>
+
+            {/* Overtime Information */}
+            {overtimeData && overtimeData.overtime_minutes > 0 && (
+              <div className="bg-orange-50 rounded-lg p-3">
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <div className="text-xs text-orange-700 mb-1 font-medium">Overtime</div>
+                    <div className="text-lg font-semibold text-orange-800">
+                      {Math.floor(overtimeData.overtime_minutes / 60)}j {overtimeData.overtime_minutes % 60}m
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-orange-700 mb-1 font-medium">Status</div>
+                    <div className={`text-sm font-medium ${
+                      overtimeData.overtime_approved ? 'text-green-600' : 'text-yellow-600'
+                    }`}>
+                      {overtimeData.overtime_approved ? 'Approved' : 'Pending'}
+                    </div>
+                  </div>
+                </div>
+                {overtimeData.overtime_amount && overtimeData.overtime_amount > 0 && (
+                  <div className="mt-2 text-center">
+                    <div className="text-xs text-orange-600 mb-1">Gaji Overtime</div>
+                    <div className="text-sm font-semibold text-orange-800">
+                      {new Intl.NumberFormat('id-ID', {
+                        style: 'currency',
+                        currency: 'IDR',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(overtimeData.overtime_amount)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Employee Note */}
             {data.employee_note?.trim() && (
