@@ -264,21 +264,6 @@ class HolidayViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrReadOnly]
     pagination_class = DefaultPagination
 
-    def get_queryset(self):
-        queryset = Holiday.objects.all()
-        
-        # Filter by start date
-        start_date = self.request.query_params.get('start', None)
-        if start_date:
-            queryset = queryset.filter(date__gte=start_date)
-        
-        # Filter by end date
-        end_date = self.request.query_params.get('end', None)
-        if end_date:
-            queryset = queryset.filter(date__lte=end_date)
-        
-        return queryset.order_by('date')
-
 # -----------------------------
 # Role-specific ViewSets (Stage 3)
 # -----------------------------
@@ -338,21 +323,6 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdmin]
     pagination_class = DefaultPagination
 
-    def get_queryset(self):
-        queryset = Holiday.objects.all()
-        
-        # Filter by start date
-        start_date = self.request.query_params.get('start', None)
-        if start_date:
-            queryset = queryset.filter(date__gte=start_date)
-        
-        # Filter by end date
-        end_date = self.request.query_params.get('end', None)
-        if end_date:
-            queryset = queryset.filter(date__lte=end_date)
-        
-        return queryset.order_by('date')
-
 # Supervisor ViewSets (read-only or scoped)
 class SupervisorDivisionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Division.objects.all()
@@ -394,21 +364,6 @@ class SupervisorHolidayViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdminOrSupervisorReadOnly]
     pagination_class = DefaultPagination
 
-    def get_queryset(self):
-        queryset = Holiday.objects.all()
-        
-        # Filter by start date
-        start_date = self.request.query_params.get('start', None)
-        if start_date:
-            queryset = queryset.filter(date__gte=start_date)
-        
-        # Filter by end date
-        end_date = self.request.query_params.get('end', None)
-        if end_date:
-            queryset = queryset.filter(date__lte=end_date)
-        
-        return queryset.order_by('date')
-
 # Employee ViewSets (read-only minimal)
 class EmployeeDivisionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Division.objects.all()
@@ -435,21 +390,6 @@ class EmployeeHolidayViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HolidayPublicSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
-
-    def get_queryset(self):
-        queryset = Holiday.objects.all()
-        
-        # Filter by start date
-        start_date = self.request.query_params.get('start', None)
-        if start_date:
-            queryset = queryset.filter(date__gte=start_date)
-        
-        # Filter by end date
-        end_date = self.request.query_params.get('end', None)
-        if end_date:
-            queryset = queryset.filter(date__lte=end_date)
-        
-        return queryset.order_by('date')
 
 
 class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):

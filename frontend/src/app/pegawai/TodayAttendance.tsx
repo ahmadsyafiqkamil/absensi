@@ -75,15 +75,13 @@ export default function TodayAttendance() {
 
   function toISODate(d: Date, timezone?: string) {
     if (timezone) {
-      // Use work timezone if available
       try {
-        const tzDate = new Date(d.toLocaleString("en-US", { timeZone: timezone }))
+        const tzDate = new Date(d.toLocaleString('en-US', { timeZone: timezone }))
         return `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`
-      } catch (error) {
-        console.warn('Failed to convert to work timezone, using local time:', error)
+      } catch {
+        // fallback below
       }
     }
-    // Fallback to local timezone
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
 
@@ -91,10 +89,6 @@ export default function TodayAttendance() {
   const fetchTodayData = useCallback(async (targetDate: string) => {
     setLoading(true)
     const q = `?start=${targetDate}&end=${targetDate}`
-    
-    console.log('=== Fetching data for date:', targetDate, '===')
-    console.log('Current work timezone:', workSettings?.timezone)
-    console.log('Local date (browser):', new Date().toISOString().split('T')[0])
     
     try {
       const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
@@ -116,10 +110,8 @@ export default function TodayAttendance() {
 
       const holD = await holResp.json().catch(() => ({}))
       const holItems = Array.isArray(holD) ? holD : (holD?.results || [])
-      console.log('Holiday API response:', holD)
-      console.log('Holiday items:', holItems)
-      console.log('Is holiday:', (holItems?.length || 0) > 0)
-      setIsHoliday((holItems?.length || 0) > 0)
+      const isHolidayToday = Array.isArray(holItems) && holItems.some((h: any) => (h?.date || h?.date_local) === targetDate)
+      setIsHoliday(isHolidayToday)
 
       // Fetch overtime data for today
       try {
@@ -148,7 +140,8 @@ export default function TodayAttendance() {
 
   // Initial data fetch
   useEffect(() => {
-    const today = toISODate(new Date(), workSettings?.timezone)
+    const tz = workSettings?.timezone || 'Asia/Dubai'
+    const today = toISODate(new Date(), tz)
     setCurrentDate(today)
     fetchTodayData(today)
   }, [fetchTodayData, workSettings?.timezone])
@@ -157,7 +150,8 @@ export default function TodayAttendance() {
   useEffect(() => {
     const handleAttendanceRefresh = () => {
       console.log('Attendance refresh event received, refreshing data...')
-      const today = toISODate(new Date(), workSettings?.timezone)
+      const tz = workSettings?.timezone || 'Asia/Dubai'
+      const today = toISODate(new Date(), tz)
       fetchTodayData(today)
     }
 
@@ -172,7 +166,8 @@ export default function TodayAttendance() {
       setNow(newNow)
       
       // Check if date has changed
-      const newDate = toISODate(newNow, workSettings?.timezone)
+      const tz = workSettings?.timezone || 'Asia/Dubai'
+      const newDate = toISODate(newNow, tz)
       if (newDate !== currentDate) {
         console.log('Date changed, resetting attendance data')
         setCurrentDate(newDate)
@@ -211,7 +206,7 @@ export default function TodayAttendance() {
       const ms = calculateNextMidnight()
       const t = setTimeout(() => {
         console.log('Scheduled reset triggered')
-        const newDate = toISODate(new Date(), workSettings?.timezone)
+        const newDate = toISODate(new Date(), workSettings?.timezone || 'Asia/Dubai')
         setCurrentDate(newDate)
         setData(null)
         setIsHoliday(false)
@@ -233,7 +228,8 @@ export default function TodayAttendance() {
     return `${h}j ${m}m`
   }, [data])
 
-  const jsDay = now.getDay() // 0=Min..6=Sab
+  const tzNow = new Date(now.toLocaleString('en-US', { timeZone: (workSettings?.timezone || 'Asia/Dubai') }))
+  const jsDay = tzNow.getDay() // 0=Min..6=Sab
   const isWeekend = jsDay === 0 || jsDay === 6
   const statusHari = isWeekend || isHoliday ? 'Libur' : 'Hari Kerja'
   const statusDetail = isWeekend ? 'Libur Akhir Pekan' : (isHoliday ? 'Libur Nasional' : 'Hari Kerja')
