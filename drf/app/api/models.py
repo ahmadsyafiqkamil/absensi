@@ -57,6 +57,13 @@ class Employee(models.Model):
         null=True,
         blank=True,
     )
+    
+    fullname = models.TextField(
+        verbose_name="Full Name",
+        null=True,
+        blank=True,
+        help_text="Full name of the employee"
+    )
 
     class Meta:
         ordering = ["nip"]
