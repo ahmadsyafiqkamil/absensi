@@ -73,7 +73,17 @@ export default function TodayAttendance() {
       const [currentDate, setCurrentDate] = useState<string>('')
       const [overtimeData, setOvertimeData] = useState<any>(null)
 
-  function toISODate(d: Date) {
+  function toISODate(d: Date, timezone?: string) {
+    if (timezone) {
+      // Use work timezone if available
+      try {
+        const tzDate = new Date(d.toLocaleString("en-US", { timeZone: timezone }))
+        return `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`
+      } catch (error) {
+        console.warn('Failed to convert to work timezone, using local time:', error)
+      }
+    }
+    // Fallback to local timezone
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
 
@@ -81,6 +91,10 @@ export default function TodayAttendance() {
   const fetchTodayData = useCallback(async (targetDate: string) => {
     setLoading(true)
     const q = `?start=${targetDate}&end=${targetDate}`
+    
+    console.log('=== Fetching data for date:', targetDate, '===')
+    console.log('Current work timezone:', workSettings?.timezone)
+    console.log('Local date (browser):', new Date().toISOString().split('T')[0])
     
     try {
       const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
@@ -101,7 +115,10 @@ export default function TodayAttendance() {
       }
 
       const holD = await holResp.json().catch(() => ({}))
-      const holItems = Array.isArray(holD) ? holD : (d?.results || [])
+      const holItems = Array.isArray(holD) ? holD : (holD?.results || [])
+      console.log('Holiday API response:', holD)
+      console.log('Holiday items:', holItems)
+      console.log('Is holiday:', (holItems?.length || 0) > 0)
       setIsHoliday((holItems?.length || 0) > 0)
 
       // Fetch overtime data for today
@@ -131,22 +148,22 @@ export default function TodayAttendance() {
 
   // Initial data fetch
   useEffect(() => {
-    const today = toISODate(new Date())
+    const today = toISODate(new Date(), workSettings?.timezone)
     setCurrentDate(today)
     fetchTodayData(today)
-  }, [fetchTodayData])
+  }, [fetchTodayData, workSettings?.timezone])
 
   // Listen for attendance refresh events (from check-in/check-out)
   useEffect(() => {
     const handleAttendanceRefresh = () => {
       console.log('Attendance refresh event received, refreshing data...')
-      const today = toISODate(new Date())
+      const today = toISODate(new Date(), workSettings?.timezone)
       fetchTodayData(today)
     }
 
     window.addEventListener('attendance-refresh', handleAttendanceRefresh)
     return () => window.removeEventListener('attendance-refresh', handleAttendanceRefresh)
-  }, [fetchTodayData])
+  }, [fetchTodayData, workSettings?.timezone])
 
   // Update current time every second and check for date changes
   useEffect(() => {
@@ -155,7 +172,7 @@ export default function TodayAttendance() {
       setNow(newNow)
       
       // Check if date has changed
-      const newDate = toISODate(newNow)
+      const newDate = toISODate(newNow, workSettings?.timezone)
       if (newDate !== currentDate) {
         console.log('Date changed, resetting attendance data')
         setCurrentDate(newDate)
@@ -166,7 +183,7 @@ export default function TodayAttendance() {
     }, 1000)
     
     return () => clearInterval(tick)
-  }, [currentDate, fetchTodayData])
+  }, [currentDate, fetchTodayData, workSettings?.timezone])
 
   // Calculate time until next midnight in the work timezone
   useEffect(() => {
@@ -194,7 +211,7 @@ export default function TodayAttendance() {
       const ms = calculateNextMidnight()
       const t = setTimeout(() => {
         console.log('Scheduled reset triggered')
-        const newDate = toISODate(new Date())
+        const newDate = toISODate(new Date(), workSettings?.timezone)
         setCurrentDate(newDate)
         setData(null)
         setIsHoliday(false)
