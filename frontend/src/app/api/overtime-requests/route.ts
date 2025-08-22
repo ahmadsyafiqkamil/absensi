@@ -5,7 +5,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000'
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const accessToken = cookieStore.get('access_token')?.value
 
     if (!accessToken) {
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const accessToken = cookieStore.get('access_token')?.value
 
     if (!accessToken) {

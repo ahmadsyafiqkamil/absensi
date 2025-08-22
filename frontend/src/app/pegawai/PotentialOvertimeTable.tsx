@@ -5,6 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  createColumnHelper,
+  flexRender,
+  SortingState,
+  ColumnFiltersState,
+} from '@tanstack/react-table';
 
 type PotentialOvertimeRecord = {
   date_local: string;
@@ -72,6 +83,8 @@ interface PotentialOvertimeTableProps {
   onQuickSubmit?: (date: string, hours: number, defaultDescription: string) => void;
 }
 
+const columnHelper = createColumnHelper<PotentialOvertimeRecord>();
+
 export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvertimeTableProps) {
   const [data, setData] = useState<PotentialOvertimeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +93,9 @@ export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvert
     start_date: '',
     end_date: ''
   });
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
     // Set default date range (last 30 days)
@@ -129,6 +145,129 @@ export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvert
       onQuickSubmit(record.date_local, record.potential_overtime_hours, defaultDescription);
     }
   };
+
+  const columns = [
+    columnHelper.accessor('date_local', {
+      header: 'Tanggal',
+      cell: (info) => (
+        <div>
+          <div className="font-medium">{formatDate(info.getValue())}</div>
+          <div className="text-xs text-gray-500">{info.row.original.weekday}</div>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('total_work_minutes', {
+      header: 'Jam Kerja',
+      cell: (info) => (
+        <div>
+          <div className="font-medium text-blue-600">
+            {formatWorkHours(info.getValue())}
+          </div>
+          <div className="text-xs text-gray-500">
+            {info.row.original.check_in_time} - {info.row.original.check_out_time}
+          </div>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('required_minutes', {
+      header: 'Jam Normal',
+      cell: (info) => (
+        <div>
+          <div className="text-sm">
+            {formatWorkHours(info.getValue())}
+          </div>
+          <div className="text-xs text-gray-500">
+            + {info.row.original.overtime_threshold_minutes}m buffer
+          </div>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('potential_overtime_hours', {
+      header: 'Potensi Lembur',
+      cell: (info) => (
+        <div>
+          <div className="font-medium text-green-600">
+            {info.getValue().toFixed(1)}j
+          </div>
+          <div className="text-xs text-gray-500">
+            ({info.row.original.potential_overtime_minutes}m)
+          </div>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('potential_overtime_amount', {
+      header: 'Potensi Gaji',
+      cell: (info) => (
+        <div className="font-medium text-green-600">
+          {formatCurrency(info.getValue())}
+        </div>
+      ),
+    }),
+    columnHelper.display({
+      id: 'status',
+      header: 'Status',
+      cell: (info) => {
+        const record = info.row.original;
+        return (
+          <div className="flex flex-col space-y-1">
+            {record.is_holiday && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-600">
+                Hari Libur
+              </span>
+            )}
+            {!record.within_geofence && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-600">
+                Di Luar Area
+              </span>
+            )}
+            {record.within_geofence && !record.is_holiday && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-600">
+                Normal
+              </span>
+            )}
+          </div>
+        );
+      },
+    }),
+    columnHelper.display({
+      id: 'actions',
+      header: 'Aksi',
+      cell: (info) => {
+        const record = info.row.original;
+        return record.can_submit && onQuickSubmit ? (
+          <Button
+            size="sm"
+            className="text-xs px-2 py-1"
+            onClick={() => handleQuickSubmit(record)}
+          >
+            Ajukan
+          </Button>
+        ) : null;
+      },
+    }),
+  ];
+
+  const table = useReactTable({
+    data: data?.potential_records || [],
+    columns,
+    state: {
+      sorting,
+      columnFilters,
+      globalFilter,
+    },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      pagination: {
+        pageSize: 10,
+      },
+    },
+  });
 
   if (loading) {
     return (
@@ -220,91 +359,125 @@ export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvert
           </div>
         )}
 
-        {/* Table */}
+        {/* Global Search */}
+        {data && data.potential_records.length > 0 && (
+          <div className="flex items-center gap-2 mb-4">
+            <Input
+              placeholder="Cari data..."
+              value={globalFilter ?? ''}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              className="max-w-sm"
+            />
+            <div className="text-sm text-gray-500">
+              Menampilkan {table.getFilteredRowModel().rows.length} dari {data.potential_records.length} data
+            </div>
+          </div>
+        )}
+
+        {/* TanStack Table */}
         {data && data.potential_records.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-2">Tanggal</th>
-                  <th className="text-left py-3 px-2">Jam Kerja</th>
-                  <th className="text-left py-3 px-2">Jam Normal</th>
-                  <th className="text-left py-3 px-2">Potensi Lembur</th>
-                  <th className="text-left py-3 px-2">Potensi Gaji</th>
-                  <th className="text-left py-3 px-2">Status</th>
-                  <th className="text-left py-3 px-2">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.potential_records.map((record, index) => (
-                  <tr key={index} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-2">
-                      <div className="font-medium">{formatDate(record.date_local)}</div>
-                      <div className="text-xs text-gray-500">{record.weekday}</div>
-                    </td>
-                    <td className="py-3 px-2">
-                      <div className="font-medium text-blue-600">
-                        {formatWorkHours(record.total_work_minutes)}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {record.check_in_time} - {record.check_out_time}
-                      </div>
-                    </td>
-                    <td className="py-3 px-2">
-                      <div className="text-sm">
-                        {formatWorkHours(record.required_minutes)}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        + {record.overtime_threshold_minutes}m buffer
-                      </div>
-                    </td>
-                    <td className="py-3 px-2">
-                      <div className="font-medium text-green-600">
-                        {record.potential_overtime_hours.toFixed(1)}j
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        ({record.potential_overtime_minutes}m)
-                      </div>
-                    </td>
-                    <td className="py-3 px-2">
-                      <div className="font-medium text-green-600">
-                        {formatCurrency(record.potential_overtime_amount)}
-                      </div>
-                    </td>
-                    <td className="py-3 px-2">
-                      <div className="flex flex-col space-y-1">
-                        {record.is_holiday && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-600">
-                            Hari Libur
-                          </span>
-                        )}
-                        {!record.within_geofence && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-600">
-                            Di Luar Area
-                          </span>
-                        )}
-                        {record.within_geofence && !record.is_holiday && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-600">
-                            Normal
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-2">
-                      {record.can_submit && onQuickSubmit && (
-                        <Button
-                          size="sm"
-                          className="text-xs px-2 py-1"
-                          onClick={() => handleQuickSubmit(record)}
-                        >
-                          Ajukan
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  {table.getHeaderGroups().map(headerGroup => (
+                    <tr key={headerGroup.id} className="border-b">
+                      {headerGroup.headers.map(header => (
+                        <th key={header.id} className="text-left py-3 px-2">
+                          {header.isPlaceholder ? null : (
+                            <div
+                              {...{
+                                className: header.column.getCanSort()
+                                  ? 'cursor-pointer select-none flex items-center gap-2'
+                                  : '',
+                                onClick: header.column.getToggleSortingHandler(),
+                              }}
+                            >
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext()
+                              )}
+                              {{
+                                asc: ' ↑',
+                                desc: ' ↓',
+                              }[header.column.getIsSorted() as string] ?? null}
+                            </div>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody>
+                  {table.getRowModel().rows.map(row => (
+                    <tr key={row.id} className="border-b hover:bg-gray-50">
+                      {row.getVisibleCells().map(cell => (
+                        <td key={cell.id} className="py-3 px-2">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">
+                  Halaman {table.getState().pagination.pageIndex + 1} dari{' '}
+                  {table.getPageCount()}
+                </p>
+                <select
+                  value={table.getState().pagination.pageSize}
+                  onChange={e => {
+                    table.setPageSize(Number(e.target.value))
+                  }}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm"
+                >
+                  {[5, 10, 20, 30].map(pageSize => (
+                    <option key={pageSize} value={pageSize}>
+                      {pageSize} per halaman
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.setPageIndex(0)}
+                  disabled={!table.getCanPreviousPage()}
+                >
+                  ««
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                >
+                  «
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                >
+                  »
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                  disabled={!table.getCanNextPage()}
+                >
+                  »»
+                </Button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="text-center py-8 text-gray-500">
