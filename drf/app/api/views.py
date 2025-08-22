@@ -979,8 +979,10 @@ def attendance_check_in(request):
         return JsonResponse({'detail': 'Office location is not configured'}, status=400)
     dist = haversine_meters(float(ws.office_latitude), float(ws.office_longitude), lat, lng)
     within = dist <= float(ws.office_radius_meters or 100)
-    if not within:
-        return JsonResponse({'detail': 'Outside office radius'}, status=403)
+    
+    # Allow check-in/out even if outside geofence, but mark it
+    # if not within:
+    #     return JsonResponse({'detail': 'Outside office radius'}, status=403)
 
     # Holiday/workday determination
     is_holiday = Holiday.objects.filter(date=date_local).exists()
@@ -998,6 +1000,11 @@ def attendance_check_in(request):
     att.within_geofence = within
     att.is_holiday = is_holiday
     att.minutes_late = minutes_late
+    
+    # Add warning note if outside geofence
+    if not within:
+        warning_note = f"Check-in di luar area kantor (jarak: {dist:.0f}m dari radius {ws.office_radius_meters}m)"
+        att.note = warning_note if not att.note else f"{att.note}; {warning_note}"
     # Mark off-day attendance if today is not a configured workday and not a holiday
     try:
         workdays = ws.workdays or []
@@ -1051,13 +1058,23 @@ def attendance_check_out(request):
         return JsonResponse({'detail': 'Office location is not configured'}, status=400)
     dist = haversine_meters(float(ws.office_latitude), float(ws.office_longitude), lat, lng)
     within = dist <= float(ws.office_radius_meters or 100)
-    if not within:
-        return JsonResponse({'detail': 'Outside office radius'}, status=403)
+    
+    # Allow check-out even if outside geofence, but mark it
+    # if not within:
+    #     return JsonResponse({'detail': 'Outside office radius'}, status=403)
 
     att.check_out_at_utc = now
     att.check_out_lat = lat
     att.check_out_lng = lng
     att.check_out_accuracy_m = acc
+    
+    # Add warning note if outside geofence
+    if not within:
+        warning_note = f"Check-out di luar area kantor (jarak: {dist:.0f}m dari radius {ws.office_radius_meters}m)"
+        if att.note:
+            att.note = f"{att.note}; {warning_note}"
+        else:
+            att.note = warning_note
     # Compute total work minutes
     delta = now - (att.check_in_at_utc or now)
     att.total_work_minutes = max(0, int(delta.total_seconds() // 60))

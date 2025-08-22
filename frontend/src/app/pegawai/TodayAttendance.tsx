@@ -17,6 +17,7 @@ type Attendance = {
   total_work_minutes: number
   within_geofence?: boolean
   employee_note?: string | null
+  note?: string | null
   overtime_minutes?: number
   overtime_amount?: number
   overtime_approved?: boolean
@@ -92,7 +93,7 @@ export default function TodayAttendance() {
     
     try {
       const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
-        fetch('/api/attendance/me?page=1&page_size=1'),
+        fetch(`/api/attendance/me${q}&page=1&page_size=1`),
         fetch(`/api/attendance/holidays/${q}`),
         fetch('/api/employee/settings/work'),
         fetch(`/api/overtime/report?start_date=${targetDate}&end_date=${targetDate}`),
@@ -286,9 +287,13 @@ export default function TodayAttendance() {
                 <div className="text-lg font-semibold text-green-700">
                   {fmtTime(data.check_in_at_utc, data.timezone)}
                 </div>
-                <div className="text-xs text-green-500 mt-1">
+                <div className="text-xs mt-1">
                   {data.check_in_lat && data.check_in_lng 
-                    ? (data.within_geofence === false ? 'Di luar kantor' : 'Di dalam kantor')
+                    ? (
+                      <span className={data.within_geofence === false ? 'text-orange-600' : 'text-green-600'}>
+                        {data.within_geofence === false ? '⚠️ Di luar kantor' : '✅ Di dalam kantor'}
+                      </span>
+                    )
                     : '-'
                   }
                 </div>
@@ -299,8 +304,15 @@ export default function TodayAttendance() {
                 <div className="text-lg font-semibold text-blue-700">
                   {fmtTime(data.check_out_at_utc, data.timezone)}
                 </div>
-                <div className="text-xs text-blue-500 mt-1">
-                  {data.check_out_lat && data.check_out_lng ? 'Di dalam kantor' : '-'}
+                <div className="text-xs mt-1">
+                  {data.check_out_lat && data.check_out_lng 
+                    ? (
+                      <span className={data.within_geofence === false ? 'text-orange-600' : 'text-green-600'}>
+                        {data.within_geofence === false ? '⚠️ Di luar kantor' : '✅ Di dalam kantor'}
+                      </span>
+                    )
+                    : '-'
+                  }
                 </div>
               </div>
             </div>
@@ -361,6 +373,14 @@ export default function TodayAttendance() {
               <div className="bg-yellow-50 rounded-lg p-3">
                 <div className="text-xs text-yellow-700 mb-1 font-medium">Catatan</div>
                 <div className="text-sm text-yellow-800">{data.employee_note}</div>
+              </div>
+            )}
+            
+            {/* System Note (Geofence Warning) */}
+            {data.note?.trim() && (
+              <div className="bg-orange-50 rounded-lg p-3">
+                <div className="text-xs text-orange-700 mb-1 font-medium">⚠️ Peringatan Sistem</div>
+                <div className="text-sm text-orange-800">{data.note}</div>
               </div>
             )}
           </div>

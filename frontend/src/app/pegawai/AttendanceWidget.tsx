@@ -158,7 +158,12 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
                 <>
                   <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
                   <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
-                  {loc && <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>}
+                  {loc && (
+                    <div className="text-xs text-gray-600">
+                      Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)
+                      {/* Note: Geofence validation is now handled on backend */}
+                    </div>
+                  )}
                   <div className="grid gap-2">
                     <label className="text-xs text-gray-600">Keterangan (opsional)</label>
                     <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan keterlambatan (jika terlambat)"></textarea>
@@ -174,7 +179,12 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
               <>
                 <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
                                   <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
-                {loc && <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>}
+                {loc && (
+                  <div className="text-xs text-gray-600">
+                    Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)
+                    {/* Note: Geofence validation is now handled on backend */}
+                  </div>
+                )}
                 <div className="grid gap-2">
                   <label className="text-xs text-gray-600">Keterangan (opsional)</label>
                   <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan kurang jam kerja (jika kurang)"></textarea>
