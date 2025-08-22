@@ -149,11 +149,13 @@ class Attendance(models.Model):
     check_in_lat = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_in_lng = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_in_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
+    check_in_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Check-in IP Address")
 
     check_out_at_utc = models.DateTimeField(null=True, blank=True)
     check_out_lat = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_out_lng = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_out_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
+    check_out_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Check-out IP Address")
 
     is_holiday = models.BooleanField(default=False)
     within_geofence = models.BooleanField(default=False)

@@ -44,11 +44,11 @@ type PotentialOvertimeResponse = {
 };
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
+  return new Intl.NumberFormat('en-AE', {
     style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    currency: 'AED',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 

@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import Header from '@/components/Header';
 import Link from 'next/link';
 import { formatWorkHoursEN } from '@/lib/utils';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
+  ColumnFiltersState,
+  useReactTable,
+} from "@tanstack/react-table";
 
 interface AttendanceRecord {
   id: number;
@@ -16,6 +26,8 @@ interface AttendanceRecord {
   check_in_lng: number | null;
   check_out_lat: number | null;
   check_out_lng: number | null;
+  check_in_ip?: string | null;
+  check_out_ip?: string | null;
   minutes_late: number;
   total_work_minutes: number;
   is_holiday: boolean;
@@ -143,6 +155,44 @@ export default function PegawaiAttendanceReportPage() {
     if (record.check_in_at_utc) return 'Hanya Check-in';
     return 'Tidak Hadir';
   };
+
+  // WFA/WFO status: gunakan within_geofence saat check-in sebagai indikator
+  const getWfaWfo = (record: AttendanceRecord) => {
+    if (!record.check_in_at_utc) return '-';
+    return record.within_geofence ? 'WFO' : 'WFA';
+  };
+
+  // TanStack Table columns
+  const columns: ColumnDef<AttendanceRecord>[] = [
+    { header: 'Tanggal', accessorKey: 'date_local', cell: ({ row }) => formatDate(row.original.date_local) },
+    { header: 'Status', id: 'status', cell: ({ row }) => (
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(row.original)} bg-opacity-10`}>
+        {getStatusText(row.original)}
+      </span>
+    ) },
+    { header: 'WFA/WFO', id: 'wfa_wfo', cell: ({ row }) => getWfaWfo(row.original) },
+    { header: 'Check-in', id: 'check_in', cell: ({ row }) => formatTime(row.original.check_in_at_utc) },
+    { header: 'Check-out', id: 'check_out', cell: ({ row }) => formatTime(row.original.check_out_at_utc) },
+    { header: 'Terlambat (m)', accessorKey: 'minutes_late', cell: ({ getValue }) => <span className="block text-center">{String(getValue<number>())}</span> },
+    { header: 'Jam Kerja', id: 'work_minutes', cell: ({ row }) => (
+      <span className="block text-center">{row.original.total_work_minutes > 0 ? `${Math.floor(row.original.total_work_minutes / 60)}h ${row.original.total_work_minutes % 60}m` : '-'}</span>
+    ) },
+    { header: 'Koordinat In', id: 'coord_in', cell: ({ row }) => (
+      row.original.check_in_lat && row.original.check_in_lng ? `(${row.original.check_in_lat.toFixed(5)}, ${row.original.check_in_lng.toFixed(5)})` : '-'
+    ) },
+    { header: 'Koordinat Out', id: 'coord_out', cell: ({ row }) => (
+      row.original.check_out_lat && row.original.check_out_lng ? `(${row.original.check_out_lat.toFixed(5)}, ${row.original.check_out_lng.toFixed(5)})` : '-'
+    ) },
+    { header: 'IP In', id: 'ip_in', cell: ({ row }) => row.original.check_in_ip || '-' },
+    { header: 'IP Out', id: 'ip_out', cell: ({ row }) => row.original.check_out_ip || '-' },
+    { header: 'Catatan', id: 'notes', cell: ({ row }) => (
+      <div className="max-w-[320px] truncate" title={`${row.original.note || ''} ${row.original.employee_note || ''}`.trim()}>
+        {row.original.note || row.original.employee_note || '-'}
+      </div>
+    ) },
+    { header: 'Dibuat', id: 'created', cell: ({ row }) => formatDateTime(row.original.created_at) },
+    { header: 'Diubah', id: 'updated', cell: ({ row }) => formatDateTime(row.original.updated_at) },
+  ];
 
 
 
@@ -366,60 +416,11 @@ export default function PegawaiAttendanceReportPage() {
           </div>
         </div>
 
-        {/* Attendance Records */}
+        {/* Attendance Records (TanStack Table) */}
         <div>
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Attendance Records</h2>
           {attendanceData.attendance_records.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border border-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Tanggal</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Status</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Check-in</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Check-out</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700 border-b">Terlambat (m)</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700 border-b">Jam Kerja</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Koordinat In</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Koordinat Out</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Catatan</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Dibuat</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 border-b">Diubah</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendanceData.attendance_records.map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 border-b">{formatDate(record.date_local)}</td>
-                      <td className="px-3 py-2 border-b">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(record)} bg-opacity-10`}>
-                          {getStatusText(record)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 border-b">{formatTime(record.check_in_at_utc)}</td>
-                      <td className="px-3 py-2 border-b">{formatTime(record.check_out_at_utc)}</td>
-                      <td className="px-3 py-2 border-b text-center">{record.minutes_late}</td>
-                      <td className="px-3 py-2 border-b text-center">
-                        {record.total_work_minutes > 0 ? `${Math.floor(record.total_work_minutes / 60)}h ${record.total_work_minutes % 60}m` : '-'}
-                      </td>
-                      <td className="px-3 py-2 border-b">
-                        {record.check_in_lat && record.check_in_lng ? `(${record.check_in_lat.toFixed(5)}, ${record.check_in_lng.toFixed(5)})` : '-'}
-                      </td>
-                      <td className="px-3 py-2 border-b">
-                        {record.check_out_lat && record.check_out_lng ? `(${record.check_out_lat.toFixed(5)}, ${record.check_out_lng.toFixed(5)})` : '-'}
-                      </td>
-                      <td className="px-3 py-2 border-b">
-                        <div className="max-w-[320px] truncate" title={`${record.note || ''} ${record.employee_note || ''}`.trim()}>
-                          {record.note || record.employee_note || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 border-b">{formatDateTime(record.created_at)}</td>
-                      <td className="px-3 py-2 border-b">{formatDateTime(record.updated_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TanstackTable data={attendanceData.attendance_records} columns={columns} />
           ) : (
             <Card>
               <CardContent className="p-8 text-center">
@@ -429,6 +430,91 @@ export default function PegawaiAttendanceReportPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TanstackTable({ data, columns }: { data: AttendanceRecord[]; columns: ColumnDef<AttendanceRecord>[] }) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const table = useReactTable({
+    data,
+    columns,
+    state: { sorting, columnFilters },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+
+  return (
+    <div className="overflow-x-auto bg-white border rounded-md">
+      <div className="p-3 grid gap-2 md:grid-cols-4 grid-cols-1 border-b bg-gray-50">
+        <input
+          placeholder="Filter Tanggal (YYYY-MM-DD)"
+          value={(table.getColumn('date_local')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('date_local')?.setFilterValue(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+        />
+        <input
+          placeholder="Filter Status (WFA/WFO)"
+          value={(table.getColumn('wfa_wfo')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('wfa_wfo')?.setFilterValue(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+        />
+        <input
+          placeholder="Filter IP In"
+          value={(table.getColumn('ip_in')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('ip_in')?.setFilterValue(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+        />
+        <input
+          placeholder="Filter IP Out"
+          value={(table.getColumn('ip_out')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('ip_out')?.setFilterValue(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+        />
+      </div>
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <th
+                  key={header.id}
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider select-none"
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-1">
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === "asc" && <span>▲</span>}
+                    {header.column.getIsSorted() === "desc" && <span>▼</span>}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {table.getRowModel().rows.map((row) => (
+            <tr key={row.id}>
+              {row.getVisibleCells().map((cell) => (
+                <td key={cell.id} className="px-4 py-2 text-sm">
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {table.getRowModel().rows.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-500">
+                No attendance records found
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -889,6 +889,8 @@ def supervisor_attendance_detail(request, employee_id):
             "check_in_lng": float(att.check_in_lng) if att.check_in_lng else None,
             "check_out_lat": float(att.check_out_lat) if att.check_out_lat else None,
             "check_out_lng": float(att.check_out_lng) if att.check_out_lng else None,
+            "check_in_ip": att.check_in_ip,
+            "check_out_ip": att.check_out_ip,
             "minutes_late": att.minutes_late,
             "total_work_minutes": att.total_work_minutes,
             "is_holiday": att.is_holiday,
@@ -983,6 +985,7 @@ def attendance_check_in(request):
         lat = float(data.get('lat'))
         lng = float(data.get('lng'))
         acc = int(data.get('accuracy_m') or 0)
+        client_ip = data.get('client_ip', 'unknown')
     except Exception:
         return JsonResponse({'detail': 'Invalid location payload'}, status=400)
 
@@ -1009,6 +1012,7 @@ def attendance_check_in(request):
     att.check_in_lat = lat
     att.check_in_lng = lng
     att.check_in_accuracy_m = acc
+    att.check_in_ip = client_ip
     att.within_geofence = within
     att.is_holiday = is_holiday
     att.minutes_late = minutes_late
@@ -1062,6 +1066,7 @@ def attendance_check_out(request):
         lat = float(data.get('lat'))
         lng = float(data.get('lng'))
         acc = int(data.get('accuracy_m') or 0)
+        client_ip = data.get('client_ip', 'unknown')
     except Exception:
         return JsonResponse({'detail': 'Invalid location payload'}, status=400)
 
@@ -1079,6 +1084,7 @@ def attendance_check_out(request):
     att.check_out_lat = lat
     att.check_out_lng = lng
     att.check_out_accuracy_m = acc
+    att.check_out_ip = client_ip
     
     # Add warning note if outside geofence
     if not within:
@@ -1211,6 +1217,8 @@ def attendance_report(request):
             "check_in_lng": float(att.check_in_lng) if att.check_in_lng else None,
             "check_out_lat": float(att.check_out_lat) if att.check_out_lat else None,
             "check_out_lng": float(att.check_out_lng) if att.check_out_lng else None,
+            "check_in_ip": att.check_in_ip,
+            "check_out_ip": att.check_out_ip,
             "minutes_late": att.minutes_late,
             "total_work_minutes": att.total_work_minutes,
             "is_holiday": att.is_holiday,

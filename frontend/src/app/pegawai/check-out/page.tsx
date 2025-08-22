@@ -15,6 +15,8 @@ export default function CheckOutPage() {
   const [confirming, setConfirming] = useState(false)
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [clientIP, setClientIP] = useState<string>('')
+  const [ipDetectionStatus, setIpDetectionStatus] = useState<'detecting' | 'success' | 'failed' | 'unknown'>('detecting')
 
   useEffect(() => {
     ;(async () => {
@@ -25,6 +27,26 @@ export default function CheckOutPage() {
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d?.detail || 'Gagal precheck')
         setPrecheck(d)
+        
+        // Get client IP address
+        try {
+          setIpDetectionStatus('detecting')
+          const ipResponse = await fetch('/api/ip')
+          const ipData = await ipResponse.json()
+          console.log('IP Detection Result:', ipData)
+          
+          if (ipData.ip && ipData.ip !== 'unknown' && ipData.ip !== 'invalid-format' && ipData.ip !== 'error') {
+            setClientIP(ipData.ip)
+            setIpDetectionStatus('success')
+          } else {
+            setClientIP('Development Mode')
+            setIpDetectionStatus('failed')
+          }
+        } catch (e) {
+          console.warn('Failed to get IP address:', e)
+          setClientIP('Development Mode')
+          setIpDetectionStatus('failed')
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Gagal precheck')
       } finally {
@@ -64,7 +86,13 @@ export default function CheckOutPage() {
       const resp = await fetch('/api/attendance/check-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy_m: loc.acc, employee_note: note || undefined }),
+        body: JSON.stringify({ 
+          lat: loc.lat, 
+          lng: loc.lng, 
+          accuracy_m: loc.acc, 
+          employee_note: note || undefined,
+          client_ip: clientIP || 'unknown'
+        }),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal check-out')
@@ -98,6 +126,14 @@ export default function CheckOutPage() {
               <Button variant="outline" onClick={getLocation}>Ambil Lokasi</Button>
               {loc && (
                 <div className="text-xs text-gray-600">Lokasi: {loc.lat}, {loc.lng} (±{loc.acc}m)</div>
+              )}
+              {clientIP && (
+                <div className="text-xs text-gray-600">
+                  IP Address: {clientIP}
+                  {ipDetectionStatus === 'detecting' && <span className="ml-2 text-blue-500">(Detecting...)</span>}
+                  {ipDetectionStatus === 'success' && <span className="ml-2 text-green-500">✓</span>}
+                  {ipDetectionStatus === 'failed' && <span className="ml-2 text-orange-500">(Dev Mode)</span>}
+                </div>
               )}
               <div className="grid gap-2">
                 <span className="text-xs text-gray-600">Keterangan (opsional)</span>

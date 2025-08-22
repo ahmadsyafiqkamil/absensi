@@ -14,13 +14,13 @@ export function formatWorkHours(minutes: number): string {
  * Format currency amount
  */
 export function formatCurrency(amount: number): string {
-  if (amount === 0) return 'Rp 0'
+  if (amount === 0) return 'AED 0.00'
   
-  return new Intl.NumberFormat('id-ID', {
+  return new Intl.NumberFormat('en-AE', {
     style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    currency: 'AED',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount)
 }
 

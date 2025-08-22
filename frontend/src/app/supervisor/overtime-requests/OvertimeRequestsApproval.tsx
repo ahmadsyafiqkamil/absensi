@@ -71,11 +71,11 @@ type OvertimeSummary = {
 
 function formatCurrency(amount: string | number): string {
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat('id-ID', {
+  return new Intl.NumberFormat('en-AE', {
     style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    currency: 'AED',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(numAmount);
 }
 

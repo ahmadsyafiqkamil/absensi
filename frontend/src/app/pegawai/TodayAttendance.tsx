@@ -356,11 +356,11 @@ export default function TodayAttendance() {
                   <div className="mt-2 text-center">
                     <div className="text-xs text-orange-600 mb-1">Gaji Overtime</div>
                     <div className="text-sm font-semibold text-orange-800">
-                      {new Intl.NumberFormat('id-ID', {
+                      {new Intl.NumberFormat('en-AE', {
                         style: 'currency',
-                        currency: 'IDR',
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
+                        currency: 'AED',
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
                       }).format(overtimeData.overtime_amount)}
                     </div>
                   </div>
