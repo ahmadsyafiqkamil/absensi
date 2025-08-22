@@ -51,6 +51,7 @@ class EmployeeAdminSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nip",
+            "fullname",
             "user",
             "user_id",
             "division",
@@ -77,6 +78,7 @@ class EmployeeSupervisorSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nip",
+            "fullname",
             "user",
             "division",
             "position",
@@ -99,6 +101,7 @@ class EmployeeEmployeeSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nip",
+            "fullname",
             "user",
             "division",
             "position",
@@ -133,6 +136,7 @@ class WorkSettingsAdminSerializer(serializers.ModelSerializer):
             "office_radius_meters",
             "overtime_rate_workday",
             "overtime_rate_holiday",
+            "overtime_threshold_minutes",
         ]
 
 
@@ -159,6 +163,7 @@ class WorkSettingsSupervisorSerializer(serializers.ModelSerializer):
             "office_radius_meters",
             "overtime_rate_workday",
             "overtime_rate_holiday",
+            "overtime_threshold_minutes",
         ]
         read_only_fields = fields  # Semua field read-only untuk supervisor
 
@@ -512,6 +517,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nip",
+            "fullname",
             "user",
             "user_id",
             "division",
@@ -548,6 +554,7 @@ class WorkSettingsSerializer(serializers.ModelSerializer):
             "office_radius_meters",
             "overtime_rate_workday",
             "overtime_rate_holiday",
+            "overtime_threshold_minutes",
         ]
 
 

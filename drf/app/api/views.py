@@ -607,8 +607,9 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
             else:
                 required_minutes = int(ws.required_minutes or 480)
 
-            if att.total_work_minutes and att.total_work_minutes > required_minutes:
-                att.overtime_minutes = att.total_work_minutes - required_minutes
+            overtime_threshold = int(ws.overtime_threshold_minutes or 60)  # Default 1 hour buffer
+            if att.total_work_minutes and att.total_work_minutes > (required_minutes + overtime_threshold):
+                att.overtime_minutes = att.total_work_minutes - required_minutes - overtime_threshold
 
                 # Calculate overtime amount if employee has salary information
                 if att.employee and att.employee.gaji_pokok:
@@ -742,6 +743,7 @@ def supervisor_team_attendance(request):
             "employee": {
                 "id": employee.id,
                 "nip": employee.nip,
+                "fullname": employee.fullname,
                 "user": {
                     "id": employee.user.id,
                     "username": employee.user.username,
@@ -894,6 +896,7 @@ def supervisor_attendance_detail(request, employee_id):
         "employee": {
             "id": employee.id,
             "nip": employee.nip,
+            "fullname": employee.fullname,
             "user": {
                 "id": employee.user.id,
                 "username": employee.user.username,
@@ -1088,9 +1091,10 @@ def attendance_check_out(request):
     else:  # Monday-Thursday
         required_minutes = int(ws.required_minutes or 480)  # Default 8 jam
     
-    # Overtime calculation: total work minutes - required minutes
-    if att.total_work_minutes > required_minutes:
-        att.overtime_minutes = att.total_work_minutes - required_minutes
+    # Overtime calculation: total work minutes - required minutes - threshold
+    overtime_threshold = int(ws.overtime_threshold_minutes or 60)  # Default 1 hour buffer
+    if att.total_work_minutes > (required_minutes + overtime_threshold):
+        att.overtime_minutes = att.total_work_minutes - required_minutes - overtime_threshold
         
         # Calculate overtime amount if employee has salary
         if att.employee and att.employee.gaji_pokok:
@@ -2067,6 +2071,7 @@ def overtime_report(request):
             "weekday": ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'][weekday],
             "employee": {
                 "name": att.user.get_full_name() or att.user.username,
+                "fullname": (att.employee.fullname if att.employee else None),
                 "nip": att.employee.nip if att.employee else None,
                 "division": att.employee.division.name if att.employee and att.employee.division else None
             },
@@ -2130,6 +2135,7 @@ def employee_work_settings(request):
             'workdays': work_settings.workdays,
             'overtime_rate_workday': work_settings.overtime_rate_workday,
             'overtime_rate_holiday': work_settings.overtime_rate_holiday,
+            'overtime_threshold_minutes': work_settings.overtime_threshold_minutes,
         }
         
         return Response(settings_data)

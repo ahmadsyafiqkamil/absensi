@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 export type EmployeeRow = {
   id: number;
   nip: string;
+  fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
   position?: { id: number; name: string } | null;
@@ -39,6 +40,11 @@ const columns: ColumnDef<EmployeeRow>[] = [
     header: "NIP",
     accessorKey: "nip",
     cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>())}</span>,
+  },
+  {
+    header: "Full Name",
+    accessorKey: "fullname",
+    cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>() ?? '-') }</span>,
   },
   {
     header: "Username",
@@ -132,6 +138,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
   const [errorMsg, setErrorMsg] = useState("")
   const [formData, setFormData] = useState({
     nip: '',
+    fullname: '',
     division_id: '',
     position_id: '',
     gaji_pokok: '',
@@ -161,6 +168,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     }
     setFormData({
       nip: data.nip || '',
+      fullname: data.fullname || '',
       division_id: data.division?.id?.toString?.() ?? '',
       position_id: data.position?.id?.toString?.() ?? '',
       gaji_pokok: data.gaji_pokok?.toString?.() ?? '',
@@ -181,6 +189,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     try {
       const payload: any = {
         nip: formData.nip,
+        fullname: formData.fullname || null,
         division_id: formData.division_id || null,
         position_id: formData.position_id || null,
         gaji_pokok: formData.gaji_pokok ? formData.gaji_pokok : null,
@@ -311,6 +320,10 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
             <Dialog.Title className="text-lg font-semibold">Edit Employee</Dialog.Title>
             <Dialog.Description className="text-sm text-gray-500 mb-4">Update employee details</Dialog.Description>
             <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="fullname">Full Name</Label>
+                <Input id="fullname" name="fullname" value={formData.fullname} onChange={onChange} />
+              </div>
               <div className="space-y-1">
                 <Label htmlFor="nip">NIP</Label>
                 <Input id="nip" name="nip" value={formData.nip} onChange={onChange} />

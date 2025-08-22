@@ -7,6 +7,7 @@ import EmployeesTable from '@/components/tables/EmployeesTable';
 type EmployeeRow = {
   id: number;
   nip: string;
+  fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
   position?: { id: number; name: string } | null;

@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 interface HeaderProps {
   title: string;
@@ -12,6 +13,31 @@ interface HeaderProps {
 
 export default function Header({ title, subtitle, username, role }: HeaderProps) {
   const router = useRouter();
+  const [displayName, setDisplayName] = useState<string>(username);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFullname() {
+      try {
+        const resp = await fetch('/api/employee/employees', { cache: 'no-store' });
+        const data = await resp.json().catch(() => ({}));
+        const list = Array.isArray(data) ? data : (data?.results ?? []);
+        const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
+        const name = emp?.fullname?.trim?.();
+        if (!cancelled && name) {
+          setDisplayName(name);
+        } else if (!cancelled) {
+          setDisplayName(username);
+        }
+      } catch {
+        if (!cancelled) setDisplayName(username);
+      }
+    }
+    loadFullname();
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
 
   const handleLogout = async () => {
     try {
@@ -62,7 +88,7 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
           <div className="flex items-center space-x-4">
             {/* User info */}
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">{username}</p>
+              <p className="text-sm font-medium text-gray-900">{displayName}</p>
               <p className="text-xs text-gray-500">{getRoleDisplayName(role)}</p>
             </div>
 

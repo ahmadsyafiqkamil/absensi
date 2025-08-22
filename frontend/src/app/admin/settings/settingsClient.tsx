@@ -25,6 +25,7 @@ type WorkSettings = {
   office_radius_meters?: number
   overtime_rate_workday: number | string
   overtime_rate_holiday: number | string
+  overtime_threshold_minutes: number
 }
 
 type Holiday = { id: number; date: string; note?: string }
@@ -209,26 +210,44 @@ export default function SettingsClient() {
           </div>
 
           {/* Overtime Settings */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>Rate Lembur Hari Kerja (kali gaji per jam)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={String(settings.overtime_rate_workday || 0.50)}
-                onChange={(e) => setSettings({ ...settings, overtime_rate_workday: Number(e.target.value || 0) })}
-              />
-              <div className="text-xs text-gray-500">Contoh: 0.50 = 2/4 dari gaji per jam</div>
+          <div className="border-t pt-4">
+            <div className="text-lg font-semibold mb-4 text-green-600">Pengaturan Lembur</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid gap-2">
+                <Label>Rate Lembur Hari Kerja (kali gaji per jam)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={String(settings.overtime_rate_workday || 0.50)}
+                  onChange={(e) => setSettings({ ...settings, overtime_rate_workday: Number(e.target.value || 0) })}
+                />
+                <div className="text-xs text-gray-500">Contoh: 0.50 = 2/4 dari gaji per jam</div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Rate Lembur Hari Libur (kali gaji per jam)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={String(settings.overtime_rate_holiday || 0.75)}
+                  onChange={(e) => setSettings({ ...settings, overtime_rate_holiday: Number(e.target.value || 0) })}
+                />
+                <div className="text-xs text-gray-500">Contoh: 0.75 = 3/4 dari gaji per jam</div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Batas Mulai Lembur (menit)</Label>
+                <Input
+                  type="number"
+                  value={settings.overtime_threshold_minutes || 60}
+                  onChange={(e) => setSettings({ ...settings, overtime_threshold_minutes: Number(e.target.value || 60) })}
+                />
+                <div className="text-xs text-gray-500">Lembur mulai dihitung setelah melebihi jam kerja + batas ini</div>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label>Rate Lembur Hari Libur (kali gaji per jam)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={String(settings.overtime_rate_holiday || 0.75)}
-                onChange={(e) => setSettings({ ...settings, overtime_rate_holiday: Number(e.target.value || 0) })}
-              />
-              <div className="text-xs text-gray-500">Contoh: 0.75 = 3/4 dari gaji per jam</div>
+            <div className="mt-4 p-3 bg-green-50 rounded-lg">
+              <div className="text-sm text-green-800">
+                <strong>Contoh:</strong> Jam kerja 8 jam (480 menit) + batas lembur {settings.overtime_threshold_minutes || 60} menit = 
+                Lembur mulai dihitung setelah bekerja lebih dari {Math.floor(((settings.required_minutes || 480) + (settings.overtime_threshold_minutes || 60)) / 60)} jam {((settings.required_minutes || 480) + (settings.overtime_threshold_minutes || 60)) % 60} menit
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

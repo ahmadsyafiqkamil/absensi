@@ -36,7 +36,8 @@ export default function AddUserPage() {
     gaji_pokok: "",
     tmt_kerja: "",
     tempat_lahir: "",
-    tanggal_lahir: ""
+    tanggal_lahir: "",
+    fullname: "",
   });
 
   const [divisions, setDivisions] = useState<Division[]>([]);
@@ -147,6 +148,7 @@ export default function AddUserPage() {
             tmt_kerja: formData.tmt_kerja || null,
             tempat_lahir: formData.tempat_lahir || null,
             tanggal_lahir: formData.tanggal_lahir || null,
+            fullname: formData.fullname || null,
           })
         });
 
@@ -168,7 +170,8 @@ export default function AddUserPage() {
         gaji_pokok: "",
         tmt_kerja: "",
         tempat_lahir: "",
-        tanggal_lahir: ""
+        tanggal_lahir: "",
+        fullname: "",
       });
 
       // Redirect to admin dashboard after 2 seconds
@@ -276,6 +279,17 @@ export default function AddUserPage() {
                     value={formData.nip}
                     onChange={handleInputChange}
                     placeholder="Enter NIP (Employee ID)"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fullname">Full Name</Label>
+                  <Input
+                    id="fullname"
+                    name="fullname"
+                    type="text"
+                    value={formData.fullname}
+                    onChange={handleInputChange}
+                    placeholder="Enter full name"
                   />
                 </div>
 

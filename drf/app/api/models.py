@@ -114,6 +114,11 @@ class WorkSettings(models.Model):
         verbose_name="Overtime Rate (Holiday)",
         help_text="Multiplier of hourly base wage for overtime on holidays (e.g., 0.75 = 3/4)",
     )
+    overtime_threshold_minutes = models.PositiveIntegerField(
+        default=60,
+        verbose_name="Overtime Threshold (Minutes)",
+        help_text="Minimum extra minutes before overtime starts counting (e.g., 60 = 1 hour buffer)",
+    )
 
     class Meta:
         verbose_name = "Work Settings"

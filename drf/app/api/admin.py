@@ -15,8 +15,8 @@ class PositionAdmin(admin.ModelAdmin):
 
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
-    list_display = ("id", "nip", "user", "division", "position")
-    search_fields = ("nip", "user__username", "user__email")
+    list_display = ("id", "nip", "fullname", "user", "division", "position")
+    search_fields = ("nip", "fullname", "user__username", "user__email")
     list_filter = ("division", "position")
 
 
@@ -38,8 +38,8 @@ class WorkSettingsAdmin(admin.ModelAdmin):
             'fields': ('office_latitude', 'office_longitude', 'office_radius_meters')
         }),
         ('Overtime Settings', {
-            'fields': ('overtime_rate_workday', 'overtime_rate_holiday'),
-            'description': 'Overtime rates as multipliers of hourly base wage'
+            'fields': ('overtime_rate_workday', 'overtime_rate_holiday', 'overtime_threshold_minutes'),
+            'description': 'Overtime rates as multipliers of hourly base wage and threshold settings'
         }),
     )
     
