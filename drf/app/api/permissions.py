@@ -392,3 +392,107 @@ CONTOH PENGGUNAAN PERMISSION CLASSES:
    class TeamAttendanceViewSet(viewsets.ReadOnlyModelViewSet):
        permission_classes = [IsDivisionMemberOrAdmin]
 """
+
+
+class IsOvertimeRequestOwnerOrSupervisor(permissions.BasePermission):
+    """
+    Permission class untuk overtime request management.
+    
+    Access Control:
+    - Admin: full access to all overtime requests
+    - Supervisor: can view and approve overtime requests from their division
+    - Employee: can create and view their own overtime requests only
+    
+    Use Case:
+    - Overtime request management (ViewSet actions)
+    """
+    
+    def has_permission(self, request, view):
+        """Check if user has basic permission to access overtime requests"""
+        if not request.user.is_authenticated:
+            return False
+        
+        # Admin has full access
+        if request.user.is_superuser or request.user.groups.filter(name='admin').exists():
+            return True
+        
+        # Supervisor has access
+        if request.user.groups.filter(name='supervisor').exists():
+            return True
+        
+        # Employee has access
+        if request.user.groups.filter(name='pegawai').exists():
+            return True
+        
+        return False
+    
+    def has_object_permission(self, request, view, obj):
+        """Check if user has permission to access specific overtime request"""
+        user = request.user
+        
+        # Admin has full access
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return True
+        
+        # Supervisor can access overtime requests from their division
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                if supervisor_employee.division == obj.employee.division:
+                    return True
+            except:
+                pass
+            return False
+        
+        # Employee can only access their own overtime requests
+        if user.groups.filter(name='pegawai').exists():
+            return obj.user == user
+        
+        return False
+
+
+class IsOvertimeRequestApprover(permissions.BasePermission):
+    """
+    Permission class for overtime request approval actions.
+    
+    Access Control:
+    - Admin: can approve any overtime request
+    - Supervisor: can approve overtime requests from their division
+    - Employee: no approval permission
+    
+    Use Case:
+    - Overtime approval/rejection actions
+    """
+    
+    def has_permission(self, request, view):
+        """Check if user has permission to approve overtime requests"""
+        if not request.user.is_authenticated:
+            return False
+        
+        # Admin can approve
+        if request.user.is_superuser or request.user.groups.filter(name='admin').exists():
+            return True
+        
+        # Supervisor can approve
+        if request.user.groups.filter(name='supervisor').exists():
+            return True
+        
+        return False
+    
+    def has_object_permission(self, request, view, obj):
+        """Check if user can approve specific overtime request"""
+        user = request.user
+        
+        # Admin can approve any request
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return True
+        
+        # Supervisor can approve requests from their division
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                return supervisor_employee.division == obj.employee.division
+            except:
+                pass
+        
+        return False

@@ -235,3 +235,124 @@ class AttendanceCorrection(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Correction {self.user_id} {self.date_local} {self.type} {self.status}"
+
+
+class OvertimeRequest(models.Model):
+    """
+    Model untuk pengajuan lembur manual oleh pegawai.
+    Terpisah dari sistem attendance otomatis.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    employee = models.ForeignKey(
+        'Employee',
+        on_delete=models.CASCADE,
+        related_name='overtime_requests',
+        verbose_name="Employee"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='overtime_requests',
+        verbose_name="User"
+    )
+    
+    # Request details
+    date_requested = models.DateField(verbose_name="Date Requested")
+    overtime_hours = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        verbose_name="Overtime Hours",
+        help_text="Number of overtime hours requested (e.g., 2.5)"
+    )
+    work_description = models.TextField(
+        verbose_name="Work Description",
+        help_text="Description of work performed during overtime"
+    )
+    
+    # Status and approval
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="Status"
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='approved_overtime_requests',
+        verbose_name="Approved By"
+    )
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Approved At"
+    )
+    rejection_reason = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Rejection Reason"
+    )
+    
+    # Calculated amount
+    overtime_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Overtime Amount",
+        help_text="Calculated overtime pay amount"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Overtime Request - {self.employee.user.username} - {self.date_requested}"
+    
+    def calculate_overtime_amount(self):
+        """Calculate overtime amount based on employee salary and work settings"""
+        if not self.employee.gaji_pokok:
+            return 0
+            
+        try:
+            # Get work settings
+            ws = WorkSettings.objects.first()
+            if not ws:
+                return 0
+            
+            # Check if the date is a holiday
+            is_holiday = Holiday.objects.filter(date=self.date_requested).exists()
+            
+            # Calculate hourly wage (assuming monthly salary)
+            monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
+            hourly_wage = float(self.employee.gaji_pokok) / monthly_hours
+            
+            # Determine overtime rate
+            if is_holiday:
+                rate = float(ws.overtime_rate_holiday or 0.75)
+            else:
+                rate = float(ws.overtime_rate_workday or 0.50)
+            
+            # Calculate overtime amount
+            overtime_amount = float(self.overtime_hours) * hourly_wage * rate
+            return round(overtime_amount, 2)
+            
+        except Exception:
+            return 0
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate overtime amount when saving
+        self.overtime_amount = self.calculate_overtime_amount()
+        super().save(*args, **kwargs)
+    
+    class Meta:
+        verbose_name = "Overtime Request"
+        verbose_name_plural = "Overtime Requests"
+        ordering = ['-created_at']

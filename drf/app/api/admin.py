@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest
 
 @admin.register(Division)
 class DivisionAdmin(admin.ModelAdmin):
@@ -90,3 +90,34 @@ class AttendanceAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
+
+
+@admin.register(OvertimeRequest)
+class OvertimeRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "employee", "date_requested", "overtime_hours", "status", "overtime_amount", "created_at")
+    list_filter = ("status", "date_requested", "created_at")
+    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "work_description")
+    readonly_fields = ("overtime_amount", "created_at", "updated_at")
+    
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('employee', 'user', 'date_requested', 'overtime_hours', 'work_description')
+        }),
+        ('Status', {
+            'fields': ('status', 'approved_by', 'approved_at', 'rejection_reason')
+        }),
+        ('Amount', {
+            'fields': ('overtime_amount',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+    
+    def save_model(self, request, obj, form, change):
+        # Auto-set approved_by and approved_at when status changes to approved
+        if obj.status == 'approved' and not obj.approved_by:
+            obj.approved_by = request.user
+            from django.utils import timezone
+            obj.approved_at = timezone.now()
+        super().save_model(request, obj, form, change)

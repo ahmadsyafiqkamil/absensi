@@ -34,6 +34,7 @@ router.register(r'settings/work', views.WorkSettingsViewSet, basename='work-sett
 router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
 router.register(r'attendance', views.AttendanceViewSet, basename='attendance')
 router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='attendance-correction')
+router.register(r'overtime-requests', views.OvertimeRequestViewSet, basename='overtime-request')
 
 # Role-specific routers
 admin_router = DefaultRouter()
@@ -85,7 +86,7 @@ urlpatterns += [
     path('employee/attendance/report', views.attendance_report, name='employee-attendance-report'),
     path('employee/attendance/report/pdf', views.attendance_report_pdf, name='employee-attendance-report-pdf'),
     
-    # Overtime endpoints
+    # Overtime endpoints (legacy attendance-based)
     path('overtime/<int:attendance_id>/approve', views.approve_overtime, name='approve-overtime'),
     path('overtime/report', views.overtime_report, name='overtime-report'),
     

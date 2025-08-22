@@ -126,7 +126,7 @@ export default async function PegawaiPage() {
                 <Button variant="outline" className="w-full">Attendance Report</Button>
               </Link>
               <Link href="/pegawai/overtime">
-                <Button variant="outline" className="w-full">Overtime Management</Button>
+                <Button variant="outline" className="w-full">Pengajuan Lembur</Button>
               </Link>
               {/* <Link href="/pegawai/monthly-summary">
                 <Button variant="outline" className="w-full">Monthly Summary</Button>

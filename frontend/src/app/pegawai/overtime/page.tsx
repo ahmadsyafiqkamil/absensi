@@ -1,6 +1,6 @@
 import { meFromServerCookies } from '@/lib/backend';
 import Header from '@/components/Header';
-import OvertimeSummary from '../OvertimeSummary';
+import OvertimeRequestsManager from '../OvertimeRequestsManager';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -37,14 +37,14 @@ export default async function PegawaiOvertimePage() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Overtime Management</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Pengajuan Lembur</h1>
           <p className="text-gray-600 mt-2">
-            Monitor your overtime hours, earnings, and approval status
+            Ajukan lembur dan pantau status persetujuan supervisor
           </p>
         </div>
 
-        {/* Overtime Summary */}
-        <OvertimeSummary />
+        {/* Overtime Requests Manager */}
+        <OvertimeRequestsManager />
       </div>
     </div>
   );

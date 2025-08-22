@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest
 
 
 # ============================================================================
@@ -653,3 +653,129 @@ class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
         fields = ["id", "date", "note"]
+
+
+# ===== OVERTIME REQUEST SERIALIZERS =====
+
+class OvertimeRequestAdminSerializer(serializers.ModelSerializer):
+    """
+    Admin serializer for overtime requests - full access
+    """
+    user = UserBasicSerializer(read_only=True)
+    employee = EmployeeSerializer(read_only=True)
+    approved_by = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = OvertimeRequest
+        fields = [
+            "id",
+            "employee",
+            "user",
+            "date_requested",
+            "overtime_hours",
+            "work_description",
+            "status",
+            "approved_by",
+            "approved_at",
+            "rejection_reason",
+            "overtime_amount",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class OvertimeRequestSupervisorSerializer(serializers.ModelSerializer):
+    """
+    Supervisor serializer for overtime requests - can approve/reject
+    """
+    user = UserBasicSerializer(read_only=True)
+    employee = EmployeeSerializer(read_only=True)
+    approved_by = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = OvertimeRequest
+        fields = [
+            "id",
+            "employee",
+            "user",
+            "date_requested",
+            "overtime_hours",
+            "work_description",
+            "status",
+            "approved_by",
+            "approved_at",
+            "rejection_reason",
+            "overtime_amount",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
+    """
+    Employee serializer for overtime requests - can create and view own requests
+    """
+    user = UserBasicSerializer(read_only=True)
+    employee = EmployeeSerializer(read_only=True)
+    approved_by = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = OvertimeRequest
+        fields = [
+            "id",
+            "employee",
+            "user",
+            "date_requested",
+            "overtime_hours",
+            "work_description",
+            "status",
+            "approved_by",
+            "approved_at",
+            "overtime_amount",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "employee",
+            "user",
+            "status",
+            "approved_by",
+            "approved_at",
+            "overtime_amount",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating overtime requests by employees
+    """
+    class Meta:
+        model = OvertimeRequest
+        fields = [
+            "date_requested",
+            "overtime_hours",
+            "work_description",
+        ]
+    
+    def validate_date_requested(self, value):
+        """Validate that the date is not in the future beyond reasonable limit"""
+        from datetime import date, timedelta
+        today = date.today()
+        
+        # Allow up to 7 days in the past and 1 day in the future
+        if value > today + timedelta(days=1):
+            raise serializers.ValidationError("Tanggal tidak boleh lebih dari 1 hari ke depan")
+        if value < today - timedelta(days=7):
+            raise serializers.ValidationError("Tanggal tidak boleh lebih dari 7 hari ke belakang")
+            
+        return value
+    
+    def validate_overtime_hours(self, value):
+        """Validate overtime hours"""
+        if value <= 0:
+            raise serializers.ValidationError("Jam lembur harus lebih dari 0")
+        if value > 12:  # Maximum 12 hours overtime per day
+            raise serializers.ValidationError("Jam lembur maksimal 12 jam per hari")
+        return value
