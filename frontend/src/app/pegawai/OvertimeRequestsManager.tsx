@@ -25,7 +25,7 @@ type OvertimeRequest = {
   date_requested: string;
   overtime_hours: string;
   work_description: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'level1_approved' | 'approved' | 'rejected';
   approved_by: {
     id: number;
     username: string;
@@ -33,6 +33,20 @@ type OvertimeRequest = {
     last_name: string;
   } | null;
   approved_at: string | null;
+  level1_approved_by: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+  level1_approved_at: string | null;
+  final_approved_by: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+  final_approved_at: string | null;
   rejection_reason: string | null;
   overtime_amount: string;
   created_at: string;
@@ -49,6 +63,7 @@ type OvertimeRequestsResponse = {
 type OvertimeSummary = {
   total_requests: number;
   pending_requests: number;
+  level1_approved_requests: number;
   approved_requests: number;
   rejected_requests: number;
   total_approved_hours: number;
@@ -90,6 +105,8 @@ function getStatusColor(status: string): string {
   switch (status) {
     case 'approved':
       return 'text-green-600 bg-green-100';
+    case 'level1_approved':
+      return 'text-blue-600 bg-blue-100';
     case 'rejected':
       return 'text-red-600 bg-red-100';
     case 'pending':
@@ -101,7 +118,9 @@ function getStatusColor(status: string): string {
 function getStatusText(status: string): string {
   switch (status) {
     case 'approved':
-      return 'Disetujui';
+      return 'Final Disetujui';
+    case 'level1_approved':
+      return 'Level 1 Disetujui';
     case 'rejected':
       return 'Ditolak';
     case 'pending':
@@ -128,6 +147,8 @@ export default function OvertimeRequestsManager() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -227,6 +248,61 @@ export default function OvertimeRequestsManager() {
     setIsModalOpen(true);
   };
 
+  const handleDownload = async (requestId: number) => {
+    try {
+      setError(''); // Clear previous errors
+      setDownloadingId(requestId); // Set downloading state
+      
+      const response = await fetch(`/api/overtime-requests/${requestId}/download`, {
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Accept': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to download document: ${response.status} ${response.statusText}`);
+      }
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `Surat_Perintah_Kerja_Lembur_${requestId}.docx`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Show success message
+      setError(''); // Clear any previous errors
+      setSuccessMessage(`Dokumen berhasil di-download: ${filename}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Download error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to download document');
+    } finally {
+      setDownloadingId(null); // Clear downloading state
+    }
+  };
+
   const columns = [
     columnHelper.accessor('date_requested', {
       header: 'Tanggal',
@@ -258,11 +334,29 @@ export default function OvertimeRequestsManager() {
             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
               {getStatusText(status)}
             </span>
-            {status === 'approved' && request.approved_by && (
-              <div className="text-xs text-gray-500">
-                oleh {request.approved_by.username}
+            
+            {/* Approval workflow indicators */}
+            {status === 'level1_approved' && request.level1_approved_by && (
+              <div className="text-xs text-blue-600">
+                ✓ Level 1: {request.level1_approved_by.username}
               </div>
             )}
+            
+            {status === 'approved' && (
+              <div className="text-xs space-y-1">
+                {request.level1_approved_by && (
+                  <div className="text-blue-600">
+                    ✓ Level 1: {request.level1_approved_by.username}
+                  </div>
+                )}
+                {request.final_approved_by && (
+                  <div className="text-green-600">
+                    ✓ Final: {request.final_approved_by.username}
+                  </div>
+                )}
+              </div>
+            )}
+            
             {status === 'rejected' && request.rejection_reason && (
               <div className="text-xs text-red-600" title={request.rejection_reason}>
                 Alasan: {request.rejection_reason.length > 30 
@@ -277,6 +371,40 @@ export default function OvertimeRequestsManager() {
     columnHelper.accessor('created_at', {
       header: 'Tanggal Pengajuan',
       cell: (info) => formatDate(info.getValue()),
+    }),
+    columnHelper.display({
+      id: 'actions',
+      header: 'Aksi',
+      cell: (info) => {
+        const request = info.row.original;
+        return (
+          <div className="flex flex-col space-y-1">
+            {request.status === 'approved' && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs px-2 py-1 bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                onClick={() => handleDownload(request.id)}
+                disabled={downloadingId === request.id}
+              >
+                {downloadingId === request.id ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700 mr-1"></div>
+                    Downloading...
+                  </>
+                ) : (
+                  '📄 Download Dokumen'
+                )}
+              </Button>
+            )}
+            {request.status === 'rejected' && (
+              <div className="text-xs text-red-600">
+                Ditolak: {request.rejection_reason?.substring(0, 30) || 'Tidak ada alasan'}...
+              </div>
+            )}
+          </div>
+        );
+      },
     }),
   ];
 
@@ -344,7 +472,7 @@ export default function OvertimeRequestsManager() {
     <div className="space-y-6">
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Pengajuan</CardTitle>
@@ -369,6 +497,20 @@ export default function OvertimeRequestsManager() {
               </div>
               <p className="text-xs text-gray-500">
                 Belum disetujui
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Level 1 Approved</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {summary.level1_approved_requests || 0}
+              </div>
+              <p className="text-xs text-gray-500">
+                Menunggu final approval
               </p>
             </CardContent>
           </Card>
@@ -400,6 +542,37 @@ export default function OvertimeRequestsManager() {
               </p>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Success and Error Messages */}
+      {successMessage && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">{successMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L10.586 10l-1.293 1.293a1 1 0 101.414 1.414L12 11.414l1.293 1.293a1 1 0 001.414-1.414L13.414 10l1.293-1.293a1 1 0 00-1.414-1.414L12 8.586l-1.293-1.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-red-800">{error}</p>
+            </div>
+          </div>
         </div>
       )}
 

@@ -64,6 +64,7 @@ services:
       - absensi_network_dev
     volumes:
       - ./drf/app:/app
+      - ./template:/app/template
     command: ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
 
   # Frontend Next.js (Development)

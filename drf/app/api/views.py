@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.views.decorators.http import require_GET
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import viewsets, permissions, status
@@ -2188,6 +2188,75 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOvertimeRequestOwnerOrSupervisor]
     pagination_class = DefaultPagination
     
+    def get_template_path(self):
+        """Get the path to the active overtime template with cache busting"""
+        import os
+        from django.conf import settings
+        from django.core.cache import cache
+        
+        template_dir = os.path.join(settings.BASE_DIR, 'template')
+        
+        # Check if we have cached template info
+        cache_key = 'overtime_template_path'
+        cached_result = cache.get(cache_key)
+        
+        # Get current template directory state
+        current_files = []
+        if os.path.exists(template_dir):
+            for file in os.listdir(template_dir):
+                if file.endswith('.docx') and not file.startswith('~$'):  # Exclude temp files
+                    file_path = os.path.join(template_dir, file)
+                    current_files.append((file, os.path.getmtime(file_path)))
+        
+        # Create a hash of current directory state
+        current_state = hash(tuple(sorted(current_files)))
+        
+        # If cached result exists and directory hasn't changed, use cache
+        if cached_result and cached_result.get('state') == current_state:
+            return cached_result['path'], cached_result['name']
+        
+        # Directory has changed, recalculate template path
+        if current_files:
+            # Sort by modification time (newest first)
+            current_files.sort(key=lambda x: x[1], reverse=True)
+            
+            # Priority order for template files
+            priority_names = [
+                'template_SURAT_PERINTAH_KERJA_LEMBUR.docx',  # Primary template
+                'template_overtime_clean.docx',                 # Fallback 1
+                'template_overtime_working.docx',               # Fallback 2
+                'template_overtime_simple.docx',                # Fallback 3
+            ]
+            
+            # First try priority names
+            for priority_name in priority_names:
+                for file_name, _ in current_files:
+                    if file_name == priority_name:
+                        template_path = os.path.join(template_dir, priority_name)
+                        result = (template_path, priority_name)
+                        # Cache the result
+                        cache.set(cache_key, {
+                            'path': template_path,
+                            'name': priority_name,
+                            'state': current_state
+                        }, timeout=300)  # Cache for 5 minutes
+                        return result
+            
+            # If no priority names found, use the most recently modified .docx file
+            most_recent = current_files[0][0]
+            template_path = os.path.join(template_dir, most_recent)
+            result = (template_path, most_recent)
+            # Cache the result
+            cache.set(cache_key, {
+                'path': template_path,
+                'name': most_recent,
+                'state': current_state
+            }, timeout=300)  # Cache for 5 minutes
+            return result
+        
+        # If no template found, return None
+        return None, None
+    
     def get_queryset(self):
         """Filter queryset based on user role"""
         user = self.request.user
@@ -2578,6 +2647,457 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             'total_potential_amount': sum(r['potential_overtime_amount'] for r in potential_records),
             'potential_records': potential_records,
         })
+
+    @action(detail=False, methods=['get'])
+    def preview_template(self, request):
+        """Preview overtime request template with sample data"""
+        try:
+            # Import required libraries
+            from docx import Document
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            from io import BytesIO
+            from django.utils import timezone
+            from django.conf import settings
+            import os
+            import locale
+            
+            # Set locale for Indonesian formatting
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'id_ID')
+                except:
+                    pass
+            
+            # Get template path dynamically
+            template_path, template_name = self.get_template_path()
+            
+            # Check if template exists
+            if not template_path:
+                return Response(
+                    {"detail": "Template overtime tidak ditemukan. Silakan upload template di admin settings."}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Load template document
+            doc = Document(template_path)
+            
+            # Function to replace text in paragraphs
+            def replace_text_in_paragraphs(paragraphs, old_text, new_text):
+                for paragraph in paragraphs:
+                    for run in paragraph.runs:
+                        if old_text in run.text:
+                            run.text = run.text.replace(old_text, new_text)
+            
+            # Function to replace text in tables
+            def replace_text_in_tables(tables, old_text, new_text):
+                for table in tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    if old_text in run.text:
+                                        run.text = run.text.replace(old_text, new_text)
+            
+            # Get current date and time
+            current_date = timezone.now()
+            current_year = current_date.strftime('%Y')
+            current_month = current_date.strftime('%B')
+            current_day = current_date.strftime('%d')
+            
+            # Sample data for preview
+            sample_data = {
+                # Document info
+                '{{NOMOR_DOKUMEN}}': f"001/SPKL/KJRI-DXB/{current_year}",
+                '{{TANGGAL_DOKUMEN}}': current_date.strftime('%d %B %Y'),
+                '{{TAHUN}}': current_year,
+                '{{BULAN}}': current_month,
+                '{{HARI}}': current_day,
+                
+                # Employee info
+                '{{NAMA_PEGAWAI}}': 'CONTOH NAMA PEGAWAI',
+                '{{NIP_PEGAWAI}}': '123456789',
+                '{{NIP}}': '123456789',
+                '{{NIP_LENGKAP}}': '123456789012345678',
+                '{{NIP_18_DIGIT}}': '123456789012345678',
+                '{{NIP_9_DIGIT}}': '123456789',
+                '{{JABATAN_PEGAWAI}}': 'STAFF',
+                '{{DIVISI_PEGAWAI}}': 'IT',
+                
+                # Overtime details
+                '{{TANGGAL_LEMBUR}}': current_date.strftime('%d %B %Y'),
+                '{{JAM_LEMBUR}}': '2 jam',
+                '{{DESKRIPSI_PEKERJAAN}}': 'Contoh deskripsi pekerjaan lembur untuk maintenance server dan backup data',
+                '{{JUMLAH_GAJI_LEMBUR}}': '50000',
+                
+                # Approval info
+                '{{LEVEL1_APPROVER}}': 'SUPERVISOR DIVISI',
+                '{{LEVEL1_APPROVER_NIP}}': '198501012010012001',
+                '{{LEVEL1_APPROVAL_DATE}}': current_date.strftime('%d %B %Y %H:%M'),
+                '{{FINAL_APPROVER}}': 'MANAGER',
+                '{{FINAL_APPROVER_NIP}}': '198001011990012001',
+                '{{FINAL_APPROVAL_DATE}}': current_date.strftime('%d %B %Y %H:%M'),
+                
+                # Company info
+                '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+                '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+                '{{LOKASI}}': 'Dubai',
+            }
+            
+            # Replace all placeholders with sample data
+            for placeholder, value in sample_data.items():
+                replace_text_in_paragraphs(doc.paragraphs, placeholder, value)
+                replace_text_in_tables(doc.tables, placeholder, value)
+            
+            # Save to buffer
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            
+            # Return document response
+            from django.http import HttpResponse
+            response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            response['Content-Disposition'] = f'attachment; filename="Preview_Template_Overtime_{current_date.strftime("%Y%m%d")}.docx"'
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal preview template: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
+    def upload_template(self, request):
+        """Upload new overtime template"""
+        try:
+            # Check if user is admin
+            if not request.user.is_staff:
+                return Response(
+                    {"detail": "Hanya admin yang dapat upload template"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get template file from request
+            template_file = request.FILES.get('template')
+            if not template_file:
+                return Response(
+                    {"detail": "Template file tidak ditemukan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file type
+            if not template_file.name.endswith('.docx'):
+                return Response(
+                    {"detail": "File harus berformat .docx"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file size (max 10MB)
+            if template_file.size > 10 * 1024 * 1024:
+                return Response(
+                    {"detail": "Ukuran file maksimal 10MB"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Import required libraries
+            import os
+            from django.conf import settings
+            
+            # Path to template directory
+            template_dir = os.path.join(settings.BASE_DIR, 'template')
+            if not os.path.exists(template_dir):
+                os.makedirs(template_dir)
+            
+            # Save new template with original filename (but ensure .docx extension)
+            original_filename = template_file.name
+            if not original_filename.endswith('.docx'):
+                original_filename += '.docx'
+            
+            # Save as the new primary template
+            template_path = os.path.join(template_dir, original_filename)
+            
+            with open(template_path, 'wb+') as destination:
+                for chunk in template_file.chunks():
+                    destination.write(chunk)
+            
+            # Clear template cache to force reload
+            from django.core.cache import cache
+            cache.delete('overtime_template_path')
+            
+            return Response({
+                "detail": "Template berhasil diupload",
+                "filename": original_filename,
+                "size": template_file.size,
+                "path": template_path,
+                "message": f"Template '{original_filename}' berhasil disimpan dan akan digunakan sebagai template utama. Cache template telah di-clear."
+            })
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal upload template: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
+    def reload_template(self, request):
+        """Force reload template cache (admin only)"""
+        try:
+            from django.core.cache import cache
+            cache.delete('overtime_template_path')
+            
+            # Get current template info
+            template_path, template_name = self.get_template_path()
+            
+            return Response({
+                "detail": "Template cache berhasil di-clear",
+                "current_template": template_name,
+                "message": f"Template '{template_name}' akan digunakan untuk request selanjutnya"
+            })
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal reload template: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Download overtime request document using template"""
+        overtime_request = self.get_object()
+        
+        # Only allow download for approved overtime requests
+        if overtime_request.status != 'approved':
+            return Response(
+                {"detail": "Hanya overtime yang sudah disetujui yang dapat didownload"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Import required libraries
+            from docx import Document
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            from io import BytesIO
+            from django.utils import timezone
+            from django.conf import settings
+            import os
+            import locale
+            
+            # Set locale for Indonesian formatting
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'id_ID')
+                except:
+                    pass
+            
+            # Get template path dynamically
+            template_path, template_name = self.get_template_path()
+            
+            # Check if template exists
+            if not template_path:
+                return Response(
+                    {"detail": "Template overtime tidak ditemukan. Silakan upload template di admin settings."}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Load template document
+            doc = Document(template_path)
+            
+            # Function to replace text in paragraphs
+            def replace_text_in_paragraphs(paragraphs, old_text, new_text):
+                for paragraph in paragraphs:
+                    for run in paragraph.runs:
+                        if old_text in run.text:
+                            run.text = run.text.replace(old_text, new_text)
+            
+            # Function to replace text in tables
+            def replace_text_in_tables(tables, old_text, new_text):
+                for table in tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    if old_text in run.text:
+                                        run.text = run.text.replace(old_text, new_text)
+            
+            # Get current date and time
+            current_date = timezone.now()
+            current_year = current_date.strftime('%Y')
+            current_month = current_date.strftime('%B')
+            current_day = current_date.strftime('%d')
+            
+            # Format overtime date
+            overtime_date = overtime_request.date_requested
+            overtime_date_formatted = overtime_date.strftime('%d %B %Y')
+            
+            # Get employee information
+            employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
+            employee_nip = overtime_request.employee.nip or '-'
+            employee_position = overtime_request.employee.position.name if overtime_request.employee.position else '-'
+            employee_division = overtime_request.employee.division.name if overtime_request.employee.division else '-'
+            
+            # Format NIP variations
+            nip_9_digit = employee_nip[:9] if employee_nip and len(employee_nip) >= 9 else employee_nip
+            nip_18_digit = employee_nip if employee_nip and len(employee_nip) >= 18 else (employee_nip + '0' * (18 - len(employee_nip))) if employee_nip else '-'
+            
+            # Get approval information with better fallback
+            def get_approver_name(user):
+                """Get approver name from employee.fullname with fallback to username"""
+                if not user:
+                    return '-'
+                # Try to get name from employee.fullname first
+                if hasattr(user, 'employee') and user.employee and user.employee.fullname:
+                    return user.employee.fullname
+                # Fallback to user.get_full_name()
+                full_name = user.get_full_name()
+                if full_name and full_name.strip():
+                    return full_name
+                # Final fallback to username
+                return user.username.title()  # Capitalize username as fallback
+            
+            def get_approver_nip(user):
+                """Get approver NIP with fallback"""
+                if not user or not hasattr(user, 'employee') or not user.employee:
+                    return '-'
+                return user.employee.nip or '-'
+            
+            level1_approver = get_approver_name(overtime_request.level1_approved_by)
+            level1_approver_nip = get_approver_nip(overtime_request.level1_approved_by)
+            level1_approval_date = overtime_request.level1_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.level1_approved_at else '-'
+            
+            final_approver = get_approver_name(overtime_request.final_approved_by)
+            final_approver_nip = get_approver_nip(overtime_request.final_approved_by)
+            final_approval_date = overtime_request.final_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.final_approved_at else '-'
+            
+            # Debug: Print approval information (optional, can be removed in production)
+            # print(f"DEBUG APPROVAL INFO:")
+            # print(f"Level1 Approver: {level1_approver}")
+            # print(f"Level1 Approver NIP: {level1_approver_nip}")
+            # print(f"Level1 Approval Date: {level1_approval_date}")
+            # print(f"Final Approver: {final_approver}")
+            # print(f"Final Approver NIP: {final_approver_nip}")
+            # print(f"Final Approval Date: {final_approval_date}")
+            
+            # Format overtime amount
+            overtime_amount = f"{overtime_request.overtime_amount}"
+            
+            # Define replacement mappings
+            replacements = {
+                # Document info
+                '{{NOMOR_DOKUMEN}}': f"{overtime_request.id}/SPKL/KJRI-DXB/{current_year}",
+                '{{TANGGAL_DOKUMEN}}': current_date.strftime('%d %B %Y'),
+                '{{TAHUN}}': current_year,
+                '{{BULAN}}': current_month,
+                '{{HARI}}': current_day,
+                
+                # Employee info
+                '{{NAMA_PEGAWAI}}': employee_name,
+                '{{NIP_PEGAWAI}}': employee_nip,
+                '{{NIP}}': employee_nip,
+                '{{NIP_LENGKAP}}': nip_18_digit,
+                '{{NIP_18_DIGIT}}': nip_18_digit,
+                '{{NIP_9_DIGIT}}': nip_9_digit,
+                '{{JABATAN_PEGAWAI}}': employee_position,
+                '{{DIVISI_PEGAWAI}}': employee_division,
+                
+                # Overtime details
+                '{{TANGGAL_LEMBUR}}': overtime_date_formatted,
+                '{{JAM_LEMBUR}}': f"{overtime_request.overtime_hours} jam",
+                '{{DESKRIPSI_PEKERJAAN}}': overtime_request.work_description,
+                '{{JUMLAH_GAJI_LEMBUR}}': overtime_amount,
+                
+                # Approval info
+                '{{LEVEL1_APPROVER}}': level1_approver,
+                '{{LEVEL1_APPROVER_NIP}}': level1_approver_nip,
+                '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
+                '{{FINAL_APPROVER}}': final_approver,
+                '{{FINAL_APPROVER_NIP}}': final_approver_nip,
+                '{{FINAL_APPROVAL_DATE}}': final_approval_date,
+                
+                # Company info
+                '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+                '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+                '{{LOKASI}}': 'Dubai',
+            }
+            
+            # Replace text in paragraphs
+            replace_text_in_paragraphs(doc.paragraphs, '{{NOMOR_DOKUMEN}}', replacements['{{NOMOR_DOKUMEN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{TANGGAL_DOKUMEN}}', replacements['{{TANGGAL_DOKUMEN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{TAHUN}}', replacements['{{TAHUN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{BULAN}}', replacements['{{BULAN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{HARI}}', replacements['{{HARI}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NAMA_PEGAWAI}}', replacements['{{NAMA_PEGAWAI}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_PEGAWAI}}', replacements['{{NIP_PEGAWAI}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NIP}}', replacements['{{NIP}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_LENGKAP}}', replacements['{{NIP_LENGKAP}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_18_DIGIT}}', replacements['{{NIP_18_DIGIT}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_9_DIGIT}}', replacements['{{NIP_9_DIGIT}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{JABATAN_PEGAWAI}}', replacements['{{JABATAN_PEGAWAI}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{DIVISI_PEGAWAI}}', replacements['{{DIVISI_PEGAWAI}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{TANGGAL_LEMBUR}}', replacements['{{TANGGAL_LEMBUR}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{JAM_LEMBUR}}', replacements['{{JAM_LEMBUR}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{DESKRIPSI_PEKERJAAN}}', replacements['{{DESKRIPSI_PEKERJAAN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{JUMLAH_GAJI_LEMBUR}}', replacements['{{JUMLAH_GAJI_LEMBUR}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{LEVEL1_APPROVER}}', replacements['{{LEVEL1_APPROVER}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{LEVEL1_APPROVER_NIP}}', replacements['{{LEVEL1_APPROVER_NIP}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{LEVEL1_APPROVAL_DATE}}', replacements['{{LEVEL1_APPROVAL_DATE}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{FINAL_APPROVER}}', replacements['{{FINAL_APPROVER}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{FINAL_APPROVER_NIP}}', replacements['{{FINAL_APPROVER_NIP}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{FINAL_APPROVAL_DATE}}', replacements['{{FINAL_APPROVAL_DATE}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{NAMA_PERUSAHAAN}}', replacements['{{NAMA_PERUSAHAAN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{ALAMAT_PERUSAHAAN}}', replacements['{{ALAMAT_PERUSAHAAN}}'])
+            replace_text_in_paragraphs(doc.paragraphs, '{{LOKASI}}', replacements['{{LOKASI}}'])
+            
+            # Replace text in tables
+            replace_text_in_tables(doc.tables, '{{NOMOR_DOKUMEN}}', replacements['{{NOMOR_DOKUMEN}}'])
+            replace_text_in_tables(doc.tables, '{{TANGGAL_DOKUMEN}}', replacements['{{TANGGAL_DOKUMEN}}'])
+            replace_text_in_tables(doc.tables, '{{TAHUN}}', replacements['{{TAHUN}}'])
+            replace_text_in_tables(doc.tables, '{{BULAN}}', replacements['{{BULAN}}'])
+            replace_text_in_tables(doc.tables, '{{HARI}}', replacements['{{HARI}}'])
+            replace_text_in_tables(doc.tables, '{{NAMA_PEGAWAI}}', replacements['{{NAMA_PEGAWAI}}'])
+            replace_text_in_tables(doc.tables, '{{NIP_PEGAWAI}}', replacements['{{NIP_PEGAWAI}}'])
+            replace_text_in_tables(doc.tables, '{{NIP}}', replacements['{{NIP}}'])
+            replace_text_in_tables(doc.tables, '{{NIP_LENGKAP}}', replacements['{{NIP_LENGKAP}}'])
+            replace_text_in_tables(doc.tables, '{{NIP_18_DIGIT}}', replacements['{{NIP_18_DIGIT}}'])
+            replace_text_in_tables(doc.tables, '{{NIP_9_DIGIT}}', replacements['{{NIP_9_DIGIT}}'])
+            replace_text_in_tables(doc.tables, '{{JABATAN_PEGAWAI}}', replacements['{{JABATAN_PEGAWAI}}'])
+            replace_text_in_tables(doc.tables, '{{DIVISI_PEGAWAI}}', replacements['{{DIVISI_PEGAWAI}}'])
+            replace_text_in_tables(doc.tables, '{{TANGGAL_LEMBUR}}', replacements['{{TANGGAL_LEMBUR}}'])
+            replace_text_in_tables(doc.tables, '{{JAM_LEMBUR}}', replacements['{{JAM_LEMBUR}}'])
+            replace_text_in_tables(doc.tables, '{{DESKRIPSI_PEKERJAAN}}', replacements['{{DESKRIPSI_PEKERJAAN}}'])
+            replace_text_in_tables(doc.tables, '{{JUMLAH_GAJI_LEMBUR}}', replacements['{{JUMLAH_GAJI_LEMBUR}}'])
+            replace_text_in_tables(doc.tables, '{{LEVEL1_APPROVER}}', replacements['{{LEVEL1_APPROVER}}'])
+            replace_text_in_tables(doc.tables, '{{LEVEL1_APPROVER_NIP}}', replacements['{{LEVEL1_APPROVER_NIP}}'])
+            replace_text_in_tables(doc.tables, '{{LEVEL1_APPROVAL_DATE}}', replacements['{{LEVEL1_APPROVAL_DATE}}'])
+            replace_text_in_tables(doc.tables, '{{FINAL_APPROVER}}', replacements['{{FINAL_APPROVER}}'])
+            replace_text_in_tables(doc.tables, '{{FINAL_APPROVER_NIP}}', replacements['{{FINAL_APPROVER_NIP}}'])
+            replace_text_in_tables(doc.tables, '{{FINAL_APPROVAL_DATE}}', replacements['{{FINAL_APPROVAL_DATE}}'])
+            replace_text_in_tables(doc.tables, '{{NAMA_PERUSAHAAN}}', replacements['{{NAMA_PERUSAHAAN}}'])
+            replace_text_in_tables(doc.tables, '{{ALAMAT_PERUSAHAAN}}', replacements['{{ALAMAT_PERUSAHAAN}}'])
+            replace_text_in_tables(doc.tables, '{{LOKASI}}', replacements['{{LOKASI}}'])
+            
+            # Save to buffer
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            
+            # Return document response
+            from django.http import HttpResponse
+            response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            response['Content-Disposition'] = f'attachment; filename="Surat_Perintah_Kerja_Lembur_{overtime_request.id}_{overtime_request.employee.user.username}.docx"'
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal generate dokumen: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 @api_view(['GET'])

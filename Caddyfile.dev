@@ -10,6 +10,8 @@ absensi.localhost {
 	# Overtime endpoints - specific to backend
 	reverse_proxy /api/overtime-requests/potential_overtime* backend:8000
 	reverse_proxy /api/overtime/<int>* backend:8000
+	reverse_proxy /api/overtime-requests/upload_template* backend:8000
+	reverse_proxy /api/overtime-requests/reload_template* backend:8000
 	
 	# Admin endpoints - specific to backend (avoid conflicts with Next.js admin routes)
 	# Let Next.js handle /api/admin/* routes for frontend logic
@@ -38,6 +40,10 @@ absensi.localhost {
 	# Let Next.js handle /api/settings/work for frontend logic
 	# Backend settings needed by frontend holidays endpoint
 	reverse_proxy /api/settings/holidays* backend:8000
+	
+	# Frontend API routes that need to be handled by Next.js
+	# These routes are handled by Next.js frontend, not backend
+	reverse_proxy /api/admin/settings/upload-template* frontend:3000
 	
 	# Other specific backend endpoints
 	reverse_proxy /api/ip* backend:8000

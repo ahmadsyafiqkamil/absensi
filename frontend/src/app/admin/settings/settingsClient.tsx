@@ -46,6 +46,8 @@ export default function SettingsClient() {
   const [holidaysPage, setHolidaysPage] = useState(1)
   const [holidaysPageSize, setHolidaysPageSize] = useState(10)
   const [holidaysLoading, setHolidaysLoading] = useState(false)
+  const [uploadingTemplate, setUploadingTemplate] = useState(false)
+  const [templateUploadMessage, setTemplateUploadMessage] = useState<string | null>(null)
 
   useEffect(() => {
     ;(async () => {
@@ -165,6 +167,34 @@ export default function SettingsClient() {
       return
     }
     await loadHolidays(holidaysPage, holidaysPageSize)
+  }
+
+  async function uploadTemplate(file: File) {
+    setUploadingTemplate(true)
+    setTemplateUploadMessage(null)
+    setError(null)
+    
+    try {
+      const formData = new FormData()
+      formData.append('template', file)
+      
+      const resp = await fetch('/api/admin/settings/upload-template', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      const data = await resp.json()
+      
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Gagal upload template')
+      }
+      
+      setTemplateUploadMessage('Template berhasil diupload! Silakan restart backend untuk menggunakan template baru.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal upload template')
+    } finally {
+      setUploadingTemplate(false)
+    }
   }
 
   if (loading) {
@@ -361,6 +391,188 @@ export default function SettingsClient() {
         <div className="text-lg font-semibold">Kalender Hari Libur</div>
         <CalendarClient />
       </div>
+
+      {/* Template Documentation Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>📄 Dokumentasi Template Dokumen Overtime</CardTitle>
+          <CardDescription>Informasi tentang placeholder yang tersedia untuk template dokumen overtime</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="grid gap-4">
+            {templateUploadMessage && (
+              <div className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded">
+                {templateUploadMessage}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex items-center gap-4">
+              <Button 
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = '/api/overtime-requests/preview-template';
+                  link.download = 'Preview_Template_Overtime.docx';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                📥 Download Preview Template
+              </Button>
+              <div className="text-sm text-gray-600">
+                Download template dengan data sample untuk melihat contoh hasil akhir. Template akan otomatis terdeteksi.
+              </div>
+            </div>
+              
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept=".docx"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        uploadTemplate(file);
+                      }
+                    }}
+                    className="hidden"
+                    id="template-upload"
+                    disabled={uploadingTemplate}
+                  />
+                  <label
+                    htmlFor="template-upload"
+                    className={`cursor-pointer inline-flex items-center px-4 py-2 rounded-md transition-colors ${
+                      uploadingTemplate 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-green-600 hover:bg-green-700'
+                    } text-white`}
+                  >
+                    {uploadingTemplate ? '⏳ Uploading...' : '📤 Upload Template Baru'}
+                  </label>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Upload template Word (.docx) baru untuk menggantikan template yang ada. Template akan otomatis terdeteksi berdasarkan file terbaru.
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/overtime-requests/reload-template', {
+                          method: 'POST',
+                        });
+                        const data = await response.json();
+                        if (response.ok) {
+                          alert(`Template cache berhasil di-clear. Template aktif: ${data.current_template}`);
+                        } else {
+                          alert(`Error: ${data.detail}`);
+                        }
+                      } catch (error) {
+                        alert('Gagal reload template');
+                      }
+                    }}
+                    className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded"
+                  >
+                    🔄 Reload Template Cache
+                  </button>
+                  <span className="text-xs text-gray-500">
+                    Gunakan jika template tidak otomatis terdeteksi
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">📋 Placeholder yang Tersedia</h3>
+              
+              <div className="grid gap-4">
+                {/* Document Info */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-blue-800 mb-2">📄 Informasi Dokumen</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NOMOR_DOKUMEN}}"}</code> → Nomor dokumen (format: ID/SPKL/KJRI-DXB/TAHUN)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TANGGAL_DOKUMEN}}"}</code> → Tanggal dokumen (format Indonesia)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TAHUN}}"}</code> → Tahun saat ini</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{BULAN}}"}</code> → Bulan saat ini (format Indonesia)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{HARI}}"}</code> → Hari saat ini</div>
+                  </div>
+                </div>
+
+                {/* Employee Info */}
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-green-800 mb-2">👤 Informasi Pegawai</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NAMA_PEGAWAI}}"}</code> → Nama lengkap pegawai</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NIP_PEGAWAI}}"}</code> → NIP pegawai (format asli)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NIP}}"}</code> → NIP pegawai (alias untuk {"{{NIP_PEGAWAI}}"})</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NIP_LENGKAP}}"}</code> → NIP 18 digit (dipadankan dengan 0)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NIP_18_DIGIT}}"}</code> → NIP 18 digit (format standar PNS)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NIP_9_DIGIT}}"}</code> → NIP 9 digit pertama</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{JABATAN_PEGAWAI}}"}</code> → Jabatan pegawai</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{DIVISI_PEGAWAI}}"}</code> → Divisi pegawai</div>
+                  </div>
+                </div>
+
+                {/* Overtime Details */}
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-yellow-800 mb-2">⏰ Detail Lembur</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TANGGAL_LEMBUR}}"}</code> → Tanggal lembur (format Indonesia)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{JAM_LEMBUR}}"}</code> → Jumlah jam lembur</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{DESKRIPSI_PEKERJAAN}}"}</code> → Deskripsi pekerjaan lembur</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{JUMLAH_GAJI_LEMBUR}}"}</code> → Jumlah gaji lembur</div>
+                  </div>
+                </div>
+
+                {/* Approval Info */}
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-purple-800 mb-2">✅ Informasi Approval</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{LEVEL1_APPROVER}}"}</code> → Nama supervisor level 1</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{LEVEL1_APPROVER_NIP}}"}</code> → NIP supervisor level 1</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{LEVEL1_APPROVAL_DATE}}"}</code> → Tanggal approval level 1</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{FINAL_APPROVER}}"}</code> → Nama supervisor final</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{FINAL_APPROVER_NIP}}"}</code> → NIP supervisor final</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{FINAL_APPROVAL_DATE}}"}</code> → Tanggal approval final</div>
+                  </div>
+                </div>
+
+                {/* Company Info */}
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-red-800 mb-2">🏢 Informasi Perusahaan</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NAMA_PERUSAHAAN}}"}</code> → KJRI DUBAI</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{ALAMAT_PERUSAHAAN}}"}</code> → KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{LOKASI}}"}</code> → Dubai</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">📝 Cara Penggunaan</h3>
+              <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700 space-y-2">
+                <div>1. <strong>Download Preview Template</strong> untuk melihat contoh hasil akhir</div>
+                <div>2. <strong>Edit template Word</strong> dengan menambahkan placeholder yang diinginkan</div>
+                <div>3. <strong>Upload template baru</strong> ke folder <code className="bg-white px-1 rounded">template/</code></div>
+                <div>4. <strong>Update path template</strong> di backend jika menggunakan nama file berbeda</div>
+                <div>5. <strong>Test fitur download</strong> dengan overtime yang sudah approved</div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">⚠️ Catatan Penting</h3>
+              <div className="bg-yellow-50 p-4 rounded-lg text-sm text-yellow-800 space-y-2">
+                <div>• Template harus dalam format <strong>.docx</strong> (Word Document)</div>
+                <div>• Placeholder harus menggunakan format <code className="bg-white px-1 rounded">{"{{NAMA_PLACEHOLDER}}"}</code></div>
+                <div>• Hanya overtime dengan status <strong>"approved"</strong> yang bisa didownload</div>
+                <div>• Template akan otomatis diisi dengan data dari database overtime</div>
+                <div>• Jika placeholder tidak ditemukan, akan tetap ditampilkan apa adanya</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
