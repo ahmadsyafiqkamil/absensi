@@ -5,7 +5,8 @@ absensi.localhost {
 	encode gzip
 	
 	# Route specific backend API calls (not auth routes)
-	reverse_proxy /api/overtime-requests* backend:8000
+	# Only route specific patterns to backend, let Next.js handle the rest
+	reverse_proxy /api/overtime-requests/potential_overtime* backend:8000
 	reverse_proxy /api/supervisor* backend:8000
 	reverse_proxy /api/admin* backend:8000
 	reverse_proxy /api/employee* backend:8000
@@ -14,6 +15,7 @@ absensi.localhost {
 	reverse_proxy /api/settings* backend:8000
 	reverse_proxy /api/ip* backend:8000
 	reverse_proxy /api/media* backend:8000
+	reverse_proxy /api/overtime/<int>* backend:8000
 	
 	# Route everything else (including Next.js API routes) to frontend
 	reverse_proxy frontend:3000
