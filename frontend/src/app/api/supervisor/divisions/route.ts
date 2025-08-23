@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
     
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     }
 
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/employee/settings/work`
+    const url = `${backend}/api/employee/divisions/`
     
     const resp = await fetch(url, {
       method: 'GET',
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json(data, { status: resp.status })
   } catch (error) {
-    console.error('Error in employee work settings API:', error)
+    console.error('Error in supervisor divisions API:', error)
     return NextResponse.json(
       { detail: 'Internal server error' }, 
       { status: 500 }

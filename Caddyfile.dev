@@ -6,16 +6,42 @@ absensi.localhost {
 	
 	# Route specific backend API calls (not auth routes)
 	# Only route specific patterns to backend, let Next.js handle the rest
+	
+	# Overtime endpoints - specific to backend
 	reverse_proxy /api/overtime-requests/potential_overtime* backend:8000
-	reverse_proxy /api/supervisor* backend:8000
-	reverse_proxy /api/admin* backend:8000
-	reverse_proxy /api/employee* backend:8000
-	reverse_proxy /api/attendance* backend:8000
-	reverse_proxy /api/attendance-corrections* backend:8000
-	reverse_proxy /api/settings* backend:8000
+	reverse_proxy /api/overtime/<int>* backend:8000
+	
+	# Admin endpoints - specific to backend (avoid conflicts with Next.js admin routes)
+	# Let Next.js handle /api/admin/* routes for frontend logic
+	# Backend admin routes are accessed via /api/admin/ directly
+	
+	# Supervisor endpoints - specific to backend (avoid conflicts with Next.js supervisor routes)
+	# Let Next.js handle /api/supervisor/* routes for frontend logic
+	# Backend supervisor routes are accessed via /api/supervisor/ directly
+	
+	# Employee endpoints - specific to backend (avoid conflicts with Next.js employee routes)
+	# Let Next.js handle /api/employee/employees for frontend logic
+	# Let Next.js handle /api/employee/settings for frontend logic
+	
+	# Attendance endpoints - specific to backend (avoid conflicts with Next.js attendance routes)
+	# Let Next.js handle /api/attendance/check-in for frontend logic
+	# Let Next.js handle /api/attendance/check-out for frontend logic
+	# Let Next.js handle /api/attendance/precheck for frontend logic
+	# Let Next.js handle /api/attendance/holidays for frontend logic
+	# Let Next.js handle /api/attendance/report for frontend logic
+	
+	# Attendance corrections - specific to backend (avoid conflicts with Next.js routes)
+	# Let Next.js handle /api/attendance-corrections/* for frontend logic
+	# Backend corrections routes are accessed via /api/attendance-corrections/ directly
+	
+	# Settings endpoints - specific to backend (avoid conflicts with Next.js settings routes)
+	# Let Next.js handle /api/settings/work for frontend logic
+	# Backend settings needed by frontend holidays endpoint
+	reverse_proxy /api/settings/holidays* backend:8000
+	
+	# Other specific backend endpoints
 	reverse_proxy /api/ip* backend:8000
 	reverse_proxy /api/media* backend:8000
-	reverse_proxy /api/overtime/<int>* backend:8000
 	
 	# Route everything else (including Next.js API routes) to frontend
 	reverse_proxy frontend:3000
