@@ -8,7 +8,13 @@ export async function GET(request: NextRequest) {
     const cookieStore = await cookies()
     const accessToken = cookieStore.get('access_token')?.value
 
+    // Debug logging
+    console.log('Available cookies:', Array.from(cookieStore.getAll()).map(c => c.name))
+    console.log('Access token present:', !!accessToken)
+    console.log('Access token value (first 20 chars):', accessToken?.substring(0, 20))
+
     if (!accessToken) {
+      console.log('No access token found in cookies')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

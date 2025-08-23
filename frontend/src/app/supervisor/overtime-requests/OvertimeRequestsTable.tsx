@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
+import { authFetch } from '@/lib/authFetch';
 import {
   useReactTable,
   getCoreRowModel,
@@ -305,6 +306,10 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           let buttonText = 'Setujui';
           let disabledReason = '';
           
+
+          
+
+          
           if (isAdmin) {
             // Admin can approve any status except rejected/approved
             canApprove = status === 'pending' || status === 'level1_approved';
@@ -317,13 +322,19 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
             buttonText = 'Final Approve';
             if (status === 'pending') {
               disabledReason = 'Menunggu Level 1 Approval';
+              // Ensure canApprove is false for pending status
+              canApprove = false;
             }
+
           } else if (isDivisionSupervisor) {
             // Division supervisor can only do level 1 approval
             canApprove = status === 'pending';
             canReject = status === 'pending';
             buttonText = 'Level 1 Approve';
+
           }
+          
+
           
           if (status === 'approved' || status === 'rejected') {
             return (
@@ -335,25 +346,23 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           
           return (
             <div className="flex flex-col space-y-1">
+
+              
               <div className="flex space-x-2">
-                {canApprove ? (
-                  <Button
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700 text-xs px-2 py-1"
-                    onClick={() => openActionModal(row.original, 'approve')}
-                  >
-                    {buttonText}
-                  </Button>
-                ) : disabledReason ? (
-                  <Button
-                    size="sm"
-                    disabled
-                    className="bg-gray-300 text-gray-500 text-xs px-2 py-1 cursor-not-allowed"
-                    title={disabledReason}
-                  >
-                    {buttonText}
-                  </Button>
-                ) : null}
+                {/* Always show approve button, but control its state */}
+                <Button
+                  size="sm"
+                  disabled={!canApprove}
+                  className={`text-xs px-2 py-1 ${
+                    canApprove 
+                      ? 'bg-green-600 hover:bg-green-700' 
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                  onClick={canApprove ? () => openActionModal(row.original, 'approve') : undefined}
+                  title={disabledReason || buttonText}
+                >
+                  {buttonText}
+                </Button>
                 
                 {canReject && (
                   <Button
@@ -441,11 +450,10 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       setLoading(true);
       setError(null);
       
-      const [overtimeResponse, divisionsResponse, supervisorResponse] = await Promise.all([
-        fetch('/api/overtime-requests/'),
-        fetch('/api/supervisor/divisions/'),
-        fetch('/api/supervisor/approvals/summary')
-      ]);
+      // Fetch data individually to avoid Promise.all issues
+      const overtimeResponse = await authFetch('/api/overtime-requests/');
+      const divisionsResponse = await authFetch('/api/supervisor/divisions/');
+      const supervisorResponse = await authFetch('/api/supervisor/approvals/summary');
 
       if (!overtimeResponse.ok) {
         throw new Error('Failed to fetch overtime requests');
@@ -454,6 +462,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       const overtimeData: OvertimeRequestsResponse = await overtimeResponse.json();
       setData(overtimeData.results);
 
+
       // Fetch supervisor info (optional, for determining role)
       if (supervisorResponse.ok) {
         const supervisorData = await supervisorResponse.json();
@@ -461,7 +470,10 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           isOrgWide: supervisorData.can_approve_overtime_org_wide || false,
           isAdmin: false // This endpoint is for supervisors, so not admin
         });
+        
+
       } else {
+
         // Fallback: assume division supervisor
         setSupervisorInfo({
           isOrgWide: false,
@@ -508,7 +520,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       const endpoint = `/api/overtime-requests/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
 
-      const response = await fetch(endpoint, {
+      const response = await authFetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -526,6 +538,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       setSelectedRequest(null);
       setActionType(null);
       setRejectionReason('');
+      
+      // Force refresh data to get updated status
       await fetchData();
       onRefresh?.();
     } catch (err) {

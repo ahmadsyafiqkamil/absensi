@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import OvertimeRequestsTable from './OvertimeRequestsTable';
+import { authFetch } from '@/lib/authFetch';
 
 type OvertimeSummary = {
   total_requests: number;
@@ -38,7 +39,7 @@ export default function OvertimeRequestsApproval() {
       setLoading(true);
       setError(null);
       
-      const summaryResponse = await fetch('/api/overtime-requests/summary/');
+      const summaryResponse = await authFetch('/api/overtime-requests/summary/');
 
       if (!summaryResponse.ok) {
         throw new Error('Failed to fetch overtime summary');
@@ -98,7 +99,7 @@ export default function OvertimeRequestsApproval() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      {summary && (
+      {/* {summary && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">
@@ -170,7 +171,7 @@ export default function OvertimeRequestsApproval() {
             </CardContent>
           </Card>
         </div>
-      )}
+      )} */}
 
       {/* TanStack Table */}
       <OvertimeRequestsTable onRefresh={handleRefresh} />

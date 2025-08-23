@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { authFetch } from '@/lib/authFetch';
 import Link from 'next/link';
 
 type OvertimeSummary = {
@@ -28,7 +29,7 @@ export default function AdminApprovalSummary() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/overtime-requests/summary/');
+      const response = await authFetch('/api/overtime-requests/summary/');
       
       if (!response.ok) {
         throw new Error('Failed to fetch overtime summary');

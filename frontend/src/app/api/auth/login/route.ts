@@ -8,9 +8,15 @@ export async function POST(req: Request) {
     return NextResponse.json(data, { status: resp.status })
   }
 
+  console.log('Login successful, setting cookies...')
+  console.log('Access token length:', data.access?.length || 0)
+  console.log('NODE_ENV:', process.env.NODE_ENV)
+
   const res = NextResponse.json({ ok: true })
   const secure = process.env.NODE_ENV === 'production'
-  res.cookies.set('access_token', data.access, { httpOnly: true, secure, sameSite: 'lax', path: '/' })
+  console.log('Setting cookies with secure:', secure)
+  
+  res.cookies.set('access_token', data.access, { httpOnly: false, secure, sameSite: 'lax', path: '/' })
   res.cookies.set('refresh_token', data.refresh, { httpOnly: true, secure, sameSite: 'lax', path: '/' })
   return res
 }

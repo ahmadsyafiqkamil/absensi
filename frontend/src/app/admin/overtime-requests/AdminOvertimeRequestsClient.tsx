@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import * as Dialog from '@radix-ui/react-dialog';
+import { authFetch } from '@/lib/authFetch';
 import {
   useReactTable,
   getCoreRowModel,
@@ -188,11 +189,11 @@ export default function AdminOvertimeRequestsClient() {
       const queryParams = new URLSearchParams();
       if (statusFilter !== 'all') {
         queryParams.append('status', statusFilter);
-      }
+              }
 
       const [requestsResponse, summaryResponse] = await Promise.all([
-        fetch(`/api/overtime-requests/?${queryParams.toString()}`),
-        fetch('/api/overtime-requests/summary/')
+        authFetch(`/api/overtime-requests/?${queryParams.toString()}`),
+        authFetch('/api/overtime-requests/summary/')
       ]);
 
       if (!requestsResponse.ok || !summaryResponse.ok) {
