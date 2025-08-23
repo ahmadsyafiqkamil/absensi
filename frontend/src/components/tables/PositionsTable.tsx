@@ -17,7 +17,12 @@ import { Input } from "@/components/ui/input";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Label } from "@/components/ui/label";
 
-export type PositionRow = { id: number; name: string };
+export type PositionRow = { 
+  id: number; 
+  name: string;
+  can_approve_overtime_org_wide?: boolean;
+  approval_level?: number;
+};
 
 const columns: ColumnDef<PositionRow>[] = [
   {
@@ -29,6 +34,38 @@ const columns: ColumnDef<PositionRow>[] = [
     header: "Name",
     accessorKey: "name",
     cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>())}</span>,
+  },
+  {
+    header: "Org-wide Approval",
+    accessorKey: "can_approve_overtime_org_wide",
+    cell: ({ getValue }) => {
+      const canApprove = getValue<boolean>();
+      return (
+        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+          canApprove 
+            ? 'bg-green-100 text-green-800' 
+            : 'bg-gray-100 text-gray-800'
+        }`}>
+          {canApprove ? 'Yes' : 'No'}
+        </span>
+      );
+    },
+  },
+  {
+    header: "Approval Level",
+    accessorKey: "approval_level",
+    cell: ({ getValue }) => {
+      const level = getValue<number>();
+      return (
+        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+          level === 2 
+            ? 'bg-blue-100 text-blue-800' 
+            : 'bg-yellow-100 text-yellow-800'
+        }`}>
+          Level {level} {level === 2 ? '(Organization)' : '(Division)'}
+        </span>
+      );
+    },
   },
   {
     header: "Actions",
@@ -61,6 +98,8 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
+  const [editCanApproveOrgWide, setEditCanApproveOrgWide] = useState(false);
+  const [editApprovalLevel, setEditApprovalLevel] = useState(1);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const handleDelete = useCallback(async (id: number) => {
@@ -83,6 +122,8 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
       return
     }
     setEditName(d.name || "")
+    setEditCanApproveOrgWide(d.can_approve_overtime_org_wide || false)
+    setEditApprovalLevel(d.approval_level || 1)
     setEditOpen(true)
   }, [])
   const handleSave = useCallback(async () => {
@@ -93,7 +134,11 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
       const resp = await fetch(`/api/admin/positions/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName })
+        body: JSON.stringify({ 
+          name: editName,
+          can_approve_overtime_org_wide: editCanApproveOrgWide,
+          approval_level: editApprovalLevel
+        })
       })
       const data = await resp.json().catch(() => ({} as any))
       if (!resp.ok) throw new Error(data?.detail || 'Failed to update position')
@@ -104,7 +149,7 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
     } finally {
       setSaving(false)
     }
-  }, [editingId, editName, router])
+  }, [editingId, editName, editCanApproveOrgWide, editApprovalLevel, router])
   const table = useReactTable({
     data,
     columns,
@@ -182,6 +227,50 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
                 <Label htmlFor="edit-name">Name</Label>
                 <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
               </div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Approval Permissions</Label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="edit-can-approve-org-wide"
+                    checked={editCanApproveOrgWide}
+                    onChange={(e) => {
+                      setEditCanApproveOrgWide(e.target.checked);
+                      if (e.target.checked) {
+                        setEditApprovalLevel(2);
+                      } else {
+                        setEditApprovalLevel(1);
+                      }
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <Label htmlFor="edit-can-approve-org-wide" className="text-sm">
+                    Can approve overtime organization-wide
+                  </Label>
+                </div>
+                <p className="text-xs text-gray-500">
+                  If enabled, supervisors with this position can approve overtime requests from all divisions (final approval)
+                </p>
+              </div>
+              
+              <div className="space-y-1">
+                <Label htmlFor="edit-approval-level">Approval Level</Label>
+                <select
+                  id="edit-approval-level"
+                  value={editApprovalLevel}
+                  onChange={(e) => setEditApprovalLevel(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={editCanApproveOrgWide} // Auto-set to 2 when org-wide is enabled
+                >
+                  <option value={1}>Level 1 (Division)</option>
+                  <option value={2}>Level 2 (Organization)</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                  Level 1: Division-level approval, Level 2: Organization-level (final) approval
+                </p>
+              </div>
+              
               {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{errorMsg}</div>}
             </div>
             <div className="mt-4 flex justify-end gap-2">

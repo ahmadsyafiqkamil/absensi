@@ -26,7 +26,7 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,drf').split(',')
+ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,drf,absensi.localhost,api.absensi.localhost').split(',')
 
 
 # Application definition
@@ -93,9 +93,7 @@ DATABASES = {
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = [
-    os.getenv('CORS_ORIGIN_FRONTEND', 'http://localhost:3000'),
-]
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGIN_FRONTEND', 'http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # REST Framework basic config

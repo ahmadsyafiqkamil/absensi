@@ -434,12 +434,19 @@ class IsOvertimeRequestOwnerOrSupervisor(permissions.BasePermission):
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return True
         
-        # Supervisor can access overtime requests from their division
+        # Supervisor can access overtime requests from their division or org-wide
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
-                if supervisor_employee.division == obj.employee.division:
+                
+                # Check if supervisor has org-wide approval permission
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.can_approve_overtime_org_wide):
+                    # Org-wide supervisors can see any request
                     return True
+                else:
+                    # Division supervisors can only see requests from their division
+                    return supervisor_employee.division == obj.employee.division
             except:
                 pass
             return False
@@ -456,12 +463,13 @@ class IsOvertimeRequestApprover(permissions.BasePermission):
     Permission class for overtime request approval actions.
     
     Access Control:
-    - Admin: can approve any overtime request
-    - Supervisor: can approve overtime requests from their division
+    - Admin: can approve any overtime request (both level 1 and final)
+    - Supervisor with org-wide approval: can approve any overtime request (final approval)
+    - Supervisor (division): can approve overtime requests from their division (level 1)
     - Employee: no approval permission
     
     Use Case:
-    - Overtime approval/rejection actions
+    - Overtime approval/rejection actions with 2-level approval system
     """
     
     def has_permission(self, request, view):
@@ -487,11 +495,19 @@ class IsOvertimeRequestApprover(permissions.BasePermission):
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return True
         
-        # Supervisor can approve requests from their division
+        # Supervisor approval logic
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
-                return supervisor_employee.division == obj.employee.division
+                
+                # Check if supervisor has org-wide approval permission
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.can_approve_overtime_org_wide):
+                    # Org-wide supervisors can approve any request (final approval)
+                    return True
+                else:
+                    # Division supervisors can only approve requests from their division (level 1)
+                    return supervisor_employee.division == obj.employee.division
             except:
                 pass
         

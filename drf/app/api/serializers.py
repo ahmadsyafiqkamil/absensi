@@ -16,7 +16,7 @@ class DivisionSerializer(serializers.ModelSerializer):
 class PositionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Position
-        fields = ["id", "name"]
+        fields = ["id", "name", "can_approve_overtime_org_wide", "approval_level"]
 
 
 class UserBasicSerializer(serializers.ModelSerializer):

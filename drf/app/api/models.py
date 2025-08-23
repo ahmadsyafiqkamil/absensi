@@ -15,6 +15,19 @@ class Division(models.Model):
 
 class Position(models.Model):
     name = models.CharField(max_length=100, unique=True)
+    
+    # Approval permissions for overtime requests
+    can_approve_overtime_org_wide = models.BooleanField(
+        default=False,
+        verbose_name="Can Approve Overtime Organization-Wide",
+        help_text="If true, supervisors with this position can approve overtime requests from all divisions (final approval)"
+    )
+    approval_level = models.PositiveSmallIntegerField(
+        default=1,
+        choices=[(1, 'Division Level'), (2, 'Organization Level')],
+        verbose_name="Approval Level",
+        help_text="1 = Division-level approval, 2 = Organization-level (final) approval"
+    )
 
     class Meta:
         ordering = ["name"]
@@ -246,7 +259,8 @@ class OvertimeRequest(models.Model):
     """
     STATUS_CHOICES = [
         ('pending', 'Pending'),
-        ('approved', 'Approved'),
+        ('level1_approved', 'Level 1 Approved (Division)'),
+        ('approved', 'Final Approved'),
         ('rejected', 'Rejected'),
     ]
     
@@ -278,24 +292,57 @@ class OvertimeRequest(models.Model):
     
     # Status and approval
     status = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=STATUS_CHOICES,
         default='pending',
         verbose_name="Status"
     )
+    
+    # Level 1 approval (division supervisor)
+    level1_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='level1_approved_overtime_requests',
+        verbose_name="Level 1 Approved By"
+    )
+    level1_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Level 1 Approved At"
+    )
+    
+    # Final approval (organization-wide supervisor)
+    final_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='final_approved_overtime_requests',
+        verbose_name="Final Approved By"
+    )
+    final_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Final Approved At"
+    )
+    
+    # Legacy fields (untuk backward compatibility)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name='approved_overtime_requests',
-        verbose_name="Approved By"
+        verbose_name="Approved By (Legacy)"
     )
     approved_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Approved At"
+        verbose_name="Approved At (Legacy)"
     )
+    
     rejection_reason = models.TextField(
         null=True,
         blank=True,

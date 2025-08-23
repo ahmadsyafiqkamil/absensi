@@ -49,13 +49,13 @@ services:
     environment:
       - DJANGO_DEBUG=1
       - DJANGO_SECRET_KEY=dev-secret-key-change-in-production
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,absensi.localhost,api.absensi.localhost
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=absensi_db
       - MYSQL_USER=absensi_user
       - MYSQL_PASSWORD=absensi_password
-      - CORS_ORIGIN_FRONTEND=http://localhost:3000
+      - CORS_ORIGIN_FRONTEND=http://localhost:3000,https://absensi.localhost,https://api.absensi.localhost
     ports:
       - "8000:8000"
     depends_on:

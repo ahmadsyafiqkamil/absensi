@@ -3,6 +3,8 @@
 
 absensi.localhost {
 	encode gzip
+
+	# Route everything else to frontend
 	reverse_proxy frontend:3000
 }
 

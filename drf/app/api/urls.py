@@ -17,6 +17,7 @@ urlpatterns = [
     path('auth/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/verify', TokenVerifyView.as_view(), name='token_verify'),
     path('auth/me', views.me, name='auth-me'),
+    path('auth/logout', views.logout, name='auth-logout'),
     # Attendance (legacy/common)
     path('attendance/precheck', views.attendance_precheck, name='attendance-precheck'),
     path('attendance/check-in', views.attendance_check_in, name='attendance-check-in'),
@@ -92,6 +93,9 @@ urlpatterns += [
     
     # Employee work settings endpoint
     path('employee/settings/work', views.employee_work_settings, name='employee-work-settings'),
+    
+    # Supervisor approvals summary endpoint for dashboard card
+    path('supervisor/approvals/summary', views.supervisor_approvals_summary, name='supervisor-approvals-summary'),
 ]
 
 

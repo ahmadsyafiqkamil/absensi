@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 import Header from '@/components/Header';
+import AdminApprovalSummary from './AdminApprovalSummary';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -147,6 +148,27 @@ export default async function AdminPage() {
             </CardContent>
           </Card>
 
+          {/* Overtime Management */}
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Overtime Management
+              </CardTitle>
+              <CardDescription>Manage overtime requests with 2-level approval</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/admin/overtime-requests">
+                <Button variant="outline" className="w-full">View Overtime Requests</Button>
+              </Link>
+              <Link href="/admin/positions">
+                <Button variant="outline" className="w-full">Configure Approval Levels</Button>
+              </Link>
+            </CardContent>
+          </Card>
+
           {/* Reports */}
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
@@ -200,6 +222,9 @@ export default async function AdminPage() {
             </Card>
           </div>
         </div>
+
+        {/* Overtime Approval Summary */}
+        <AdminApprovalSummary />
 
       </div>
     </div>

@@ -138,6 +138,25 @@ def me(request):
 
 
 @extend_schema(
+    responses={200: {"type": "object", "properties": {"message": {"type": "string"}}}},
+    description="Logout user (JWT tokens are stateless, so this is mainly for client-side cleanup)",
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])  # Allow both authenticated and unauthenticated users
+def logout(request):
+    """
+    Logout endpoint for JWT authentication.
+    Since JWT tokens are stateless, this endpoint mainly serves
+    to provide a consistent API interface for client-side cleanup.
+    """
+    response = JsonResponse({"message": "Logout successful"}, status=200)
+    # Clear auth cookies used by frontend
+    response.delete_cookie('access_token', path='/')
+    response.delete_cookie('refresh_token', path='/')
+    return response
+
+
+@extend_schema(
     responses={200: list},
     auth=[{"BearerAuth": []}],
 )
@@ -2175,21 +2194,35 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         
         # Admin can see all overtime requests
         if user.is_superuser or user.groups.filter(name='admin').exists():
-            return OvertimeRequest.objects.all().select_related('user', 'employee', 'approved_by')
+            return OvertimeRequest.objects.all().select_related(
+                'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
+            )
         
-        # Supervisor can see overtime requests from their division
+        # Supervisor can see overtime requests from their division or org-wide
         elif user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
-                return OvertimeRequest.objects.filter(
-                    employee__division=supervisor_employee.division
-                ).select_related('user', 'employee', 'approved_by')
+                
+                # Check if supervisor has org-wide approval permission
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.can_approve_overtime_org_wide):
+                    # Org-wide supervisors can see all requests
+                    return OvertimeRequest.objects.all().select_related(
+                        'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
+                    )
+                else:
+                    # Division supervisors can only see requests from their division
+                    return OvertimeRequest.objects.filter(
+                        employee__division=supervisor_employee.division
+                    ).select_related('user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by')
             except:
                 return OvertimeRequest.objects.none()
         
         # Employee can only see their own overtime requests
         elif user.groups.filter(name='pegawai').exists():
-            return OvertimeRequest.objects.filter(user=user).select_related('user', 'employee', 'approved_by')
+            return OvertimeRequest.objects.filter(user=user).select_related(
+                'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
+            )
         
         return OvertimeRequest.objects.none()
     
@@ -2247,35 +2280,103 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
     def approve(self, request, pk=None):
-        """Approve overtime request"""
+        """Approve overtime request with 2-level approval system"""
         overtime_request = self.get_object()
+        user = request.user
         
-        if overtime_request.status != 'pending':
-            return Response(
-                {"detail": "Hanya pengajuan dengan status pending yang dapat disetujui"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Check if user is admin (can bypass 2-level approval)
+        is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
         
-        overtime_request.status = 'approved'
-        overtime_request.approved_by = request.user
-        overtime_request.approved_at = dj_timezone.now()
-        overtime_request.rejection_reason = None  # Clear any previous rejection reason
-        overtime_request.save()
+        # Check if user is org-wide supervisor
+        is_org_wide_supervisor = False
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                is_org_wide_supervisor = (supervisor_employee.position and 
+                                        supervisor_employee.position.can_approve_overtime_org_wide)
+            except:
+                pass
         
-        serializer = self.get_serializer(overtime_request)
-        return Response({
-            "detail": "Pengajuan lembur berhasil disetujui",
-            "data": serializer.data
-        })
+        # Admin can approve any status
+        if is_admin:
+            if overtime_request.status in ['rejected']:
+                return Response(
+                    {"detail": "Pengajuan yang sudah ditolak tidak dapat disetujui"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Admin approval goes straight to final approval
+            overtime_request.status = 'approved'
+            overtime_request.final_approved_by = user
+            overtime_request.final_approved_at = dj_timezone.now()
+            overtime_request.approved_by = user  # Legacy field
+            overtime_request.approved_at = dj_timezone.now()  # Legacy field
+            overtime_request.rejection_reason = None
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response({
+                "detail": "Pengajuan lembur berhasil disetujui (Final Approval)",
+                "data": serializer.data
+            })
+        
+        # Org-wide supervisor (final approval)
+        elif is_org_wide_supervisor:
+            if overtime_request.status != 'level1_approved':
+                if overtime_request.status == 'pending':
+                    return Response(
+                        {"detail": "Pengajuan harus disetujui oleh supervisor divisi terlebih dahulu (Level 1 Approval)"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    return Response(
+                        {"detail": "Hanya pengajuan dengan status Level 1 Approved yang dapat disetujui final"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            overtime_request.status = 'approved'
+            overtime_request.final_approved_by = user
+            overtime_request.final_approved_at = dj_timezone.now()
+            overtime_request.approved_by = user  # Legacy field
+            overtime_request.approved_at = dj_timezone.now()  # Legacy field
+            overtime_request.rejection_reason = None
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response({
+                "detail": "Pengajuan lembur berhasil disetujui (Final Approval)",
+                "data": serializer.data
+            })
+        
+        # Division supervisor (level 1 approval)
+        else:
+            if overtime_request.status != 'pending':
+                return Response(
+                    {"detail": "Hanya pengajuan dengan status pending yang dapat disetujui level 1"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            overtime_request.status = 'level1_approved'
+            overtime_request.level1_approved_by = user
+            overtime_request.level1_approved_at = dj_timezone.now()
+            overtime_request.rejection_reason = None
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response({
+                "detail": "Pengajuan lembur berhasil disetujui (Level 1 Approval). Menunggu approval final.",
+                "data": serializer.data
+            })
     
     @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
     def reject(self, request, pk=None):
         """Reject overtime request"""
         overtime_request = self.get_object()
         
-        if overtime_request.status != 'pending':
+        # Can reject pending or level1_approved requests
+        if overtime_request.status not in ['pending', 'level1_approved']:
             return Response(
-                {"detail": "Hanya pengajuan dengan status pending yang dapat ditolak"}, 
+                {"detail": "Hanya pengajuan dengan status pending atau level1_approved yang dapat ditolak"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -2288,8 +2389,13 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         
         overtime_request.status = 'rejected'
         overtime_request.rejection_reason = rejection_reason
-        overtime_request.approved_by = None
-        overtime_request.approved_at = None
+        # Clear all approval fields
+        overtime_request.level1_approved_by = None
+        overtime_request.level1_approved_at = None
+        overtime_request.final_approved_by = None
+        overtime_request.final_approved_at = None
+        overtime_request.approved_by = None  # Legacy field
+        overtime_request.approved_at = None  # Legacy field
         overtime_request.save()
         
         serializer = self.get_serializer(overtime_request)
@@ -2315,6 +2421,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Calculate statistics
         total_requests = queryset.count()
         pending_requests = queryset.filter(status='pending').count()
+        level1_approved_requests = queryset.filter(status='level1_approved').count()
         approved_requests = queryset.filter(status='approved').count()
         rejected_requests = queryset.filter(status='rejected').count()
         
@@ -2329,6 +2436,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         return Response({
             'total_requests': total_requests,
             'pending_requests': pending_requests,
+            'level1_approved_requests': level1_approved_requests,
             'approved_requests': approved_requests,
             'rejected_requests': rejected_requests,
             'total_approved_hours': float(total_hours),
@@ -2470,3 +2578,65 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             'total_potential_amount': sum(r['potential_overtime_amount'] for r in potential_records),
             'potential_records': potential_records,
         })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def supervisor_approvals_summary(request):
+    """Get summary of pending approvals for supervisor dashboard card"""
+    user = request.user
+    
+    # Check if user is supervisor
+    if not user.groups.filter(name='supervisor').exists():
+        return Response(
+            {"detail": "Hanya supervisor yang dapat mengakses endpoint ini"}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        supervisor_employee = user.employee
+    except:
+        return Response(
+            {"detail": "User tidak memiliki profil employee"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if supervisor has org-wide approval permission
+    is_org_wide_supervisor = (supervisor_employee.position and 
+                            supervisor_employee.position.can_approve_overtime_org_wide)
+    
+    # Build overtime requests queryset based on supervisor scope
+    if is_org_wide_supervisor:
+        # Org-wide supervisors can see all requests
+        overtime_qs = OvertimeRequest.objects.all()
+        # For org-wide supervisors, show requests that need final approval
+        pending_overtime_count = overtime_qs.filter(status__in=['pending', 'level1_approved']).count()
+    else:
+        # Division supervisors can only see requests from their division
+        overtime_qs = OvertimeRequest.objects.filter(
+            employee__division=supervisor_employee.division
+        )
+        # For division supervisors, show only pending requests (need level 1 approval)
+        pending_overtime_count = overtime_qs.filter(status='pending').count()
+    
+    # Build attendance corrections queryset based on supervisor scope
+    if is_org_wide_supervisor:
+        # Org-wide supervisors can see all corrections
+        corrections_qs = AttendanceCorrection.objects.all()
+    else:
+        # Division supervisors can only see corrections from their division
+        corrections_qs = AttendanceCorrection.objects.filter(
+            user__employee__division=supervisor_employee.division
+        )
+    
+    pending_corrections_count = corrections_qs.filter(
+        status=AttendanceCorrection.CorrectionStatus.PENDING
+    ).count()
+    
+    return Response({
+        'pending_overtime_count': pending_overtime_count,
+        'pending_corrections_count': pending_corrections_count,
+        'is_org_wide_supervisor': is_org_wide_supervisor,
+        'supervisor_division': supervisor_employee.division.name if supervisor_employee.division else None,
+        'can_approve_overtime_org_wide': is_org_wide_supervisor,
+    })

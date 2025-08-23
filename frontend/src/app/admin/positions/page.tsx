@@ -7,6 +7,8 @@ import PositionsTable from '@/components/tables/PositionsTable';
 type PositionRow = {
   id: number;
   name: string;
+  can_approve_overtime_org_wide?: boolean;
+  approval_level?: number;
 }
 
 type PaginatedPositions = {
@@ -19,7 +21,7 @@ type PaginatedPositions = {
 async function getPositions(page: number, pageSize: number): Promise<PaginatedPositions> {
   const token = (await cookies()).get('access_token')?.value
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-  const url = new URL(`${backend}/api/positions/`)
+  const url = new URL(`${backend}/api/admin/positions/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
   const res = await fetch(url.toString(), {
