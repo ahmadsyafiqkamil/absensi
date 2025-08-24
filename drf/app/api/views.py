@@ -4029,3 +4029,123 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 'urgent': urgent_priority,
             }
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
+    def generate_overtime_report(self, request, pk=None):
+        """Generate overtime report for approved monthly summary request"""
+        summary_request = self.get_object()
+        
+        # Only approved requests can generate report
+        if summary_request.status != 'approved':
+            return Response(
+                {"detail": "Hanya pengajuan yang sudah disetujui yang dapat generate report"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Parse period (YYYY-MM format)
+            year, month = summary_request.request_period.split('-')
+            year = int(year)
+            month = int(month)
+            
+            # Get overtime data that has been approved (2-level approval)
+            overtime_data = self._get_approved_overtime_data(summary_request.employee, year, month)
+            
+            # Calculate summary statistics
+            summary_stats = self._calculate_overtime_summary(overtime_data)
+            
+            # Mark as completed
+            summary_request.status = 'completed'
+            summary_request.completed_at = dj_timezone.now()
+            summary_request.completion_notes = f"Report lembur berhasil di-generate untuk periode {summary_request.request_period}"
+            summary_request.save()
+            
+            return Response({
+                "detail": "Report lembur berhasil di-generate",
+                "period": summary_request.request_period,
+                "employee": {
+                    "id": summary_request.employee.id,
+                    "name": summary_request.employee.fullname or summary_request.employee.user.username,
+                    "division": summary_request.employee.division.name if summary_request.employee.division else None
+                },
+                "overtime_summary": summary_stats,
+                "overtime_details": overtime_data,
+                "generated_at": summary_request.completed_at.isoformat()
+            })
+            
+        except ValueError:
+            return Response(
+                {"detail": "Format periode tidak valid. Gunakan format YYYY-MM"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Error saat generate report: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def _get_approved_overtime_data(self, employee, year, month):
+        """Get overtime data that has been approved (2-level approval)"""
+        from django.db.models import Q
+        
+        # Get attendance records for the specified month with overtime
+        attendance_records = Attendance.objects.filter(
+            employee=employee,
+            date_local__year=year,
+            date_local__month=month,
+            overtime_minutes__gt=0  # Only records with overtime
+        ).select_related('user', 'employee', 'employee__division')
+        
+        overtime_data = []
+        
+        for attendance in attendance_records:
+            # Check if this overtime has been approved through OvertimeRequest
+            overtime_request = OvertimeRequest.objects.filter(
+                attendance=attendance,
+                status='approved'  # Final approval (2-level)
+            ).first()
+            
+            if overtime_request:
+                # This overtime has been approved through 2-level approval
+                overtime_data.append({
+                    'date': attendance.date_local.isoformat(),
+                    'check_in': attendance.check_in_at_utc.isoformat() if attendance.check_in_at_utc else None,
+                    'check_out': attendance.check_out_at_utc.isoformat() if attendance.check_out_at_utc else None,
+                    'overtime_minutes': attendance.overtime_minutes,
+                    'overtime_hours': round(attendance.overtime_minutes / 60, 2),
+                    'overtime_amount': float(attendance.overtime_amount),
+                    'overtime_approved': True,
+                    'approval_notes': overtime_request.notes if overtime_request.notes else None,
+                    'is_holiday': attendance.is_holiday,
+                    'employee_note': attendance.employee_note
+                })
+        
+        return overtime_data
+
+    def _calculate_overtime_summary(self, overtime_data):
+        """Calculate summary statistics for overtime data"""
+        if not overtime_data:
+            return {
+                'total_overtime_days': 0,
+                'total_overtime_minutes': 0,
+                'total_overtime_hours': 0,
+                'total_overtime_amount': 0,
+                'average_overtime_per_day': 0,
+                'holiday_overtime_days': 0,
+                'workday_overtime_days': 0
+            }
+        
+        total_minutes = sum(item['overtime_minutes'] for item in overtime_data)
+        total_amount = sum(item['overtime_amount'] for item in overtime_data)
+        holiday_days = sum(1 for item in overtime_data if item['is_holiday'])
+        workday_days = sum(1 for item in overtime_data if not item['is_holiday'])
+        
+        return {
+            'total_overtime_days': len(overtime_data),
+            'total_overtime_minutes': total_minutes,
+            'total_overtime_hours': round(total_minutes / 60, 2),
+            'total_overtime_amount': round(total_amount, 2),
+            'average_overtime_per_day': round(total_minutes / len(overtime_data), 2) if overtime_data else 0,
+            'holiday_overtime_days': holiday_days,
+            'workday_overtime_days': workday_days
+        }

@@ -111,9 +111,10 @@ export default function MonthlySummaryRequestCard() {
     include_corrections: false,
     include_summary_stats: true,
     priority: 'medium' as const,
-    expected_completion_date: '',
+    expected_completion_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default to 7 days from now
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [generatingReport, setGeneratingReport] = useState<number | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -181,7 +182,7 @@ export default function MonthlySummaryRequestCard() {
         include_corrections: false,
         include_summary_stats: true,
         priority: 'medium',
-        expected_completion_date: '',
+        expected_completion_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default to 7 days from now
       });
       setIsModalOpen(false);
       
@@ -207,6 +208,37 @@ export default function MonthlySummaryRequestCard() {
     // Clear error when user starts typing
     if (formErrors[name]) {
       setFormErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleGenerateReport = async (requestId: number) => {
+    try {
+      setGeneratingReport(requestId);
+      setError(null);
+      
+      const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/generate_overtime_report/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate overtime report');
+      }
+
+      const result = await response.json();
+      
+      // Show success message
+      alert(`Report lembur berhasil di-generate!\n\nPeriode: ${result.period}\nTotal Hari Lembur: ${result.overtime_summary.total_overtime_days}\nTotal Jam Lembur: ${result.overtime_summary.total_overtime_hours} jam\nTotal Gaji Lembur: Rp ${result.overtime_summary.total_overtime_amount.toLocaleString()}`);
+      
+      // Refresh data to show updated status
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate overtime report');
+    } finally {
+      setGeneratingReport(null);
     }
   };
 
@@ -505,6 +537,21 @@ export default function MonthlySummaryRequestCard() {
                     </div>
                   </div>
                 )}
+
+                {/* Action Buttons */}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  {request.status === 'approved' && (
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={() => handleGenerateReport(request.id)}
+                        className="bg-blue-600 hover:bg-blue-700"
+                        disabled={generatingReport === request.id}
+                      >
+                        {generatingReport === request.id ? 'Generating...' : 'Generate Report Lembur'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
                 {/* Completion Notes */}
                 {request.completion_notes && (
