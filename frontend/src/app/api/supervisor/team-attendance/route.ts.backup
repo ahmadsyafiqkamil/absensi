@@ -2,12 +2,8 @@ import { NextResponse } from 'next/server'
 import { backendFetch } from '@/lib/backend'
 import { cookies } from 'next/headers'
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ employeeId: string }> }
-) {
+export async function GET(request: Request) {
   try {
-    const { employeeId } = await params;
     const accessToken = (await cookies()).get('access_token')?.value
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
@@ -16,16 +12,16 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get('start_date')
     const endDate = searchParams.get('end_date')
-    const month = searchParams.get('month')
+    const employeeId = searchParams.get('employee_id')
     
     // Build query string
-    const queryParams = new URLSearchParams()
-    if (startDate) queryParams.append('start_date', startDate)
-    if (endDate) queryParams.append('end_date', endDate)
-    if (month) queryParams.append('month', month)
+    const params = new URLSearchParams()
+    if (startDate) params.append('start_date', startDate)
+    if (endDate) params.append('end_date', endDate)
+    if (employeeId) params.append('employee_id', employeeId)
     
-    const queryString = queryParams.toString()
-    const url = `/api/supervisor/attendance-detail/${employeeId}${queryString ? `?${queryString}` : ''}`
+    const queryString = params.toString()
+    const url = `/api/supervisor/team-attendance${queryString ? `?${queryString}` : ''}`
     
     const response = await backendFetch(url, {
       method: 'GET',
@@ -43,7 +39,7 @@ export async function GET(
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error fetching supervisor attendance detail:', error)
+    console.error('Error fetching supervisor team attendance:', error)
     return NextResponse.json(
       { detail: 'Internal server error' },
       { status: 500 }

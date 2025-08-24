@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
+    const cookieStore = cookies()
     const accessToken = cookieStore.get('access_token')?.value
 
     if (!accessToken) {

@@ -1,6 +1,7 @@
 import { meFromServerCookies } from '@/lib/backend';
 import Header from '@/components/Header';
 import OvertimeRequestsManager from '../OvertimeRequestsManager';
+import MonthlySummaryRequestCard from '../MonthlySummaryRequestCard';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -45,6 +46,11 @@ export default async function PegawaiOvertimePage() {
 
         {/* Overtime Requests Manager */}
         <OvertimeRequestsManager />
+        
+        {/* Monthly Summary Request Card */}
+        <div className="mt-8">
+          <MonthlySummaryRequestCard />
+        </div>
       </div>
     </div>
   );

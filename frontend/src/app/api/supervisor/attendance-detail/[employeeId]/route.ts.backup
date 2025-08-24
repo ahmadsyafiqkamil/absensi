@@ -4,10 +4,9 @@ import { cookies } from 'next/headers'
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ employeeId: string }> }
+  { params }: { params: { employeeId: string } }
 ) {
   try {
-    const { employeeId } = await params;
     const accessToken = (await cookies()).get('access_token')?.value
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
@@ -25,7 +24,7 @@ export async function GET(
     if (month) queryParams.append('month', month)
     
     const queryString = queryParams.toString()
-    const url = `/api/supervisor/attendance-detail/${employeeId}${queryString ? `?${queryString}` : ''}`
+    const url = `/api/supervisor/attendance-detail/${params.employeeId}${queryString ? `?${queryString}` : ''}`
     
     const response = await backendFetch(url, {
       method: 'GET',
