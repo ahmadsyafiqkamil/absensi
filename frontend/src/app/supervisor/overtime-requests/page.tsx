@@ -1,6 +1,7 @@
 import { meFromServerCookies } from '@/lib/backend';
 import Header from '@/components/Header';
 import OvertimeRequestsApproval from './OvertimeRequestsApproval';
+import MonthlyExportApprovalManager from '../MonthlyExportApprovalManager';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -64,6 +65,11 @@ export default async function SupervisorOvertimeRequestsPage() {
 
         {/* Overtime Requests Approval */}
         <OvertimeRequestsApproval />
+        
+        {/* Monthly Export Approval */}
+        <div className="mt-8">
+          <MonthlyExportApprovalManager />
+        </div>
       </div>
     </div>
   );

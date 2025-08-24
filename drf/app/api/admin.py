@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeExportHistory
 
 @admin.register(Division)
 class DivisionAdmin(admin.ModelAdmin):
@@ -120,4 +120,39 @@ class OvertimeRequestAdmin(admin.ModelAdmin):
             obj.approved_by = request.user
             from django.utils import timezone
             obj.approved_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(OvertimeExportHistory)
+class OvertimeExportHistoryAdmin(admin.ModelAdmin):
+    list_display = ("id", "employee", "export_period", "export_type", "status", "created_at", "exported_at")
+    list_filter = ("status", "export_type", "export_period", "created_at")
+    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name")
+    readonly_fields = ("created_at", "updated_at", "exported_at")
+    
+    fieldsets = (
+        ('Export Information', {
+            'fields': ('employee', 'user', 'export_period', 'export_type')
+        }),
+        ('Status and Approval', {
+            'fields': ('status', 'level1_approved_by', 'level1_approved_at', 'final_approved_by', 'final_approved_at', 'rejection_reason')
+        }),
+        ('Export Result', {
+            'fields': ('exported_file_path', 'export_metadata')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'exported_at')
+        }),
+    )
+    
+    def save_model(self, request, obj, form, change):
+        # Auto-set approvers when status changes
+        if obj.status == 'level1_approved' and not obj.level1_approved_by:
+            obj.level1_approved_by = request.user
+            from django.utils import timezone
+            obj.level1_approved_at = timezone.now()
+        elif obj.status == 'approved' and not obj.final_approved_by:
+            obj.final_approved_by = request.user
+            from django.utils import timezone
+            obj.exported_at = timezone.now()
         super().save_model(request, obj, form, change)

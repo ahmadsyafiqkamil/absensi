@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import TodayAttendance from '../pegawai/TodayAttendance';
 import AttendanceWidget from '../pegawai/AttendanceWidget';
+import MonthlyExportApprovalManager from './MonthlyExportApprovalManager';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -192,6 +193,11 @@ export default async function SupervisorPage() {
               </Link>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Monthly Export Approval */}
+        <div className="mt-8">
+          <MonthlyExportApprovalManager />
         </div>
 
         {/* Quick Stats */}

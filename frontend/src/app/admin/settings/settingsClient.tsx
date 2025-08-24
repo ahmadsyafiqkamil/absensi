@@ -48,6 +48,8 @@ export default function SettingsClient() {
   const [holidaysLoading, setHolidaysLoading] = useState(false)
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [templateUploadMessage, setTemplateUploadMessage] = useState<string | null>(null)
+  const [uploadingMonthlyExportTemplate, setUploadingMonthlyExportTemplate] = useState(false)
+  const [monthlyExportTemplateMessage, setMonthlyExportTemplateMessage] = useState<string | null>(null)
 
   useEffect(() => {
     ;(async () => {
@@ -63,7 +65,7 @@ export default function SettingsClient() {
         setHolidaysCount(h?.count ?? 0)
         setHolidaysPage(1)
         setHolidaysPageSize(10)
-      } catch (e) {
+      } catch (_) {
         setError('Gagal memuat settings')
       } finally {
         setLoading(false)
@@ -101,7 +103,7 @@ export default function SettingsClient() {
         body: JSON.stringify(settings),
       })
       const data = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error((data as any)?.detail || 'Gagal menyimpan settings')
+      if (!resp.ok) throw new Error((data as { detail?: string })?.detail || 'Gagal menyimpan settings')
       setSettings(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal menyimpan settings')
@@ -122,7 +124,7 @@ export default function SettingsClient() {
         }
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            const { latitude, longitude, accuracy } = pos.coords
+            const { latitude, longitude } = pos.coords
             setSettings({
               ...settings,
               office_latitude: Number(latitude.toFixed(7)),
@@ -151,7 +153,7 @@ export default function SettingsClient() {
     })
     const data = await resp.json().catch(() => ({}))
     if (!resp.ok) {
-      setError((data as any)?.detail || 'Gagal menambah libur')
+      setError((data as { detail?: string })?.detail || 'Gagal menambah libur')
       return
     }
     // reload current page
@@ -163,7 +165,7 @@ export default function SettingsClient() {
     const resp = await fetch(`/api/admin/settings/holidays/${id}`, { method: 'DELETE' })
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}))
-      setError((data as any)?.detail || 'Gagal menghapus libur')
+      setError((data as { detail?: string })?.detail || 'Gagal menghapus libur')
       return
     }
     await loadHolidays(holidaysPage, holidaysPageSize)
@@ -194,6 +196,34 @@ export default function SettingsClient() {
       setError(e instanceof Error ? e.message : 'Gagal upload template')
     } finally {
       setUploadingTemplate(false)
+    }
+  }
+
+  async function uploadMonthlyExportTemplate(file: File) {
+    setUploadingMonthlyExportTemplate(true)
+    setMonthlyExportTemplateMessage(null)
+    setError(null)
+    
+    try {
+      const formData = new FormData()
+      formData.append('template', file)
+      
+      const resp = await fetch('/api/overtime-requests/upload-monthly-export-template', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      const data = await resp.json()
+      
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Gagal upload template monthly export')
+      }
+      
+      setMonthlyExportTemplateMessage('Template monthly export berhasil diupload! Template akan otomatis terdeteksi.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal upload template monthly export')
+    } finally {
+      setUploadingMonthlyExportTemplate(false)
     }
   }
 
@@ -467,7 +497,7 @@ export default function SettingsClient() {
                         } else {
                           alert(`Error: ${data.detail}`);
                         }
-                      } catch (error) {
+                      } catch (_) {
                         alert('Gagal reload template');
                       }
                     }}
@@ -524,6 +554,17 @@ export default function SettingsClient() {
                   </div>
                 </div>
 
+                {/* Overtime Table */}
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-orange-800 mb-2">📊 Tabel Overtime</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TABEL_OVERTIME}}"}</code> → Tabel lengkap daftar overtime dengan styling profesional</div>
+                    <div className="text-xs text-orange-600 mt-1">• Kolom: No, Tanggal, Jam Lembur, Deskripsi, Status, Gaji Lembur</div>
+                    <div className="text-xs text-orange-600">• Styling: Borders, alignment, alternating colors</div>
+                    <div className="text-xs text-orange-600">• Summary: Total jam dan gaji di baris terakhir</div>
+                  </div>
+                </div>
+
                 {/* Approval Info */}
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <h4 className="font-semibold text-purple-800 mb-2">✅ Informasi Approval</h4>
@@ -565,9 +606,218 @@ export default function SettingsClient() {
               <div className="bg-yellow-50 p-4 rounded-lg text-sm text-yellow-800 space-y-2">
                 <div>• Template harus dalam format <strong>.docx</strong> (Word Document)</div>
                 <div>• Placeholder harus menggunakan format <code className="bg-white px-1 rounded">{"{{NAMA_PLACEHOLDER}}"}</code></div>
-                <div>• Hanya overtime dengan status <strong>"approved"</strong> yang bisa didownload</div>
+                <div>• Hanya overtime dengan status <strong>&quot;approved&quot;</strong> yang bisa didownload</div>
                 <div>• Template akan otomatis diisi dengan data dari database overtime</div>
                 <div>• Jika placeholder tidak ditemukan, akan tetap ditampilkan apa adanya</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Monthly Export Overtime Template Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>📊 Template Export Overtime Bulanan</CardTitle>
+          <CardDescription>Upload dan kelola template untuk export data overtime bulanan dengan tabel dinamis</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="grid gap-4">
+            {monthlyExportTemplateMessage && (
+              <div className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded">
+                {monthlyExportTemplateMessage}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-4">
+                <Button 
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = '/template/template_monthly_overtime_export.docx';
+                    link.download = 'template_monthly_overtime_export.docx';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  📥 Download Template Sample
+                </Button>
+                <div className="text-sm text-gray-600">
+                  Download template sample untuk export overtime bulanan. Template ini sudah dilengkapi dengan placeholder yang diperlukan.
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept=".docx"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        uploadMonthlyExportTemplate(file);
+                      }
+                    }}
+                    className="hidden"
+                    id="monthly-export-template-upload"
+                    disabled={uploadingMonthlyExportTemplate}
+                  />
+                  <label
+                    htmlFor="monthly-export-template-upload"
+                    className={`cursor-pointer inline-flex items-center px-4 py-2 rounded-md transition-colors ${
+                      uploadingMonthlyExportTemplate 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-green-600 hover:bg-green-700'
+                    } text-white`}
+                  >
+                    {uploadingMonthlyExportTemplate ? '⏳ Uploading...' : '📤 Upload Template Export Bulanan'}
+                  </label>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Upload template Word (.docx) baru untuk export overtime bulanan. Template akan otomatis terdeteksi berdasarkan priority system.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/overtime-requests/reload-monthly-export-template', {
+                      method: 'POST',
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                      alert(`Template monthly export cache berhasil di-clear. Template aktif: ${data.current_template}`);
+                    } else {
+                      alert(`Error: ${data.detail}`);
+                    }
+                  } catch (_) {
+                    alert('Gagal reload template monthly export');
+                  }
+                }}
+                className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded"
+              >
+                🔄 Reload Template Cache
+              </button>
+              <span className="text-xs text-gray-500">
+                Gunakan jika template tidak otomatis terdeteksi
+              </span>
+            </div>
+            
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">📋 Placeholder untuk Export Bulanan</h3>
+              
+              <div className="grid gap-4">
+                {/* Header & Metadata */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-blue-800 mb-2">📄 Header & Metadata</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{PERIODE_EXPORT}}"}</code> → Periode export (Januari 2024)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TANGGAL_EXPORT}}"}</code> → Tanggal export (15 Januari 2024)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NOMOR_EXPORT}}"}</code> → Nomor export (EXP-202401/2025)</div>
+                  </div>
+                </div>
+
+                {/* Employee Information */}
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-green-800 mb-2">👤 Informasi Pegawai</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NAMA_PEGAWAI}}"}</code> → Nama lengkap pegawai</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NIP_PEGAWAI}}"}</code> → NIP pegawai</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{DIVISI_PEGAWAI}}"}</code> → Divisi pegawai</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{JABATAN_PEGAWAI}}"}</code> → Jabatan pegawai</div>
+                  </div>
+                </div>
+
+                {/* Summary Data */}
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-yellow-800 mb-2">📊 Ringkasan Bulanan</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TOTAL_HARI_LEMBUR}}"}</code> → Total hari lembur (5 hari)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TOTAL_JAM_LEMBUR}}"}</code> → Total jam lembur (24.5 jam)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TOTAL_GAJI_LEMBUR}}"}</code> → Total gaji lembur (Rp 1,250,000)</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{RATA_RATA_PER_HARI}}"}</code> → Rata-rata jam per hari (4.9 jam)</div>
+                  </div>
+                </div>
+
+                {/* Overtime Table */}
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-orange-800 mb-2">📊 Tabel Detail Overtime</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TABEL_OVERTIME}}"}</code> → Tabel lengkap daftar overtime bulanan</div>
+                    <div className="text-xs text-orange-600 mt-1">• Kolom: Tanggal, Jam Lembur, Deskripsi, Status, Gaji Lembur</div>
+                    <div className="text-xs text-orange-600">• Data: Semua overtime request dalam periode yang dipilih</div>
+                    <div className="text-xs text-orange-600">• Styling: Professional borders, alternating row colors</div>
+                  </div>
+                </div>
+
+                {/* Approval Information */}
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-purple-800 mb-2">✅ Informasi Approval</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{LEVEL1_APPROVER}}"}</code> → Nama supervisor divisi</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{FINAL_APPROVER}}"}</code> → Nama supervisor organisasi</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{TANGGAL_APPROVAL}}"}</code> → Tanggal approval</div>
+                  </div>
+                </div>
+
+                {/* Company Information */}
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <h4 className="font-semibold text-red-800 mb-2">🏢 Informasi Perusahaan</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{NAMA_PERUSAHAAN}}"}</code> → KJRI DUBAI</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{ALAMAT_PERUSAHAAN}}"}</code> → KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI</div>
+                    <div><code className="bg-white px-2 py-1 rounded">{"{{LOKASI}}"}</code> → Dubai</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">📊 Tabel Dinamis</h3>
+              <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700 space-y-2">
+                <div>• <strong>Tabel overtime otomatis</strong> akan di-generate oleh sistem</div>
+                <div>• <strong>Kolom tabel</strong>: Tanggal, Jam Lembur, Deskripsi, Status, Gaji Lembur</div>
+                <div>• <strong>Styling profesional</strong> dengan borders, alignment, dan formatting</div>
+                <div>• <strong>Summary row</strong> dengan total jam dan gaji</div>
+                <div>• <strong>Data real-time</strong> dari database overtime</div>
+                <div>• <strong>Placeholder khusus</strong>: <code className="bg-white px-1 rounded">{"{{TABEL_OVERTIME}}"}</code> untuk menempatkan tabel di posisi tertentu</div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">📝 Cara Penggunaan</h3>
+              <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700 space-y-2">
+                <div>1. <strong>Download Template Sample</strong> untuk melihat struktur yang direkomendasikan</div>
+                <div>2. <strong>Edit template Word</strong> dengan menambahkan placeholder yang diinginkan</div>
+                <div>3. <strong>Upload template baru</strong> menggunakan form di atas</div>
+                <div>4. <strong>Template akan otomatis terdeteksi</strong> berdasarkan priority system</div>
+                <div>5. <strong>Test fitur export</strong> dengan data overtime bulanan</div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">🎯 Template Priority System</h3>
+              <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 space-y-2">
+                <div>1. <strong>template_monthly_overtime_export.docx</strong> (Primary - Prioritas Tertinggi)</div>
+                <div>2. <strong>template_monthly_overtime.docx</strong> (Fallback 1)</div>
+                <div>3. <strong>template_monthly_export.docx</strong> (Fallback 2)</div>
+                <div>4. <strong>template_overtime_monthly.docx</strong> (Fallback 3)</div>
+                <div>5. <strong>Regular overtime template</strong> (Final fallback)</div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">⚠️ Catatan Penting</h3>
+              <div className="bg-yellow-50 p-4 rounded-lg text-sm text-yellow-800 space-y-2">
+                <div>• Template harus dalam format <strong>.docx</strong> (Word Document)</div>
+                <div>• Placeholder harus menggunakan format <code className="bg-white px-1 rounded">{"{{NAMA_PLACEHOLDER}}"}</code></div>
+                <div>• <strong>Tabel akan di-generate otomatis</strong> oleh sistem</div>
+                <div>• <strong>Data real-time</strong> dari database overtime</div>
+                <div>• <strong>Template caching</strong> untuk performance optimal</div>
+                <div>• <strong>Fallback system</strong> memastikan export selalu berhasil</div>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from django.contrib.auth.models import User
 from django.views.decorators.http import require_GET
+import datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
@@ -2256,6 +2257,75 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         
         # If no template found, return None
         return None, None
+
+    def get_monthly_export_template_path(self):
+        """Get the path to the active monthly export template with cache busting"""
+        import os
+        from django.conf import settings
+        from django.core.cache import cache
+        
+        template_dir = os.path.join(settings.BASE_DIR, 'template')
+        
+        # Check if we have cached template info
+        cache_key = 'monthly_export_template_path'
+        cached_result = cache.get(cache_key)
+        
+        # Get current template directory state
+        current_files = []
+        if os.path.exists(template_dir):
+            for file in os.listdir(template_dir):
+                if file.endswith('.docx') and not file.startswith('~$'):  # Exclude temp files
+                    file_path = os.path.join(template_dir, file)
+                    current_files.append((file, os.path.getmtime(file_path)))
+        
+        # Create a hash of current directory state
+        current_state = hash(tuple(sorted(current_files)))
+        
+        # If cached result exists and directory hasn't changed, use cache
+        if cached_result and cached_result.get('state') == current_state:
+            return cached_result['path'], cached_result['name']
+        
+        # Directory has changed, recalculate template path
+        if current_files:
+            # Sort by modification time (newest first)
+            current_files.sort(key=lambda x: x[1], reverse=True)
+            
+            # Priority order for monthly export template files
+            priority_names = [
+                'template_monthly_overtime_export.docx',        # Primary monthly export template
+                'template_monthly_overtime.docx',               # Fallback 1
+                'template_monthly_export.docx',                 # Fallback 2
+                'template_overtime_monthly.docx',               # Fallback 3
+            ]
+            
+            # First try priority names
+            for priority_name in priority_names:
+                for file_name, _ in current_files:
+                    if file_name == priority_name:
+                        template_path = os.path.join(template_dir, priority_name)
+                        result = (template_path, priority_name)
+                        # Cache the result
+                        cache.set(cache_key, {
+                            'path': template_path,
+                            'name': priority_name,
+                            'state': current_state
+                        }, timeout=300)  # Cache for 5 minutes
+                        return result
+            
+            # If no priority names found, use the most recently modified .docx file
+            most_recent = current_files[0][0]
+            template_path = os.path.join(template_dir, most_recent)
+            result = (template_path, most_recent)
+            # Cache the result
+            cache.set(cache_key, {
+                'path': template_path,
+                'name': most_recent,
+                'state': current_state
+            }, timeout=300)  # Cache for 5 minutes
+            return result
+        
+        # If no template found, return None
+        return None, None
     
     def get_queryset(self):
         """Filter queryset based on user role"""
@@ -2863,6 +2933,456 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
+    def upload_monthly_export_template(self, request):
+        """Upload new monthly export template for overtime"""
+        try:
+            # Check if user is admin
+            if not request.user.is_staff:
+                return Response(
+                    {"detail": "Hanya admin yang dapat upload template"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get template file from request
+            template_file = request.FILES.get('template')
+            if not template_file:
+                return Response(
+                    {"detail": "Template file tidak ditemukan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file type
+            if not template_file.name.endswith('.docx'):
+                return Response(
+                    {"detail": "File harus berformat .docx"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file size (max 10MB)
+            if template_file.size > 10 * 1024 * 1024:
+                return Response(
+                    {"detail": "Ukuran file maksimal 10MB"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Import required libraries
+            import os
+            from django.conf import settings
+            
+            # Path to template directory
+            template_dir = os.path.join(settings.BASE_DIR, 'template')
+            if not os.path.exists(template_dir):
+                os.makedirs(template_dir)
+            
+            # Save new template with original filename (but ensure .docx extension)
+            original_filename = template_file.name
+            if not original_filename.endswith('.docx'):
+                original_filename += '.docx'
+            
+            # Save as the new monthly export template
+            template_path = os.path.join(template_dir, original_filename)
+            
+            with open(template_path, 'wb+') as destination:
+                for chunk in template_file.chunks():
+                    destination.write(chunk)
+            
+            # Clear template cache to force reload
+            from django.core.cache import cache
+            cache.delete('monthly_export_template_path')
+            
+            return Response({
+                "detail": "Template monthly export berhasil diupload",
+                "filename": original_filename,
+                "size": template_file.size,
+                "path": template_path,
+                "message": f"Template '{original_filename}' berhasil disimpan dan akan digunakan sebagai template monthly export. Cache template telah di-clear."
+            })
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal upload template monthly export: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
+    def reload_monthly_export_template(self, request):
+        """Force reload monthly export template cache (admin only)"""
+        try:
+            from django.core.cache import cache
+            cache.delete('monthly_export_template_path')
+            
+            # Get current template info
+            template_path, template_name = self.get_monthly_export_template_path()
+            
+            return Response({
+                "detail": "Template monthly export cache berhasil di-clear",
+                "current_template": template_name,
+                "message": f"Template '{template_name}' akan digunakan untuk export monthly overtime selanjutnya"
+            })
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal reload template monthly export: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get', 'post'])
+    def monthly_exports(self, request):
+        """Handle monthly export requests - GET for list, POST for new request"""
+        if request.method == 'GET':
+            # Get monthly export requests for current user
+            try:
+                from .models import OvertimeExportHistory
+                
+                # Get current employee
+                employee = request.user.employee
+                if not employee:
+                    return Response(
+                        {"detail": "Employee profile tidak ditemukan"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Get export requests for this employee
+                exports = OvertimeExportHistory.objects.filter(
+                    employee=employee
+                ).order_by('-created_at')
+                
+                # Serialize data
+                export_data = []
+                for export in exports:
+                    export_data.append({
+                        'id': export.id,
+                        'export_period': export.export_period,
+                        'export_type': export.export_type,
+                        'status': export.status,
+                        'level1_approved_by': {
+                            'id': export.level1_approved_by.id,
+                            'username': export.level1_approved_by.username,
+                            'first_name': export.level1_approved_by.first_name,
+                            'last_name': export.level1_approved_by.last_name,
+                        } if export.level1_approved_by else None,
+                        'level1_approved_at': export.level1_approved_at.isoformat() if export.level1_approved_at else None,
+                        'final_approved_by': {
+                            'id': export.final_approved_by.id,
+                            'username': export.final_approved_by.username,
+                            'first_name': export.final_approved_by.first_name,
+                            'last_name': export.final_approved_by.last_name,
+                        } if export.final_approved_by else None,
+                        'final_approved_at': export.final_approved_at.isoformat() if export.final_approved_at else None,
+                        'rejection_reason': export.rejection_reason,
+                        'exported_file_path': export.exported_file_path,
+                        'exported_at': export.exported_at.isoformat() if export.exported_at else None,
+                        'created_at': export.created_at.isoformat(),
+                        'updated_at': export.updated_at.isoformat(),
+                    })
+                
+                return Response({
+                    'count': len(export_data),
+                    'next': None,
+                    'previous': None,
+                    'results': export_data
+                })
+                
+            except Exception as e:
+                return Response(
+                    {"detail": f"Gagal mengambil data export bulanan: {str(e)}"}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        elif request.method == 'POST':
+            # Create new monthly export request
+            try:
+                from .models import OvertimeExportHistory
+                from django.utils import timezone
+                
+                # Get current employee
+                employee = request.user.employee
+                if not employee:
+                    return Response(
+                        {"detail": "Employee profile tidak ditemukan"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Get export period from request
+                export_period = request.data.get('export_period')
+                if not export_period:
+                    return Response(
+                        {"detail": "Periode export harus diisi"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Check if request already exists for this period
+                existing_request = OvertimeExportHistory.objects.filter(
+                    employee=employee,
+                    export_period=export_period,
+                    export_type='monthly_docx'
+                ).first()
+                
+                if existing_request:
+                    return Response(
+                        {"detail": f"Permintaan export untuk periode {export_period} sudah ada"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Create new export request
+                export_request = OvertimeExportHistory.objects.create(
+                    employee=employee,
+                    user=request.user,
+                    export_period=export_period,
+                    export_type='monthly_docx',
+                    status='pending'
+                )
+                
+                return Response({
+                    "detail": "Permintaan export bulanan berhasil dibuat",
+                    "id": export_request.id,
+                    "export_period": export_request.export_period,
+                    "status": export_request.status
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                return Response(
+                    {"detail": f"Gagal membuat permintaan export bulanan: {str(e)}"}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+    @action(detail=True, methods=['get'])
+    def download_monthly_export(self, request, pk=None):
+        """Download monthly export file if approved"""
+        try:
+            from .models import OvertimeExportHistory
+            import os
+            
+            # Get export request
+            export_request = OvertimeExportHistory.objects.get(id=pk)
+            
+            # Check if user owns this request
+            if export_request.employee.user != request.user:
+                return Response(
+                    {"detail": "Tidak dapat mengakses export request ini"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if export is approved and has file
+            if export_request.status != 'approved' or not export_request.exported_file_path:
+                return Response(
+                    {"detail": "Export belum disetujui atau file belum tersedia"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if file exists
+            if not os.path.exists(export_request.exported_file_path):
+                return Response(
+                    {"detail": "File export tidak ditemukan"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Return file for download
+            from django.http import FileResponse
+            import mimetypes
+            
+            file_path = export_request.exported_file_path
+            filename = os.path.basename(file_path)
+            
+            # Determine content type
+            content_type, _ = mimetypes.guess_type(filename)
+            if not content_type:
+                content_type = 'application/octet-stream'
+            
+            response = FileResponse(
+                open(file_path, 'rb'),
+                content_type=content_type
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+            
+        except OvertimeExportHistory.DoesNotExist:
+            return Response(
+                {"detail": "Export request tidak ditemukan"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal download export: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def approve_monthly_export(self, request, pk=None):
+        """Approve monthly export request (level 1 or final)"""
+        try:
+            from .models import OvertimeExportHistory
+            from django.utils import timezone
+            
+            # Get export request
+            export_request = OvertimeExportHistory.objects.get(id=pk)
+            
+            # Get approval level
+            level = request.data.get('level')
+            if level not in ['level1', 'final']:
+                return Response(
+                    {"detail": "Level approval harus 'level1' atau 'final'"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user can approve
+            if level == 'level1':
+                # Level 1: Division supervisor can approve
+                if not request.user.is_staff or not hasattr(request.user, 'employee'):
+                    return Response(
+                        {"detail": "Hanya supervisor divisi yang dapat approve level 1"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                
+                # Check if request is pending
+                if export_request.status != 'pending':
+                    return Response(
+                        {"detail": "Request harus dalam status pending untuk approval level 1"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Approve level 1
+                export_request.status = 'level1_approved'
+                export_request.level1_approved_by = request.user
+                export_request.level1_approved_at = timezone.now()
+                export_request.save()
+                
+                return Response({
+                    "detail": "Export request berhasil disetujui level 1",
+                    "status": export_request.status
+                })
+                
+            elif level == 'final':
+                # Final: Organization supervisor can approve
+                if not request.user.is_staff:
+                    return Response(
+                        {"detail": "Hanya supervisor organisasi yang dapat approve final"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                
+                # Check if request is level1_approved
+                if export_request.status != 'level1_approved':
+                    return Response(
+                        {"detail": "Request harus dalam status level1_approved untuk approval final"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Approve final and generate export
+                export_request.status = 'approved'
+                export_request.final_approved_by = request.user
+                export_request.final_approved_at = timezone.now()
+                
+                # Generate export file
+                try:
+                    # Call export function
+                    from .views import export_monthly_docx
+                    
+                    # Create a mock request for export
+                    class MockRequest:
+                        def __init__(self, query_params):
+                            self.query_params = query_params
+                    
+                    mock_request = MockRequest({
+                        'month': export_request.export_period,
+                        'employee_id': export_request.employee.id
+                    })
+                    
+                    # Generate export
+                    export_response = self.export_monthly_docx(mock_request)
+                    
+                    if export_response.status_code == 200:
+                        # Get file path from response
+                        response_data = export_response.data
+                        if 'file_path' in response_data:
+                            export_request.exported_file_path = response_data['file_path']
+                            export_request.exported_at = timezone.now()
+                            export_request.status = 'exported'
+                    
+                    export_request.save()
+                    
+                    return Response({
+                        "detail": "Export request berhasil disetujui final dan file telah di-generate",
+                        "status": export_request.status,
+                        "file_path": export_request.exported_file_path
+                    })
+                    
+                except Exception as e:
+                    # If export fails, still approve but mark as failed
+                    export_request.status = 'failed'
+                    export_request.save()
+                    
+                    return Response({
+                        "detail": f"Export request disetujui tapi gagal generate file: {str(e)}",
+                        "status": export_request.status
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        except OvertimeExportHistory.DoesNotExist:
+            return Response(
+                {"detail": "Export request tidak ditemukan"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal approve export request: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def reject_monthly_export(self, request, pk=None):
+        """Reject monthly export request"""
+        try:
+            from .models import OvertimeExportHistory
+            from django.utils import timezone
+            
+            # Get export request
+            export_request = OvertimeExportHistory.objects.get(id=pk)
+            
+            # Get rejection reason
+            rejection_reason = request.data.get('rejection_reason')
+            if not rejection_reason:
+                return Response(
+                    {"detail": "Alasan penolakan harus diisi"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user can reject
+            if not request.user.is_staff:
+                return Response(
+                    {"detail": "Hanya supervisor yang dapat reject export request"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if request can be rejected
+            if export_request.status not in ['pending', 'level1_approved']:
+                return Response(
+                    {"detail": "Request tidak dapat ditolak dalam status ini"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Reject request
+            export_request.status = 'rejected'
+            export_request.rejection_reason = rejection_reason
+            export_request.save()
+            
+            return Response({
+                "detail": "Export request berhasil ditolak",
+                "status": export_request.status,
+                "rejection_reason": rejection_reason
+            })
+            
+        except OvertimeExportHistory.DoesNotExist:
+            return Response(
+                {"detail": "Export request tidak ditemukan"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal reject export request: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
         """Download overtime request document using template"""
@@ -3098,6 +3618,433 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 {"detail": f"Gagal generate dokumen: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=False, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
+    def export_monthly_docx(self, request):
+        """Export monthly overtime data to DOCX using template with dynamic table"""
+        try:
+            # Get export parameters
+            month = request.query_params.get('month')  # Format: YYYY-MM
+            employee_id = request.query_params.get('employee_id')
+            
+            if not month:
+                return Response(
+                    {"detail": "Parameter month (YYYY-MM) diperlukan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate month format
+            try:
+                year, month_num = month.split('-')
+                year = int(year)
+                month_num = int(month_num)
+                if month_num < 1 or month_num > 12:
+                    raise ValueError
+            except ValueError:
+                return Response(
+                    {"detail": "Format month harus YYYY-MM (contoh: 2025-01)"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get employee (current user or specified employee)
+            if employee_id and request.user.is_superuser:
+                try:
+                    employee = Employee.objects.get(id=employee_id)
+                except Employee.DoesNotExist:
+                    return Response(
+                        {"detail": "Employee tidak ditemukan"}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                try:
+                    employee = request.user.employee
+                except:
+                    return Response(
+                        {"detail": "User tidak memiliki profil employee"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Get overtime data for the month
+            start_date = datetime.date(year, month_num, 1)
+            if month_num == 12:
+                end_date = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
+            else:
+                end_date = datetime.date(year, month_num + 1, 1) - datetime.timedelta(days=1)
+            
+            overtime_records = OvertimeRequest.objects.filter(
+                employee=employee,
+                date_requested__gte=start_date,
+                date_requested__lte=end_date
+            ).order_by('date_requested')
+            
+            if not overtime_records.exists():
+                return Response(
+                    {"detail": f"Tidak ada data overtime untuk periode {month}"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Generate DOCX document
+            docx_file = self.generate_monthly_export_docx(
+                overtime_records, 
+                employee, 
+                month, 
+                start_date, 
+                end_date
+            )
+            
+            # Return file response
+            from django.http import FileResponse
+            import os
+            
+            filename = f"Laporan_Overtime_{employee.nip}_{month}.docx"
+            
+            response = FileResponse(
+                open(docx_file, 'rb'),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            # Clean up temporary file
+            os.unlink(docx_file)
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal generate export: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def generate_monthly_export_docx(self, overtime_records, employee, month, start_date, end_date):
+        """Generate monthly overtime export DOCX with dynamic table"""
+        try:
+            # Import required libraries
+            from docx import Document
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            from io import BytesIO
+            from django.utils import timezone
+            import os
+            import locale
+            import tempfile
+            
+            # Set locale for Indonesian formatting
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'id_ID')
+                except:
+                    pass
+            
+            # Get monthly export template path (priority) or fallback to regular template
+            template_path, template_name = self.get_monthly_export_template_path()
+            
+            if not template_path:
+                # Try to get regular template as fallback
+                template_path, template_name = self.get_template_path()
+            
+            if not template_path:
+                # Create basic document if no template found
+                doc = Document()
+            else:
+                # Load existing template
+                doc = Document(template_path)
+            
+            # Calculate summary data
+            total_days = overtime_records.count()
+            total_hours = sum(float(record.overtime_hours) for record in overtime_records)
+            total_amount = sum(float(record.overtime_amount) for record in overtime_records)
+            avg_per_day = total_hours / total_days if total_days > 0 else 0
+            
+            # Get approval information
+            level1_approver = None
+            final_approver = None
+            
+            # Find the most recent approved record for approval info
+            approved_records = overtime_records.filter(status='approved')
+            if approved_records.exists():
+                latest_approved = approved_records.latest('final_approved_at')
+                level1_approver = latest_approved.level1_approved_by
+                final_approver = latest_approved.final_approved_by
+            
+            # Format dates
+            current_date = timezone.now()
+            month_name = start_date.strftime('%B %Y')
+            export_date = current_date.strftime('%d %B %Y')
+            
+            # Define replacement mappings
+            replacements = {
+                # Header info
+                '{{PERIODE_EXPORT}}': month_name,
+                '{{TANGGAL_EXPORT}}': export_date,
+                '{{NOMOR_EXPORT}}': f"EXP-{month.replace('-', '')}/2025",
+                
+                # Summary data
+                '{{TOTAL_HARI_LEMBUR}}': f"{total_days} hari",
+                '{{TOTAL_JAM_LEMBUR}}': f"{total_hours:.1f} jam",
+                '{{TOTAL_GAJI_LEMBUR}}': f"{total_amount:.2f} AED",
+                '{{RATA_RATA_PER_HARI}}': f"{avg_per_day:.1f} jam",
+                
+                # Employee info
+                '{{NAMA_PEGAWAI}}': employee.fullname or employee.user.get_full_name() or employee.user.username,
+                '{{NIP_PEGAWAI}}': employee.nip or '-',
+                '{{DIVISI_PEGAWAI}}': employee.division.name if employee.division else '-',
+                '{{JABATAN_PEGAWAI}}': employee.position.name if employee.position else '-',
+                
+                # Approval info
+                '{{LEVEL1_APPROVER}}': self.get_approver_name(level1_approver),
+                '{{FINAL_APPROVER}}': self.get_approver_name(final_approver),
+                '{{TANGGAL_APPROVAL}}': export_date,
+                
+                # Company info
+                '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+                '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+                '{{LOKASI}}': 'Dubai',
+            }
+            
+            # Replace placeholders in document
+            self.replace_placeholders_in_document(doc, replacements)
+            
+            # If no template exists, create basic structure
+            if not template_path:
+                self.create_basic_document_structure(doc, replacements)
+            
+            # Add overtime table to document
+            self.add_overtime_table_to_document(doc, overtime_records, total_hours, total_amount)
+            
+            # Save to temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
+            doc.save(temp_file.name)
+            temp_file.close()
+            
+            return temp_file.name
+            
+        except Exception as e:
+            raise Exception(f"Gagal generate DOCX: {str(e)}")
+
+    def add_overtime_table_to_document(self, doc, overtime_records, total_hours, total_amount):
+        """Add overtime table directly to document with professional styling"""
+        from docx.shared import Inches
+        
+        # Add heading
+        doc.add_heading('Detail Pengajuan Overtime', level=2)
+        
+        # Create table
+        table = doc.add_table(rows=1, cols=6)
+        table.style = 'Table Grid'
+        
+        # Set column widths
+        table.columns[0].width = Inches(0.5)   # No
+        table.columns[1].width = Inches(1.0)   # Tanggal
+        table.columns[2].width = Inches(1.0)   # Jam Lembur
+        table.columns[3].width = Inches(2.5)   # Deskripsi
+        table.columns[4].width = Inches(1.2)   # Status
+        table.columns[5].width = Inches(1.2)   # Gaji Lembur
+        
+        # Add header row
+        header_row = table.rows[0]
+        headers = ['No', 'Tanggal', 'Jam Lembur', 'Deskripsi Pekerjaan', 'Status', 'Gaji Lembur']
+        
+        for i, header in enumerate(headers):
+            cell = header_row.cells[i]
+            cell.text = header
+            # Style header
+            for paragraph in cell.paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in paragraph.runs:
+                    run.bold = True
+        
+        # Add data rows
+        for i, record in enumerate(overtime_records, 1):
+            row = table.add_row()
+            
+            # Format data
+            date_str = record.date_requested.strftime('%d/%m/%Y')
+            hours_str = f"{float(record.overtime_hours):.1f} jam"
+            
+            # Truncate description
+            description = record.work_description
+            if len(description) > 50:
+                description = description[:50] + '...'
+            
+            # Format status
+            status_map = {
+                'pending': 'Menunggu',
+                'level1_approved': 'Level 1 Approved',
+                'approved': 'Final Approved',
+                'rejected': 'Ditolak'
+            }
+            status_display = status_map.get(record.status, record.status)
+            
+            # Format amount
+            amount_str = f"{float(record.overtime_amount):.2f} AED"
+            
+            # Populate row
+            row_data = [str(i), date_str, hours_str, description, status_display, amount_str]
+            
+            for j, data in enumerate(row_data):
+                cell = row.cells[j]
+                cell.text = data
+                
+                # Style cells
+                for paragraph in cell.paragraphs:
+                    if j == 0:  # No column
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif j == 2:  # Jam Lembur
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif j == 4:  # Status
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif j == 5:  # Gaji Lembur
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    else:
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        # Add summary row
+        summary_row = table.add_row()
+        summary_row.cells[0].text = 'TOTAL'
+        summary_row.cells[1].text = ''
+        summary_row.cells[2].text = f"{total_hours:.1f} jam"
+        summary_row.cells[3].text = ''
+        summary_row.cells[4].text = ''
+        summary_row.cells[5].text = f"{total_amount:.2f} AED"
+        
+        # Style summary row
+        for cell in summary_row.cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+        
+        # Add spacing
+        doc.add_paragraph()
+
+    def create_basic_document_structure(self, doc, replacements):
+        """Create basic document structure if no template exists"""
+        from docx.shared import Inches
+        
+        # Title
+        title = doc.add_heading('LAPORAN OVERTIME BULANAN', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Add spacing
+        doc.add_paragraph()
+        
+        # Header information
+        doc.add_heading('INFORMASI DOKUMEN', level=1)
+        
+        # Create header table
+        header_table = doc.add_table(rows=4, cols=2)
+        header_table.style = 'Table Grid'
+        
+        # Header data
+        header_data = [
+            ['Periode', replacements['{{PERIODE_EXPORT}}']],
+            ['Tanggal Export', replacements['{{TANGGAL_EXPORT}}']],
+            ['Nomor Export', replacements['{{NOMOR_EXPORT}}']],
+            ['Status', 'Draft']
+        ]
+        
+        for i, (label, value) in enumerate(header_data):
+            header_table.cell(i, 0).text = label
+            header_table.cell(i, 1).text = value
+        
+        # Employee information
+        doc.add_heading('INFORMASI PEGAWAI', level=1)
+        
+        emp_table = doc.add_table(rows=4, cols=2)
+        emp_table.style = 'Table Grid'
+        
+        emp_data = [
+            ['Nama', replacements['{{NAMA_PEGAWAI}}']],
+            ['NIP', replacements['{{NIP_PEGAWAI}}']],
+            ['Divisi', replacements['{{DIVISI_PEGAWAI}}']],
+            ['Jabatan', replacements['{{JABATAN_PEGAWAI}}']]
+        ]
+        
+        for i, (label, value) in enumerate(emp_data):
+            emp_table.cell(i, 0).text = label
+            emp_table.cell(i, 1).text = value
+        
+        # Summary
+        doc.add_heading('RINGKASAN BULANAN', level=1)
+        
+        summary_table = doc.add_table(rows=4, cols=2)
+        summary_table.style = 'Table Grid'
+        
+        summary_data = [
+            ['Total Hari Lembur', replacements['{{TOTAL_HARI_LEMBUR}}']],
+            ['Total Jam Lembur', replacements['{{TOTAL_JAM_LEMBUR}}']],
+            ['Total Gaji Lembur', replacements['{{TOTAL_GAJI_LEMBUR}}']],
+            ['Rata-rata per Hari', replacements['{{RATA_RATA_PER_HARI}}']]
+        ]
+        
+        for i, (label, value) in enumerate(summary_data):
+            summary_table.cell(i, 0).text = label
+            summary_table.cell(i, 1).text = value
+        
+        # Approval section
+        doc.add_heading('APPROVAL', level=1)
+        
+        approval_table = doc.add_table(rows=3, cols=2)
+        approval_table.style = 'Table Grid'
+        
+        approval_data = [
+            ['Level 1', replacements['{{LEVEL1_APPROVER}}']],
+            ['Final', replacements['{{FINAL_APPROVER}}']],
+            ['Tanggal Approval', replacements['{{TANGGAL_APPROVAL}}']]
+        ]
+        
+        for i, (label, value) in enumerate(approval_data):
+            approval_table.cell(i, 0).text = label
+            approval_table.cell(i, 1).text = value
+        
+        # Company info
+        doc.add_heading('PERUSAHAAN', level=1)
+        doc.add_paragraph(replacements['{{NAMA_PERUSAHAAN}}'])
+        doc.add_paragraph(replacements['{{ALAMAT_PERUSAHAAN}}'])
+        doc.add_paragraph(replacements['{{LOKASI}}'])
+        
+        # Add spacing before overtime table
+        doc.add_paragraph()
+
+    def replace_placeholders_in_document(self, doc, replacements):
+        """Replace placeholders in document paragraphs and tables"""
+        # Function to replace text in paragraphs
+        def replace_text_in_paragraphs(paragraphs, old_text, new_text):
+            for paragraph in paragraphs:
+                for run in paragraph.runs:
+                    if old_text in run.text:
+                        run.text = run.text.replace(old_text, new_text)
+        
+        # Function to replace text in tables
+        def replace_text_in_tables(tables, old_text, new_text):
+            for table in tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                if old_text in run.text:
+                                    run.text = run.text.replace(old_text, new_text)
+        
+        # Replace all placeholders
+        for placeholder, value in replacements.items():
+            replace_text_in_paragraphs(doc.paragraphs, placeholder, value)
+            replace_text_in_tables(doc.tables, placeholder, value)
+
+    def get_approver_name(self, user):
+        """Get approver name from employee.fullname with fallback to username"""
+        if not user:
+            return '-'
+        # Try to get name from employee.fullname first
+        if hasattr(user, 'employee') and user.employee and user.employee.fullname:
+            return user.employee.fullname
+        # Fallback to user.get_full_name()
+        full_name = user.get_full_name()
+        if full_name and full_name.strip():
+            return full_name
+        # Final fallback to username
+        return user.username.title()  # Capitalize username as fallback
 
 
 @api_view(['GET'])

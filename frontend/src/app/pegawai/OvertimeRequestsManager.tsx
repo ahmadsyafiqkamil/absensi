@@ -18,6 +18,7 @@ import {
   flexRender,
   SortingState,
   ColumnFiltersState,
+  FilterFn,
 } from '@tanstack/react-table';
 
 type OvertimeRequest = {
@@ -101,6 +102,20 @@ function formatDateTime(dateString: string): string {
   });
 }
 
+// Custom filter function for month filtering
+const monthFilterFn: FilterFn<any> = (row, columnId, value: string) => {
+  if (!value) return true;
+  
+  const dateValue = row.getValue(columnId) as string;
+  if (!dateValue) return false;
+  
+  const date = new Date(dateValue);
+  const filterDate = new Date(value);
+  
+  return date.getFullYear() === filterDate.getFullYear() && 
+         date.getMonth() === filterDate.getMonth();
+};
+
 function getStatusColor(status: string): string {
   switch (status) {
     case 'approved':
@@ -147,12 +162,39 @@ export default function OvertimeRequestsManager() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState<string>(() => {
+    // Default to current month
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Apply month filter when monthFilter changes
+  useEffect(() => {
+    if (monthFilter) {
+      const [year, month] = monthFilter.split('-');
+      setColumnFilters(prev => {
+        const existingFilter = prev.find(filter => filter.id === 'date_requested');
+        if (existingFilter) {
+          return prev.map(filter => 
+            filter.id === 'date_requested' 
+              ? { ...filter, value: monthFilter }
+              : filter
+          );
+        } else {
+          return [...prev, { id: 'date_requested', value: monthFilter }];
+        }
+      });
+    } else {
+      // Remove date filter if monthFilter is empty
+      setColumnFilters(prev => prev.filter(filter => filter.id !== 'date_requested'));
+    }
+  }, [monthFilter]);
 
   const fetchData = async () => {
     try {
@@ -307,6 +349,7 @@ export default function OvertimeRequestsManager() {
     columnHelper.accessor('date_requested', {
       header: 'Tanggal',
       cell: (info) => formatDate(info.getValue()),
+      filterFn: monthFilterFn,
     }),
     columnHelper.accessor('overtime_hours', {
       header: 'Jam Lembur',
@@ -683,6 +726,14 @@ export default function OvertimeRequestsManager() {
               ? `Menampilkan ${requests.length} pengajuan lembur` 
               : 'Belum ada pengajuan lembur'
             }
+            {monthFilter && (
+              <span className="ml-2 text-blue-600">
+                • Filter: {new Date(monthFilter).toLocaleDateString('id-ID', { 
+                  year: 'numeric', 
+                  month: 'long' 
+                })}
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -696,17 +747,73 @@ export default function OvertimeRequestsManager() {
             </div>
           ) : (
             <>
-              {/* Global Search */}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Cari pengajuan..."
-                  value={globalFilter ?? ''}
-                  onChange={(e) => setGlobalFilter(e.target.value)}
-                  className="max-w-sm"
-                />
-                <div className="text-sm text-gray-500">
-                  Menampilkan {table.getFilteredRowModel().rows.length} dari {requests.length} data
+              {/* Filters and Search */}
+              <div className="flex items-center gap-4 flex-wrap">
+                {/* Month Filter */}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
+                    Filter Bulan:
+                  </Label>
+                  <Input
+                    id="month-filter"
+                    type="month"
+                    value={monthFilter}
+                    onChange={(e) => setMonthFilter(e.target.value)}
+                    className="w-40"
+                  />
+                  {monthFilter && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMonthFilter('')}
+                      className="text-xs"
+                    >
+                      Clear
+                    </Button>
+                  )}
                 </div>
+
+                {/* Global Search */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Cari pengajuan..."
+                    value={globalFilter ?? ''}
+                    onChange={(e) => setGlobalFilter(e.target.value)}
+                    className="max-w-sm"
+                  />
+                </div>
+
+                {/* Results Count */}
+                <div className="text-sm text-gray-500">
+                  {monthFilter ? (
+                    <>
+                      Menampilkan <span className="font-medium text-blue-600">{table.getFilteredRowModel().rows.length}</span> dari{' '}
+                      <span className="font-medium">{requests.length}</span> data
+                      <span className="text-blue-600 ml-1">
+                        ({Math.round((table.getFilteredRowModel().rows.length / requests.length) * 100)}%)
+                      </span>
+                    </>
+                  ) : (
+                    `Menampilkan ${table.getFilteredRowModel().rows.length} dari ${requests.length} data`
+                  )}
+                </div>
+
+                {/* Export Filtered Data */}
+                {monthFilter && table.getFilteredRowModel().rows.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Export filtered data logic here
+                      const filteredData = table.getFilteredRowModel().rows.map(row => row.original);
+                      console.log('Exporting filtered data:', filteredData);
+                      // You can implement CSV export or other export functionality
+                    }}
+                    className="text-xs"
+                  >
+                    📊 Export Data
+                  </Button>
+                )}
               </div>
 
               {/* TanStack Table */}

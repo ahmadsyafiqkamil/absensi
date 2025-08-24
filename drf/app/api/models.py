@@ -405,3 +405,119 @@ class OvertimeRequest(models.Model):
         verbose_name = "Overtime Request"
         verbose_name_plural = "Overtime Requests"
         ordering = ['-created_at']
+
+
+class OvertimeExportHistory(models.Model):
+    """
+    Model untuk tracking history export data overtime bulanan.
+    Memungkinkan audit trail dan monitoring penggunaan fitur export.
+    """
+    EXPORT_STATUS_CHOICES = [
+        ('pending', 'Pending Approval'),
+        ('level1_approved', 'Level 1 Approved'),
+        ('approved', 'Final Approved'),
+        ('rejected', 'Rejected'),
+        ('exported', 'Successfully Exported'),
+        ('failed', 'Export Failed'),
+    ]
+    
+    employee = models.ForeignKey(
+        'Employee',
+        on_delete=models.CASCADE,
+        related_name='overtime_exports',
+        verbose_name="Employee"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='overtime_exports',
+        verbose_name="User Requesting Export"
+    )
+    
+    # Export details
+    export_period = models.CharField(
+        max_length=7,
+        verbose_name="Export Period",
+        help_text="Format: YYYY-MM (e.g., 2024-01)"
+    )
+    export_type = models.CharField(
+        max_length=20,
+        default='monthly_docx',
+        verbose_name="Export Type"
+    )
+    
+    # Status and approval
+    status = models.CharField(
+        max_length=20,
+        choices=EXPORT_STATUS_CHOICES,
+        default='pending',
+        verbose_name="Status"
+    )
+    
+    # Level 1 approval (division supervisor)
+    level1_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='level1_approved_exports',
+        verbose_name="Level 1 Approved By"
+    )
+    level1_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Level 1 Approved At"
+    )
+    
+    # Final approval (organization-wide supervisor)
+    final_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='final_approved_exports',
+        verbose_name="Final Approved By"
+    )
+    final_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Final Approved At"
+    )
+    
+    rejection_reason = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Rejection Reason"
+    )
+    
+    # Export result
+    exported_file_path = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name="Exported File Path"
+    )
+    export_metadata = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Export Metadata",
+        help_text="Additional export information (file size, record count, etc.)"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    exported_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Exported At"
+    )
+    
+    def __str__(self):
+        return f"Overtime Export - {self.employee.user.username} - {self.export_period} - {self.status}"
+    
+    class Meta:
+        verbose_name = "Overtime Export History"
+        verbose_name_plural = "Overtime Export Histories"
+        ordering = ['-created_at']
+        unique_together = ("employee", "export_period", "export_type")

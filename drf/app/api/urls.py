@@ -91,6 +91,33 @@ urlpatterns += [
     path('overtime/<int:attendance_id>/approve', views.approve_overtime, name='approve-overtime'),
     path('overtime/report', views.overtime_report, name='overtime-report'),
     
+    # Export monthly overtime to DOCX
+    path('overtime-requests/export-monthly-docx', 
+         views.OvertimeRequestViewSet.as_view({'get': 'export_monthly_docx'}), 
+         name='overtime-export-monthly-docx'),
+    
+    # Monthly export template management
+    path('overtime-requests/upload-monthly-export-template', 
+         views.OvertimeRequestViewSet.as_view({'post': 'upload_monthly_export_template'}), 
+         name='overtime-upload-monthly-export-template'),
+    path('overtime-requests/reload-monthly-export-template', 
+         views.OvertimeRequestViewSet.as_view({'post': 'reload_monthly_export_template'}), 
+         name='overtime-reload-monthly-export-template'),
+
+    # Monthly export approval endpoints
+    path('overtime-requests/monthly_exports', 
+         views.OvertimeRequestViewSet.as_view({'get': 'monthly_exports', 'post': 'monthly_exports'}), 
+         name='overtime-monthly-exports'),
+    path('overtime-requests/monthly_exports/<int:pk>/download', 
+         views.OvertimeRequestViewSet.as_view({'get': 'download_monthly_export'}), 
+         name='overtime-download-monthly-export'),
+    path('overtime-requests/monthly_exports/<int:pk>/approve', 
+         views.OvertimeRequestViewSet.as_view({'post': 'approve_monthly_export'}), 
+         name='overtime-approve-monthly-export'),
+    path('overtime-requests/monthly_exports/<int:pk>/reject', 
+         views.OvertimeRequestViewSet.as_view({'post': 'reject_monthly_export'}), 
+         name='overtime-reject-monthly-export'),
+    
     # Employee work settings endpoint
     path('employee/settings/work', views.employee_work_settings, name='employee-work-settings'),
     
