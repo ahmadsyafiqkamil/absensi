@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeExportHistory
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
 
 @admin.register(Division)
 class DivisionAdmin(admin.ModelAdmin):
@@ -123,25 +123,31 @@ class OvertimeRequestAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
-@admin.register(OvertimeExportHistory)
-class OvertimeExportHistoryAdmin(admin.ModelAdmin):
-    list_display = ("id", "employee", "export_period", "export_type", "status", "created_at", "exported_at")
-    list_filter = ("status", "export_type", "export_period", "created_at")
-    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name")
-    readonly_fields = ("created_at", "updated_at", "exported_at")
+@admin.register(MonthlySummaryRequest)
+class MonthlySummaryRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "employee", "request_period", "report_type", "status", "priority", "created_at")
+    list_filter = ("status", "report_type", "request_period", "priority", "created_at")
+    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "request_title")
+    readonly_fields = ("created_at", "updated_at")
     
     fieldsets = (
-        ('Export Information', {
-            'fields': ('employee', 'user', 'export_period', 'export_type')
+        ('Request Information', {
+            'fields': ('employee', 'user', 'request_period', 'report_type', 'request_title', 'request_description')
+        }),
+        ('Data Scope', {
+            'fields': ('include_attendance', 'include_overtime', 'include_corrections', 'include_summary_stats')
+        }),
+        ('Priority & Timeline', {
+            'fields': ('priority', 'expected_completion_date')
         }),
         ('Status and Approval', {
             'fields': ('status', 'level1_approved_by', 'level1_approved_at', 'final_approved_by', 'final_approved_at', 'rejection_reason')
         }),
-        ('Export Result', {
-            'fields': ('exported_file_path', 'export_metadata')
+        ('Completion', {
+            'fields': ('completed_at', 'completion_notes')
         }),
         ('Timestamps', {
-            'fields': ('created_at', 'updated_at', 'exported_at')
+            'fields': ('created_at', 'updated_at')
         }),
     )
     
@@ -154,5 +160,8 @@ class OvertimeExportHistoryAdmin(admin.ModelAdmin):
         elif obj.status == 'approved' and not obj.final_approved_by:
             obj.final_approved_by = request.user
             from django.utils import timezone
-            obj.exported_at = timezone.now()
+            obj.final_approved_at = timezone.now()
+        elif obj.status == 'completed' and not obj.completed_at:
+            from django.utils import timezone
+            obj.completed_at = timezone.now()
         super().save_model(request, obj, form, change)

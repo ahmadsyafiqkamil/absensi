@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
 
 
 # ============================================================================
@@ -778,4 +778,172 @@ class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Jam lembur harus lebih dari 0")
         if value > 12:  # Maximum 12 hours overtime per day
             raise serializers.ValidationError("Jam lembur maksimal 12 jam per hari")
+        return value
+
+
+# ============================================================================
+# MONTHLY SUMMARY REQUEST SERIALIZERS
+# ============================================================================
+
+class MonthlySummaryRequestAdminSerializer(serializers.ModelSerializer):
+    """
+    Admin serializer for monthly summary requests - full access
+    """
+    user = UserBasicSerializer(read_only=True)
+    employee = EmployeeSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = MonthlySummaryRequest
+        fields = [
+            "id",
+            "employee",
+            "user",
+            "request_period",
+            "report_type",
+            "request_title",
+            "request_description",
+            "include_attendance",
+            "include_overtime",
+            "include_corrections",
+            "include_summary_stats",
+            "priority",
+            "expected_completion_date",
+            "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "final_approved_by",
+            "final_approved_at",
+            "rejection_reason",
+            "completed_at",
+            "completion_notes",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class MonthlySummaryRequestSupervisorSerializer(serializers.ModelSerializer):
+    """
+    Supervisor serializer for monthly summary requests - can approve/reject
+    """
+    user = UserBasicSerializer(read_only=True)
+    employee = EmployeeSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = MonthlySummaryRequest
+        fields = [
+            "id",
+            "employee",
+            "user",
+            "request_period",
+            "report_type",
+            "request_title",
+            "request_description",
+            "include_attendance",
+            "include_overtime",
+            "include_corrections",
+            "include_summary_stats",
+            "priority",
+            "expected_completion_date",
+            "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "final_approved_by",
+            "final_approved_at",
+            "rejection_reason",
+            "completed_at",
+            "completion_notes",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class MonthlySummaryRequestEmployeeSerializer(serializers.ModelSerializer):
+    """
+    Employee serializer for monthly summary requests - can create and view own requests
+    """
+    user = UserBasicSerializer(read_only=True)
+    employee = EmployeeSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    
+    class Meta:
+        model = MonthlySummaryRequest
+        fields = [
+            "id",
+            "employee",
+            "user",
+            "request_period",
+            "report_type",
+            "request_title",
+            "request_description",
+            "include_attendance",
+            "include_overtime",
+            "include_corrections",
+            "include_summary_stats",
+            "priority",
+            "expected_completion_date",
+            "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "final_approved_by",
+            "final_approved_at",
+            "rejection_reason",
+            "completed_at",
+            "completion_notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "employee",
+            "user",
+            "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "final_approved_by",
+            "final_approved_at",
+            "rejection_reason",
+            "completed_at",
+            "completion_notes",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class MonthlySummaryRequestCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating monthly summary requests by employees
+    """
+    class Meta:
+        model = MonthlySummaryRequest
+        fields = [
+            "request_period",
+            "report_type",
+            "request_title",
+            "request_description",
+            "include_attendance",
+            "include_overtime",
+            "include_corrections",
+            "include_summary_stats",
+            "priority",
+            "expected_completion_date",
+        ]
+    
+    def validate_request_period(self, value):
+        """Validate request period format (YYYY-MM)"""
+        from datetime import datetime
+        try:
+            datetime.strptime(value, '%Y-%m')
+        except ValueError:
+            raise serializers.ValidationError("Format periode harus YYYY-MM (contoh: 2024-01)")
+        return value
+    
+    def validate_expected_completion_date(self, value):
+        """Validate expected completion date is not in the past"""
+        from datetime import date
+        if value and value < date.today():
+            raise serializers.ValidationError("Tanggal target selesai tidak boleh di masa lalu")
         return value

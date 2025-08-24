@@ -13,16 +13,17 @@ absensi.localhost {
 	reverse_proxy /api/overtime-requests/upload_template* backend:8000
 	reverse_proxy /api/overtime-requests/reload_template* backend:8000
 	
-		# Monthly export overtime endpoints - specific to backend
+	# Monthly export overtime endpoints - specific to backend
 	reverse_proxy /api/overtime-requests/export-monthly-docx* backend:8000
-	
-	# Monthly export approval endpoints - specific to backend
-	reverse_proxy /api/overtime-requests/monthly_exports* backend:8000
-	reverse_proxy /api/overtime-requests/monthly_exports/* backend:8000
-	
 	# Monthly export template management - handled by frontend API routes
 	reverse_proxy /api/overtime-requests/upload-monthly-export-template* frontend:3000
 	reverse_proxy /api/overtime-requests/reload-monthly-export-template* frontend:3000
+	
+	# Monthly summary request endpoints - specific to backend
+	reverse_proxy /api/monthly-summary-requests* backend:8000
+	reverse_proxy /api/admin/monthly-summary-requests* backend:8000
+	reverse_proxy /api/supervisor/monthly-summary-requests* backend:8000
+	reverse_proxy /api/employee/monthly-summary-requests* backend:8000
 	
 	# Admin endpoints - specific to backend (avoid conflicts with Next.js admin routes)
 	# Let Next.js handle /api/admin/* routes for frontend logic

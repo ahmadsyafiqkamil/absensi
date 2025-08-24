@@ -11,7 +11,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import serializers
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -39,6 +39,11 @@ from .serializers import (
     OvertimeRequestSupervisorSerializer,
     OvertimeRequestEmployeeSerializer,
     OvertimeRequestCreateSerializer,
+    # Monthly summary request serializers
+    MonthlySummaryRequestAdminSerializer,
+    MonthlySummaryRequestSupervisorSerializer,
+    MonthlySummaryRequestEmployeeSerializer,
+    MonthlySummaryRequestCreateSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -3027,420 +3032,6 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['get', 'post'])
-    def monthly_exports(self, request):
-        """Handle monthly export requests - GET for list, POST for new request"""
-        if request.method == 'GET':
-            # Get monthly export requests for current user or team (if supervisor)
-            try:
-                from .models import OvertimeExportHistory
-                
-                # Get current employee
-                employee = request.user.employee
-                if not employee:
-                    return Response(
-                        {"detail": "Employee profile tidak ditemukan"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Check user role
-                user_groups = [group.name for group in request.user.groups.all()]
-                
-                if 'admin' in user_groups:
-                    # Admin can see all requests
-                    exports = OvertimeExportHistory.objects.all().order_by('-created_at')
-                elif 'supervisor' in user_groups:
-                    # Check if this is a level 2 supervisor (ppk or organization supervisor)
-                    # For simplicity, we'll use username 'ppk' as organization supervisor
-                    if request.user.username == 'ppk':
-                        # Organization supervisor can see all requests that need final approval or are completed
-                        exports = OvertimeExportHistory.objects.filter(
-                            status__in=['level1_approved', 'approved', 'rejected']
-                        ).order_by('-created_at')
-                    else:
-                        # Division supervisor can see requests from their division
-                        exports = OvertimeExportHistory.objects.filter(
-                            employee__division=employee.division
-                        ).order_by('-created_at')
-                else:
-                    # Regular employee can only see their own requests
-                    exports = OvertimeExportHistory.objects.filter(
-                        employee=employee
-                    ).order_by('-created_at')
-                
-                # Serialize data
-                export_data = []
-                for export in exports:
-                    export_data.append({
-                        'id': export.id,
-                        'export_period': export.export_period,
-                        'export_type': export.export_type,
-                        'status': export.status,
-                        'employee': {
-                            'id': export.employee.id,
-                            'user': {
-                                'id': export.employee.user.id,
-                                'username': export.employee.user.username,
-                                'first_name': export.employee.user.first_name,
-                                'last_name': export.employee.user.last_name,
-                            },
-                            'division': {
-                                'id': export.employee.division.id,
-                                'name': export.employee.division.name,
-                            } if export.employee.division else None,
-                            'position': {
-                                'id': export.employee.position.id,
-                                'name': export.employee.position.name,
-                            } if export.employee.position else None,
-                        },
-                        'level1_approved_by': {
-                            'id': export.level1_approved_by.id,
-                            'username': export.level1_approved_by.username,
-                            'first_name': export.level1_approved_by.first_name,
-                            'last_name': export.level1_approved_by.last_name,
-                        } if export.level1_approved_by else None,
-                        'level1_approved_at': export.level1_approved_at.isoformat() if export.level1_approved_at else None,
-                        'final_approved_by': {
-                            'id': export.final_approved_by.id,
-                            'username': export.final_approved_by.username,
-                            'first_name': export.final_approved_by.first_name,
-                            'last_name': export.final_approved_by.last_name,
-                        } if export.final_approved_by else None,
-                        'final_approved_at': export.final_approved_at.isoformat() if export.final_approved_at else None,
-                        'rejection_reason': export.rejection_reason,
-                        'exported_file_path': export.exported_file_path,
-                        'exported_at': export.exported_at.isoformat() if export.exported_at else None,
-                        'created_at': export.created_at.isoformat(),
-                        'updated_at': export.updated_at.isoformat(),
-                    })
-                
-                return Response({
-                    'count': len(export_data),
-                    'next': None,
-                    'previous': None,
-                    'results': export_data
-                })
-                
-            except Exception as e:
-                return Response(
-                    {"detail": f"Gagal mengambil data export bulanan: {str(e)}"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-        
-        elif request.method == 'POST':
-            # Create new monthly export request
-            try:
-                from .models import OvertimeExportHistory
-                from django.utils import timezone
-                
-                # Get current employee
-                employee = request.user.employee
-                if not employee:
-                    return Response(
-                        {"detail": "Employee profile tidak ditemukan"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Get export period from request
-                export_period = request.data.get('export_period')
-                if not export_period:
-                    return Response(
-                        {"detail": "Periode export harus diisi"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Check if request already exists for this period
-                existing_request = OvertimeExportHistory.objects.filter(
-                    employee=employee,
-                    export_period=export_period,
-                    export_type='monthly_docx'
-                ).first()
-                
-                if existing_request:
-                    return Response(
-                        {"detail": f"Permintaan export untuk periode {export_period} sudah ada"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Create new export request
-                export_request = OvertimeExportHistory.objects.create(
-                    employee=employee,
-                    user=request.user,
-                    export_period=export_period,
-                    export_type='monthly_docx',
-                    status='pending'
-                )
-                
-                return Response({
-                    "detail": "Permintaan export bulanan berhasil dibuat",
-                    "id": export_request.id,
-                    "export_period": export_request.export_period,
-                    "status": export_request.status
-                }, status=status.HTTP_201_CREATED)
-                
-            except Exception as e:
-                return Response(
-                    {"detail": f"Gagal membuat permintaan export bulanan: {str(e)}"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-    @action(detail=True, methods=['get'])
-    def download_monthly_export(self, request, pk=None):
-        """Download monthly export file if approved"""
-        try:
-            from .models import OvertimeExportHistory
-            import os
-            
-            # Get export request
-            export_request = OvertimeExportHistory.objects.get(id=pk)
-            
-            # Check if user owns this request
-            if export_request.employee.user != request.user:
-                return Response(
-                    {"detail": "Tidak dapat mengakses export request ini"}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            # Check if export is approved and has file
-            if export_request.status != 'approved' or not export_request.exported_file_path:
-                return Response(
-                    {"detail": "Export belum disetujui atau file belum tersedia"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Check if file exists
-            if not os.path.exists(export_request.exported_file_path):
-                return Response(
-                    {"detail": "File export tidak ditemukan"}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Return file for download
-            from django.http import FileResponse
-            import mimetypes
-            
-            file_path = export_request.exported_file_path
-            filename = os.path.basename(file_path)
-            
-            # Determine content type
-            content_type, _ = mimetypes.guess_type(filename)
-            if not content_type:
-                content_type = 'application/octet-stream'
-            
-            response = FileResponse(
-                open(file_path, 'rb'),
-                content_type=content_type
-            )
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-            
-        except OvertimeExportHistory.DoesNotExist:
-            return Response(
-                {"detail": "Export request tidak ditemukan"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {"detail": f"Gagal download export: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=True, methods=['post'])
-    def approve_monthly_export(self, request, pk=None):
-        """Approve monthly export request (level 1 or final)"""
-        try:
-            from .models import OvertimeExportHistory
-            from django.utils import timezone
-            
-            # Get export request
-            export_request = OvertimeExportHistory.objects.get(id=pk)
-            
-            # Get approval level
-            level = request.data.get('level')
-            if level not in ['level1', 'final']:
-                return Response(
-                    {"detail": "Level approval harus 'level1' atau 'final'"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Check if user can approve
-            if level == 'level1':
-                # Level 1: Division supervisor can approve
-                if not hasattr(request.user, 'employee'):
-                    return Response(
-                        {"detail": "Employee profile tidak ditemukan"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Check if user is supervisor
-                user_groups = [group.name for group in request.user.groups.all()]
-                if 'supervisor' not in user_groups and 'admin' not in user_groups:
-                    return Response(
-                        {"detail": "Hanya supervisor yang dapat approve level 1"}, 
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                
-                # Check if supervisor is in same division as the employee who made the request
-                supervisor_employee = request.user.employee
-                if supervisor_employee.division != export_request.employee.division:
-                    return Response(
-                        {"detail": "Hanya supervisor divisi yang dapat approve level 1"}, 
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                
-                # Check if request is pending
-                if export_request.status != 'pending':
-                    return Response(
-                        {"detail": "Request harus dalam status pending untuk approval level 1"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Approve level 1
-                export_request.status = 'level1_approved'
-                export_request.level1_approved_by = request.user
-                export_request.level1_approved_at = timezone.now()
-                export_request.save()
-                
-                return Response({
-                    "detail": "Export request berhasil disetujui level 1",
-                    "status": export_request.status
-                })
-                
-            elif level == 'final':
-                # Final: Organization supervisor can approve
-                user_groups = [group.name for group in request.user.groups.all()]
-                if 'supervisor' not in user_groups and 'admin' not in user_groups:
-                    return Response(
-                        {"detail": "Hanya supervisor yang dapat approve final"}, 
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                
-                # Check if this is organization supervisor (ppk)
-                if request.user.username != 'ppk' and 'admin' not in user_groups:
-                    return Response(
-                        {"detail": "Hanya supervisor organisasi yang dapat approve final"}, 
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                
-                # Check if request is level1_approved
-                if export_request.status != 'level1_approved':
-                    return Response(
-                        {"detail": "Request harus dalam status level1_approved untuk approval final"}, 
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Approve final and generate export
-                export_request.status = 'approved'
-                export_request.final_approved_by = request.user
-                export_request.final_approved_at = timezone.now()
-                
-                # Generate export file
-                try:
-                    # Create a mock request for export
-                    class MockRequest:
-                        def __init__(self, query_params):
-                            self.query_params = query_params
-                    
-                    mock_request = MockRequest({
-                        'month': export_request.export_period,
-                        'employee_id': export_request.employee.id
-                    })
-                    
-                    # Generate export
-                    export_response = self.export_monthly_docx(mock_request)
-                    
-                    if export_response.status_code == 200:
-                        # Get file path from response
-                        response_data = export_response.data
-                        if 'file_path' in response_data:
-                            export_request.exported_file_path = response_data['file_path']
-                            export_request.exported_at = timezone.now()
-                            export_request.status = 'exported'
-                    
-                    export_request.save()
-                    
-                    return Response({
-                        "detail": "Export request berhasil disetujui final dan file telah di-generate",
-                        "status": export_request.status,
-                        "file_path": export_request.exported_file_path
-                    })
-                    
-                except Exception as e:
-                    # If export fails, still approve but mark as failed
-                    export_request.status = 'failed'
-                    export_request.save()
-                    
-                    return Response({
-                        "detail": f"Export request disetujui tapi gagal generate file: {str(e)}",
-                        "status": export_request.status
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-        except OvertimeExportHistory.DoesNotExist:
-            return Response(
-                {"detail": "Export request tidak ditemukan"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {"detail": f"Gagal approve export request: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=True, methods=['post'])
-    def reject_monthly_export(self, request, pk=None):
-        """Reject monthly export request"""
-        try:
-            from .models import OvertimeExportHistory
-            from django.utils import timezone
-            
-            # Get export request
-            export_request = OvertimeExportHistory.objects.get(id=pk)
-            
-            # Get rejection reason
-            rejection_reason = request.data.get('rejection_reason')
-            if not rejection_reason:
-                return Response(
-                    {"detail": "Alasan penolakan harus diisi"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Check if user can reject
-            if not request.user.is_staff:
-                return Response(
-                    {"detail": "Hanya supervisor yang dapat reject export request"}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            # Check if request can be rejected
-            if export_request.status not in ['pending', 'level1_approved']:
-                return Response(
-                    {"detail": "Request tidak dapat ditolak dalam status ini"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Reject request
-            export_request.status = 'rejected'
-            export_request.rejection_reason = rejection_reason
-            export_request.save()
-            
-            return Response({
-                "detail": "Export request berhasil ditolak",
-                "status": export_request.status,
-                "rejection_reason": rejection_reason
-            })
-            
-        except OvertimeExportHistory.DoesNotExist:
-            return Response(
-                {"detail": "Export request tidak ditemukan"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {"detail": f"Gagal reject export request: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
         """Download overtime request document using template"""
@@ -4165,3 +3756,276 @@ def supervisor_approvals_summary(request):
         'supervisor_division': supervisor_employee.division.name if supervisor_employee.division else None,
         'can_approve_overtime_org_wide': is_org_wide_supervisor,
     })
+
+
+# ============================================================================
+# MONTHLY SUMMARY REQUEST VIEWSET
+# ============================================================================
+
+class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing monthly summary requests with role-based access control
+    """
+    permission_classes = [IsOvertimeRequestOwnerOrSupervisor]
+    pagination_class = DefaultPagination
+    
+    def get_queryset(self):
+        """Filter queryset based on user role"""
+        user = self.request.user
+        
+        # Admin can see all requests
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return MonthlySummaryRequest.objects.all().select_related(
+                'user', 'employee', 'level1_approved_by', 'final_approved_by'
+            )
+        
+        # Supervisor can see requests from their division or org-wide
+        elif user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                
+                # Check if supervisor has org-wide approval permission
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.can_approve_overtime_org_wide):
+                    # Org-wide supervisors can see all requests
+                    return MonthlySummaryRequest.objects.all().select_related(
+                        'user', 'employee', 'level1_approved_by', 'final_approved_by'
+                    )
+                else:
+                    # Division supervisors can only see requests from their division
+                    return MonthlySummaryRequest.objects.filter(
+                        employee__division=supervisor_employee.division
+                    ).select_related('user', 'employee', 'level1_approved_by', 'final_approved_by')
+            except:
+                return MonthlySummaryRequest.objects.none()
+        
+        # Employee can only see their own requests
+        elif user.groups.filter(name='pegawai').exists():
+            return MonthlySummaryRequest.objects.filter(user=user).select_related(
+                'user', 'employee', 'level1_approved_by', 'final_approved_by'
+            )
+        
+        return MonthlySummaryRequest.objects.none()
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on user role and action"""
+        user = self.request.user
+        
+        # For create action, use create serializer
+        if self.action == 'create':
+            return MonthlySummaryRequestCreateSerializer
+        
+        # Role-based serializers for other actions
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return MonthlySummaryRequestAdminSerializer
+        elif user.groups.filter(name='supervisor').exists():
+            return MonthlySummaryRequestSupervisorSerializer
+        elif user.groups.filter(name='pegawai').exists():
+            return MonthlySummaryRequestEmployeeSerializer
+        
+        return MonthlySummaryRequestEmployeeSerializer
+    
+    def perform_create(self, serializer):
+        """Auto-set user and employee when creating request"""
+        user = self.request.user
+        try:
+            employee = user.employee
+            serializer.save(user=user, employee=employee)
+        except:
+            raise serializers.ValidationError("User tidak memiliki profil employee")
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to ensure only employees can create requests"""
+        if not request.user.groups.filter(name='pegawai').exists():
+            return Response(
+                {"detail": "Hanya pegawai yang dapat mengajukan rekap bulanan"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
+    def approve(self, request, pk=None):
+        """Approve monthly summary request with 2-level approval system"""
+        summary_request = self.get_object()
+        user = request.user
+        
+        # Check if user is admin (can bypass 2-level approval)
+        is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
+        
+        # Check if user is org-wide supervisor
+        is_org_wide_supervisor = False
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                is_org_wide_supervisor = (supervisor_employee.position and 
+                                        supervisor_employee.position.can_approve_overtime_org_wide)
+            except:
+                pass
+        
+        # Admin can approve any status
+        if is_admin:
+            if summary_request.status in ['rejected', 'cancelled']:
+                return Response(
+                    {"detail": "Pengajuan yang sudah ditolak/dibatalkan tidak dapat disetujui"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Admin approval goes straight to final approval
+            summary_request.status = 'approved'
+            summary_request.final_approved_by = user
+            summary_request.final_approved_at = dj_timezone.now()
+            summary_request.rejection_reason = None
+            summary_request.save()
+            
+            serializer = self.get_serializer(summary_request)
+            return Response({
+                "detail": "Pengajuan rekap bulanan berhasil disetujui (Final Approval)",
+                "data": serializer.data
+            })
+        
+        # Org-wide supervisor (final approval)
+        elif is_org_wide_supervisor:
+            if summary_request.status != 'level1_approved':
+                if summary_request.status == 'pending':
+                    return Response(
+                        {"detail": "Pengajuan harus disetujui oleh supervisor divisi terlebih dahulu (Level 1 Approval)"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    return Response(
+                        {"detail": "Hanya pengajuan dengan status Level 1 Approved yang dapat disetujui final"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            summary_request.status = 'approved'
+            summary_request.final_approved_by = user
+            summary_request.final_approved_at = dj_timezone.now()
+            summary_request.rejection_reason = None
+            summary_request.save()
+            
+            serializer = self.get_serializer(summary_request)
+            return Response({
+                "detail": "Pengajuan rekap bulanan berhasil disetujui (Final Approval)",
+                "data": serializer.data
+            })
+        
+        # Division supervisor (level 1 approval)
+        else:
+            if summary_request.status != 'pending':
+                return Response(
+                    {"detail": "Hanya pengajuan dengan status pending yang dapat disetujui level 1"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            summary_request.status = 'level1_approved'
+            summary_request.level1_approved_by = user
+            summary_request.level1_approved_at = dj_timezone.now()
+            summary_request.rejection_reason = None
+            summary_request.save()
+            
+            serializer = self.get_serializer(summary_request)
+            return Response({
+                "detail": "Pengajuan rekap bulanan berhasil disetujui (Level 1 Approval). Menunggu approval final.",
+                "data": serializer.data
+            })
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
+    def reject(self, request, pk=None):
+        """Reject monthly summary request"""
+        summary_request = self.get_object()
+        
+        # Can reject pending or level1_approved requests
+        if summary_request.status not in ['pending', 'level1_approved']:
+            return Response(
+                {"detail": "Hanya pengajuan dengan status pending atau level1_approved yang dapat ditolak"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        rejection_reason = request.data.get('rejection_reason', '')
+        if not rejection_reason.strip():
+            return Response(
+                {"detail": "Alasan penolakan harus diisi"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        summary_request.status = 'rejected'
+        summary_request.rejection_reason = rejection_reason
+        # Clear all approval fields
+        summary_request.level1_approved_by = None
+        summary_request.level1_approved_at = None
+        summary_request.final_approved_by = None
+        summary_request.final_approved_at = None
+        summary_request.save()
+        
+        serializer = self.get_serializer(summary_request)
+        return Response({
+            "detail": "Pengajuan rekap bulanan berhasil ditolak",
+            "data": serializer.data
+        })
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
+    def complete(self, request, pk=None):
+        """Mark request as completed"""
+        summary_request = self.get_object()
+        
+        # Only approved requests can be completed
+        if summary_request.status != 'approved':
+            return Response(
+                {"detail": "Hanya pengajuan yang sudah disetujui yang dapat ditandai selesai"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        completion_notes = request.data.get('completion_notes', '')
+        summary_request.status = 'completed'
+        summary_request.completed_at = dj_timezone.now()
+        summary_request.completion_notes = completion_notes
+        summary_request.save()
+        
+        serializer = self.get_serializer(summary_request)
+        return Response({
+            "detail": "Pengajuan rekap bulanan berhasil ditandai selesai",
+            "data": serializer.data
+        })
+    
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get monthly summary request summary statistics"""
+        queryset = self.get_queryset()
+        
+        # Filter by date range if provided
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(request_period__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(request_period__lte=end_date)
+        
+        # Calculate statistics
+        total_requests = queryset.count()
+        pending_requests = queryset.filter(status='pending').count()
+        level1_approved_requests = queryset.filter(status='level1_approved').count()
+        approved_requests = queryset.filter(status='approved').count()
+        completed_requests = queryset.filter(status='completed').count()
+        rejected_requests = queryset.filter(status='rejected').count()
+        
+        # Priority breakdown
+        low_priority = queryset.filter(priority='low').count()
+        medium_priority = queryset.filter(priority='medium').count()
+        high_priority = queryset.filter(priority='high').count()
+        urgent_priority = queryset.filter(priority='urgent').count()
+        
+        return Response({
+            'total_requests': total_requests,
+            'pending_requests': pending_requests,
+            'level1_approved_requests': level1_approved_requests,
+            'approved_requests': approved_requests,
+            'completed_requests': completed_requests,
+            'rejected_requests': rejected_requests,
+            'priority_breakdown': {
+                'low': low_priority,
+                'medium': medium_priority,
+                'high': high_priority,
+                'urgent': urgent_priority,
+            }
+        })

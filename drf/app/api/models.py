@@ -407,18 +407,18 @@ class OvertimeRequest(models.Model):
         ordering = ['-created_at']
 
 
-class OvertimeExportHistory(models.Model):
+class MonthlySummaryRequest(models.Model):
     """
-    Model untuk tracking history export data overtime bulanan.
-    Memungkinkan audit trail dan monitoring penggunaan fitur export.
+    Model untuk pengajuan rekap bulanan dengan approval 2 level.
+    Memungkinkan audit trail dan monitoring pengajuan laporan.
     """
-    EXPORT_STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('level1_approved', 'Level 1 Approved'),
-        ('approved', 'Final Approved'),
-        ('rejected', 'Rejected'),
-        ('exported', 'Successfully Exported'),
-        ('failed', 'Export Failed'),
+    REQUEST_STATUS_CHOICES = [
+        ('pending', 'Menunggu Approval'),
+        ('level1_approved', 'Level 1 Disetujui'),
+        ('approved', 'Final Disetujui'),
+        ('rejected', 'Ditolak'),
+        ('completed', 'Selesai'),
+        ('cancelled', 'Dibatalkan'),
     ]
     
     employee = models.ForeignKey(
@@ -434,22 +434,85 @@ class OvertimeExportHistory(models.Model):
         verbose_name="User Requesting Export"
     )
     
-    # Export details
-    export_period = models.CharField(
+    # Request details
+    request_period = models.CharField(
         max_length=7,
-        verbose_name="Export Period",
+        verbose_name="Periode Laporan",
         help_text="Format: YYYY-MM (e.g., 2024-01)"
     )
-    export_type = models.CharField(
+    report_type = models.CharField(
         max_length=20,
-        default='monthly_docx',
-        verbose_name="Export Type"
+        choices=[
+            ('monthly_summary', 'Rekap Bulanan'),
+            ('attendance_summary', 'Rekap Absensi'),
+            ('overtime_summary', 'Rekap Lembur'),
+            ('custom_report', 'Laporan Kustom'),
+        ],
+        default='monthly_summary',
+        verbose_name="Jenis Laporan"
+    )
+    
+    # Request details (untuk pengajuan rekap bulanan)
+    request_title = models.CharField(
+        max_length=200,
+        verbose_name="Judul Laporan",
+        help_text="Judul laporan yang diminta (e.g., 'Rekap Absensi Januari 2024')",
+        null=True,
+        blank=True
+    )
+    request_description = models.TextField(
+        verbose_name="Deskripsi Laporan",
+        help_text="Deskripsi detail laporan yang diminta",
+        null=True,
+        blank=True
+    )
+    
+    # Data scope untuk rekap bulanan
+    include_attendance = models.BooleanField(
+        default=True,
+        verbose_name="Include Attendance Data",
+        help_text="Apakah data absensi harian dimasukkan dalam rekap"
+    )
+    include_overtime = models.BooleanField(
+        default=True,
+        verbose_name="Include Overtime Data",
+        help_text="Apakah data lembur dimasukkan dalam rekap"
+    )
+    include_corrections = models.BooleanField(
+        default=False,
+        verbose_name="Include Corrections Data",
+        help_text="Apakah data perbaikan absensi dimasukkan dalam rekap"
+    )
+    include_summary_stats = models.BooleanField(
+        default=True,
+        verbose_name="Include Summary Statistics",
+        help_text="Apakah statistik ringkasan dimasukkan dalam rekap"
+    )
+    
+    # Additional request details
+    priority = models.CharField(
+        max_length=20,
+        choices=[
+            ('low', 'Rendah'),
+            ('medium', 'Sedang'),
+            ('high', 'Tinggi'),
+            ('urgent', 'Urgent'),
+        ],
+        default='medium',
+        verbose_name="Prioritas"
+    )
+    
+    expected_completion_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Tanggal Target Selesai",
+        help_text="Tanggal target penyelesaian laporan"
     )
     
     # Status and approval
     status = models.CharField(
         max_length=20,
-        choices=EXPORT_STATUS_CHOICES,
+        choices=REQUEST_STATUS_CHOICES,
         default='pending',
         verbose_name="Status"
     )
@@ -460,13 +523,13 @@ class OvertimeExportHistory(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='level1_approved_exports',
-        verbose_name="Level 1 Approved By"
+        related_name='level1_approved_summary_requests',
+        verbose_name="Level 1 Disetujui Oleh"
     )
     level1_approved_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Level 1 Approved At"
+        verbose_name="Level 1 Disetujui Pada"
     )
     
     # Final approval (organization-wide supervisor)
@@ -475,49 +538,86 @@ class OvertimeExportHistory(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='final_approved_exports',
-        verbose_name="Final Approved By"
+        related_name='final_approved_summary_requests',
+        verbose_name="Final Disetujui Oleh"
     )
     final_approved_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Final Approved At"
+        verbose_name="Final Disetujui Pada"
     )
     
     rejection_reason = models.TextField(
         null=True,
         blank=True,
-        verbose_name="Rejection Reason"
+        verbose_name="Alasan Penolakan"
     )
     
-    # Export result
-    exported_file_path = models.CharField(
-        max_length=500,
+    # Request result
+    completed_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Exported File Path"
+        verbose_name="Selesai Pada"
     )
-    export_metadata = models.JSONField(
+    completion_notes = models.TextField(
         null=True,
         blank=True,
-        verbose_name="Export Metadata",
-        help_text="Additional export information (file size, record count, etc.)"
+        verbose_name="Catatan Penyelesaian"
     )
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    exported_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Exported At"
-    )
     
     def __str__(self):
-        return f"Overtime Export - {self.employee.user.username} - {self.export_period} - {self.status}"
+        return f"Pengajuan Rekap - {self.employee.user.username} - {self.request_period} - {self.get_report_type_display()}"
+    
+    def get_request_title_display(self):
+        """Get display title for the request"""
+        if self.request_title:
+            return self.request_title
+        return f"Rekap {self.get_report_type_display()} - {self.request_period}"
+    
+    def can_be_approved_by(self, user):
+        """Check if user can approve this summary request"""
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return True
+        
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                # Check if supervisor has org-wide approval permission
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.can_approve_overtime_org_wide):
+                    return True
+                # Check if supervisor is in same division
+                if (supervisor_employee.division and 
+                    supervisor_employee.division == self.employee.division):
+                    return True
+            except:
+                pass
+        
+        return False
+    
+    def can_be_final_approved_by(self, user):
+        """Check if user can give final approval"""
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            return True
+        
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                # Only org-wide supervisors can give final approval
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.can_approve_overtime_org_wide):
+                    return True
+            except:
+                pass
+        
+        return False
     
     class Meta:
-        verbose_name = "Overtime Export History"
-        verbose_name_plural = "Overtime Export Histories"
+        verbose_name = "Pengajuan Rekap Bulanan"
+        verbose_name_plural = "Pengajuan Rekap Bulanan"
         ordering = ['-created_at']
-        unique_together = ("employee", "export_period", "export_type")
+        unique_together = ("employee", "request_period", "report_type")
