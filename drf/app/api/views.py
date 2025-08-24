@@ -3031,7 +3031,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     def monthly_exports(self, request):
         """Handle monthly export requests - GET for list, POST for new request"""
         if request.method == 'GET':
-            # Get monthly export requests for current user
+            # Get monthly export requests for current user or team (if supervisor)
             try:
                 from .models import OvertimeExportHistory
                 
@@ -3043,10 +3043,30 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
-                # Get export requests for this employee
-                exports = OvertimeExportHistory.objects.filter(
-                    employee=employee
-                ).order_by('-created_at')
+                # Check user role
+                user_groups = [group.name for group in request.user.groups.all()]
+                
+                if 'admin' in user_groups:
+                    # Admin can see all requests
+                    exports = OvertimeExportHistory.objects.all().order_by('-created_at')
+                elif 'supervisor' in user_groups:
+                    # Check if this is a level 2 supervisor (ppk or organization supervisor)
+                    # For simplicity, we'll use username 'ppk' as organization supervisor
+                    if request.user.username == 'ppk':
+                        # Organization supervisor can see all requests that need final approval or are completed
+                        exports = OvertimeExportHistory.objects.filter(
+                            status__in=['level1_approved', 'approved', 'rejected']
+                        ).order_by('-created_at')
+                    else:
+                        # Division supervisor can see requests from their division
+                        exports = OvertimeExportHistory.objects.filter(
+                            employee__division=employee.division
+                        ).order_by('-created_at')
+                else:
+                    # Regular employee can only see their own requests
+                    exports = OvertimeExportHistory.objects.filter(
+                        employee=employee
+                    ).order_by('-created_at')
                 
                 # Serialize data
                 export_data = []
@@ -3056,6 +3076,23 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                         'export_period': export.export_period,
                         'export_type': export.export_type,
                         'status': export.status,
+                        'employee': {
+                            'id': export.employee.id,
+                            'user': {
+                                'id': export.employee.user.id,
+                                'username': export.employee.user.username,
+                                'first_name': export.employee.user.first_name,
+                                'last_name': export.employee.user.last_name,
+                            },
+                            'division': {
+                                'id': export.employee.division.id,
+                                'name': export.employee.division.name,
+                            } if export.employee.division else None,
+                            'position': {
+                                'id': export.employee.position.id,
+                                'name': export.employee.position.name,
+                            } if export.employee.position else None,
+                        },
                         'level1_approved_by': {
                             'id': export.level1_approved_by.id,
                             'username': export.level1_approved_by.username,
@@ -3230,7 +3267,23 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             # Check if user can approve
             if level == 'level1':
                 # Level 1: Division supervisor can approve
-                if not request.user.is_staff or not hasattr(request.user, 'employee'):
+                if not hasattr(request.user, 'employee'):
+                    return Response(
+                        {"detail": "Employee profile tidak ditemukan"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Check if user is supervisor
+                user_groups = [group.name for group in request.user.groups.all()]
+                if 'supervisor' not in user_groups and 'admin' not in user_groups:
+                    return Response(
+                        {"detail": "Hanya supervisor yang dapat approve level 1"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                
+                # Check if supervisor is in same division as the employee who made the request
+                supervisor_employee = request.user.employee
+                if supervisor_employee.division != export_request.employee.division:
                     return Response(
                         {"detail": "Hanya supervisor divisi yang dapat approve level 1"}, 
                         status=status.HTTP_403_FORBIDDEN
@@ -3256,7 +3309,15 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 
             elif level == 'final':
                 # Final: Organization supervisor can approve
-                if not request.user.is_staff:
+                user_groups = [group.name for group in request.user.groups.all()]
+                if 'supervisor' not in user_groups and 'admin' not in user_groups:
+                    return Response(
+                        {"detail": "Hanya supervisor yang dapat approve final"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                
+                # Check if this is organization supervisor (ppk)
+                if request.user.username != 'ppk' and 'admin' not in user_groups:
                     return Response(
                         {"detail": "Hanya supervisor organisasi yang dapat approve final"}, 
                         status=status.HTTP_403_FORBIDDEN
@@ -3276,9 +3337,6 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 
                 # Generate export file
                 try:
-                    # Call export function
-                    from .views import export_monthly_docx
-                    
                     # Create a mock request for export
                     class MockRequest:
                         def __init__(self, query_params):

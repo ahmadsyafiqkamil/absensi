@@ -296,22 +296,22 @@ export default function MonthlyExportApprovalManager() {
                     <div>
                       <p className="text-gray-600">Pegawai:</p>
                       <p className="font-medium">
-                        {request.employee.user.first_name} {request.employee.user.last_name}
+                        {request.employee.user?.first_name || 'Nama Depan'} {request.employee.user?.last_name || 'Nama Belakang'}
                       </p>
-                      <p className="text-xs text-gray-500">@{request.employee.user.username}</p>
+                      <p className="text-xs text-gray-500">@{request.employee.user?.username || 'username'}</p>
                     </div>
                     
                     <div>
                       <p className="text-gray-600">Divisi & Jabatan:</p>
-                      <p className="font-medium">{request.employee.division.name}</p>
-                      <p className="text-xs text-gray-500">{request.employee.position.name}</p>
+                      <p className="font-medium">{request.employee.division?.name || 'Tidak ada divisi'}</p>
+                      <p className="text-xs text-gray-500">{request.employee.position?.name || 'Tidak ada jabatan'}</p>
                     </div>
                     
                     {request.level1_approved_by && (
                       <div>
                         <p className="text-gray-600">Level 1 Approved By:</p>
                         <p className="font-medium">
-                          {request.level1_approved_by.first_name} {request.level1_approved_by.last_name}
+                          {request.level1_approved_by?.first_name || 'Nama Depan'} {request.level1_approved_by?.last_name || 'Nama Belakang'}
                         </p>
                         <p className="text-xs text-gray-500">
                           {request.level1_approved_at ? formatDate(request.level1_approved_at) : ''}
@@ -323,7 +323,7 @@ export default function MonthlyExportApprovalManager() {
                       <div>
                         <p className="text-gray-600">Final Approved By:</p>
                         <p className="font-medium">
-                          {request.final_approved_by.first_name} {request.final_approved_by.last_name}
+                          {request.final_approved_by?.first_name || 'Nama Depan'} {request.final_approved_by?.last_name || 'Nama Belakang'}
                         </p>
                         <p className="text-xs text-gray-500">
                           {request.final_approved_at ? formatDate(request.final_approved_at) : ''}
