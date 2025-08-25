@@ -4392,7 +4392,7 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         try:
             # Import required libraries
             from docx import Document
-            from docx.shared import Inches
+            from docx.shared import Inches, Pt
             from docx.enum.text import WD_ALIGN_PARAGRAPH
             from docx.oxml.shared import OxmlElement, qn
             from io import BytesIO
@@ -4636,37 +4636,169 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
             
             # Special handling for {{TABEL_OVERTIME}} placeholder
             if '{{TABEL_OVERTIME}}' in replacements:
-                self.replace_tabel_overtime_placeholder(doc, replacements['{{TABEL_OVERTIME}}'])
+                self.replace_tabel_overtime_placeholder(doc, overtime_data, total_hours, total_amount)
                 
         except Exception as e:
             print(f"Warning: Could not replace all placeholders: {str(e)}")
 
-    def replace_tabel_overtime_placeholder(self, doc, placeholder_text):
+    def replace_tabel_overtime_placeholder(self, doc, overtime_data, total_hours, total_amount):
         """Replace {{TABEL_OVERTIME}} placeholder with actual overtime table"""
         try:
-            # Find paragraphs containing the placeholder
+            # Find paragraphs containing the placeholder and replace with table
             for paragraph in doc.paragraphs:
                 if '{{TABEL_OVERTIME}}' in paragraph.text:
                     # Clear the paragraph
                     paragraph.clear()
-                    # Add a note that table will be added
-                    paragraph.add_run('Tabel overtime akan ditampilkan di bawah ini')
+                    # Add heading for overtime table
+                    heading = paragraph.add_run('Detail Pengajuan Overtime')
+                    heading.bold = True
+                    heading.font.size = Pt(14)
                     break
             
-            # Find tables containing the placeholder
+            # Find tables containing the placeholder and replace with actual data
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
                         for paragraph in cell.paragraphs:
                             if '{{TABEL_OVERTIME}}' in paragraph.text:
-                                # Clear the cell
+                                # Clear the cell content
                                 paragraph.clear()
-                                # Add a note that table will be added
-                                paragraph.add_run('Tabel overtime akan ditampilkan di bawah ini')
+                                # Add note that table will be inserted
+                                paragraph.add_run('Tabel overtime akan di-insert di bawah ini')
                                 break
+            
+            # Insert the actual overtime table after the placeholder
+            self.insert_overtime_table_after_placeholder(doc, overtime_data, total_hours, total_amount)
                                 
         except Exception as e:
             print(f"Warning: Could not replace {{TABEL_OVERTIME}} placeholder: {str(e)}")
+
+    def insert_overtime_table_after_placeholder(self, doc, overtime_data, total_hours, total_amount):
+        """Insert overtime table after finding {{TABEL_OVERTIME}} placeholder"""
+        try:
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.shared import Pt
+            
+            # Find the position where to insert the table
+            insert_position = None
+            
+            # Look for paragraphs containing the placeholder
+            for i, paragraph in enumerate(doc.paragraphs):
+                if '{{TABEL_OVERTIME}}' in paragraph.text or 'Tabel overtime akan di-insert di bawah ini' in paragraph.text:
+                    insert_position = i
+                    break
+            
+            # Look for tables containing the placeholder
+            if insert_position is None:
+                for i, table in enumerate(doc.tables):
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                if '{{TABEL_OVERTIME}}' in paragraph.text or 'Tabel overtime akan di-insert di bawah ini' in paragraph.text:
+                                    # Find the paragraph after this table
+                                    table_index = doc.element.index(table.element)
+                                    insert_position = table_index + 1
+                                    break
+                            if insert_position is not None:
+                                break
+                        if insert_position is not None:
+                            break
+                    if insert_position is not None:
+                        break
+            
+            # If we found a position, insert the table
+            if insert_position is not None:
+                # Create the overtime table
+                table = doc.add_table(rows=1, cols=6)
+                table.style = 'Table Grid'
+                
+                # Set column widths
+                table.columns[0].width = Inches(0.5)   # No
+                table.columns[1].width = Inches(1.0)   # Tanggal
+                table.columns[2].width = Inches(1.0)   # Jam Lembur
+                table.columns[3].width = Inches(2.5)   # Deskripsi
+                table.columns[4].width = Inches(1.2)   # Status
+                table.columns[5].width = Inches(1.2)   # Gaji Lembur
+                
+                # Add header row
+                header_row = table.rows[0]
+                headers = ['No', 'Tanggal', 'Jam Lembur', 'Deskripsi Pekerjaan', 'Status', 'Gaji Lembur']
+                
+                for i, header in enumerate(headers):
+                    cell = header_row.cells[i]
+                    cell.text = header
+                    # Style header
+                    for paragraph in cell.paragraphs:
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for run in paragraph.runs:
+                            run.bold = True
+                
+                # Add data rows
+                for i, record in enumerate(overtime_data, 1):
+                    row = table.add_row()
+                    
+                    # Format data
+                    date_str = record.date_requested.strftime('%d/%m/%Y')
+                    hours_str = f"{float(record.overtime_hours):.1f} jam"
+                    
+                    # Truncate description
+                    description = record.work_description
+                    if len(description) > 50:
+                        description = description[:50] + '...'
+                    
+                    # Format status
+                    status_map = {
+                        'pending': 'Menunggu',
+                        'level1_approved': 'Level 1 Approved',
+                        'approved': 'Final Approved',
+                        'rejected': 'Ditolak'
+                    }
+                    status_display = status_map.get(record.status, record.status)
+                    
+                    # Format amount
+                    amount_str = f"{float(record.overtime_amount):.2f} AED"
+                    
+                    # Populate row
+                    row_data = [str(i), date_str, hours_str, description, status_display, amount_str]
+                    
+                    for j, data in enumerate(row_data):
+                        cell = row.cells[j]
+                        cell.text = data
+                        
+                        # Style cells
+                        for paragraph in cell.paragraphs:
+                            if j == 0:  # No column
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            elif j == 2:  # Jam Lembur
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            elif j == 4:  # Status
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            elif j == 5:  # Gaji Lembur
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                            else:
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                
+                # Add summary row
+                summary_row = table.add_row()
+                summary_row.cells[0].text = 'TOTAL'
+                summary_row.cells[1].text = ''
+                summary_row.cells[2].text = f"{total_hours:.1f} jam"
+                summary_row.cells[3].text = ''
+                summary_row.cells[4].text = ''
+                summary_row.cells[5].text = f"{total_amount:.2f} AED"
+                
+                # Style summary row
+                for cell in summary_row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.bold = True
+                
+                # Add spacing after table
+                doc.add_paragraph()
+                
+        except Exception as e:
+            print(f"Warning: Could not insert overtime table: {str(e)}")
 
     def add_overtime_table_to_document(self, doc, overtime_data, total_hours, total_amount):
         """Add overtime table directly to document with professional styling"""
