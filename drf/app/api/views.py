@@ -2298,10 +2298,12 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             
             # Priority order for monthly export template files
             priority_names = [
-                'template_monthly_overtime_export.docx',        # Primary monthly export template
-                'template_monthly_overtime.docx',               # Fallback 1
-                'template_monthly_export.docx',                 # Fallback 2
-                'template_overtime_monthly.docx',               # Fallback 3
+                'template_rekap_lembur.docx',                   # Primary monthly export template (valid)
+                'template_SURAT_PERINTAH_KERJA_LEMBUR.docx',    # Fallback 1 (valid)
+                'template_monthly_overtime_export.docx',         # Fallback 2 (small file, may be corrupt)
+                'template_monthly_overtime.docx',                # Fallback 3
+                'template_monthly_export.docx',                  # Fallback 4
+                'template_overtime_monthly.docx',                # Fallback 5
             ]
             
             # First try priority names
@@ -4037,13 +4039,6 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         summary_request = self.get_object()
         user = request.user
         
-        # Check if user has permission to view this report
-        if not self.has_permission(request, None):
-            return Response(
-                {"detail": "Anda tidak memiliki akses untuk melihat laporan ini"}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
         # Only generate report for approved requests
         if summary_request.status != 'approved':
             return Response(
@@ -4107,6 +4102,68 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {"detail": f"Gagal generate laporan: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
+    def export_docx(self, request, pk=None):
+        """Export monthly summary to DOCX using existing template system"""
+        summary_request = self.get_object()
+        user = request.user
+        
+        # Only export for approved requests
+        if summary_request.status != 'approved':
+            return Response(
+                {"detail": "Hanya pengajuan yang sudah disetujui yang dapat di-export"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Parse period
+            year, month = summary_request.request_period.split('-')
+            year = int(year)
+            month = int(month)
+            
+            # Get overtime data for the period
+            overtime_data = self.get_overtime_data_for_period(
+                summary_request.employee, 
+                summary_request.request_period,
+                include_approved_only=True
+            )
+            
+            if not overtime_data.exists():
+                return Response(
+                    {"detail": f"Tidak ada data overtime untuk periode {summary_request.request_period}"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Generate DOCX document using existing template system
+            docx_file = self.generate_monthly_summary_docx(
+                summary_request,
+                overtime_data,
+                summary_request.request_period
+            )
+            
+            # Return file response
+            from django.http import FileResponse
+            import os
+            
+            filename = f"Rekap_Lembur_Bulanan_{summary_request.employee.nip}_{summary_request.request_period}.docx"
+            
+            response = FileResponse(
+                open(docx_file, 'rb'),
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            # Clean up temporary file
+            os.unlink(docx_file)
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal export DOCX: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -4330,6 +4387,173 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 'error': f"Gagal generate comprehensive summary: {str(e)}"
             }
 
+    def generate_monthly_summary_docx(self, summary_request, overtime_data, period):
+        """Generate monthly summary DOCX using existing template system"""
+        try:
+            # Import required libraries
+            from docx import Document
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            from io import BytesIO
+            from django.utils import timezone
+            import os
+            import locale
+            import tempfile
+            from datetime import datetime
+            
+            # Set locale for Indonesian formatting
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'id_ID')
+                except:
+                    pass
+            
+            # Get monthly export template path (priority) or fallback to regular template
+            template_path, template_name = self.get_monthly_export_template_path()
+            
+            if not template_path:
+                # Try to get regular template as fallback
+                template_path, template_name = self.get_monthly_export_template_path()
+            
+            if not template_path:
+                # Create basic document if no template found
+                doc = Document()
+            else:
+                # Load existing template
+                doc = Document(template_path)
+            
+            # Calculate summary data
+            total_days = overtime_data.count()
+            total_hours = sum(float(record.overtime_hours) for record in overtime_data)
+            total_amount = sum(float(record.overtime_amount) for record in overtime_data)
+            avg_per_day = total_hours / total_days if total_days > 0 else 0
+            
+            # Get approval information
+            level1_approver = summary_request.level1_approved_by
+            final_approver = summary_request.final_approved_by
+            
+            # Format dates
+            current_date = timezone.now()
+            month_name = datetime.strptime(period, '%Y-%m').strftime('%B %Y')
+            export_date = current_date.strftime('%d %B %Y')
+            
+            # Format approval dates
+            level1_approval_date = summary_request.level1_approved_at.strftime('%d %B %Y') if summary_request.level1_approved_at else '-'
+            final_approval_date = summary_request.final_approved_at.strftime('%d %B %Y') if summary_request.final_approved_at else '-'
+            
+            # Define replacement mappings
+            replacements = {
+                # Header info
+                '{{PERIODE_EXPORT}}': month_name,
+                '{{TANGGAL_EXPORT}}': export_date,
+                '{{NOMOR_EXPORT}}': f"REKAP-{period.replace('-', '')}/2025",
+                
+                # Summary data
+                '{{TOTAL_HARI_LEMBUR}}': f"{total_days} hari",
+                '{{TOTAL_JAM_LEMBUR}}': f"{total_hours:.1f} jam",
+                '{{TOTAL_GAJI_LEMBUR}}': f"{total_amount:.2f} AED",
+                '{{RATA_RATA_PER_HARI}}': f"{avg_per_day:.1f} jam",
+                
+                # Employee info
+                '{{NAMA_PEGAWAI}}': summary_request.employee.fullname or summary_request.employee.user.get_full_name() or summary_request.employee.user.username,
+                '{{NIP_PEGAWAI}}': summary_request.employee.nip or '-',
+                '{{DIVISI_PEGAWAI}}': summary_request.employee.division.name if summary_request.employee.division else '-',
+                '{{JABATAN_PEGAWAI}}': summary_request.employee.position.name if summary_request.employee.position else '-',
+                
+                # Approval info
+                '{{LEVEL1_APPROVER}}': level1_approver.username if level1_approver else '-',
+                '{{LEVEL1_APPROVER_NIP}}': level1_approver.employee.nip if level1_approver and hasattr(level1_approver, 'employee') and level1_approver.employee else '-',
+                '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
+                '{{FINAL_APPROVER}}': final_approver.username if final_approver else '-',
+                '{{FINAL_APPROVER_NIP}}': final_approver.employee.nip if final_approver and hasattr(final_approver, 'employee') and final_approver.employee else '-',
+                '{{FINAL_APPROVAL_DATE}}': final_approval_date,
+                '{{TANGGAL_APPROVAL}}': export_date,
+                
+                # Company info
+                '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+                '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+                '{{LOKASI}}': 'Dubai',
+                
+                # Special placeholders (will be replaced with actual content)
+                '{{TABEL_OVERTIME}}': '[TABEL_OVERTIME_WILL_BE_REPLACED]',  # Placeholder for overtime table
+            }
+            
+            # Replace placeholders in document
+            self.replace_placeholders_in_document(doc, replacements)
+            
+            # If no template exists, create basic structure
+            if not template_path:
+                self.create_basic_monthly_summary_structure(doc, replacements)
+            
+            # Add overtime table to document
+            self.add_overtime_table_to_document(doc, overtime_data, total_hours, total_amount)
+            
+            # Save to temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
+            doc.save(temp_file.name)
+            temp_file.close()
+            
+            return temp_file.name
+            
+        except Exception as e:
+            raise Exception(f"Gagal generate DOCX monthly summary: {str(e)}")
+
+    def get_monthly_export_template_path(self):
+        """Get the path to the active monthly export template"""
+        import os
+        from django.conf import settings
+        
+        template_dir = os.path.join(settings.BASE_DIR, 'template')
+        
+        # Priority order for monthly export template files
+        priority_names = [
+            'template_rekap_lembur.docx',                   # Primary monthly export template (valid)
+            'template_SURAT_PERINTAH_KERJA_LEMBUR.docx',    # Fallback 1 (valid)
+            'template_monthly_overtime_export.docx',         # Fallback 2 (small file, may be corrupt)
+        ]
+        
+        # Check each priority template
+        for template_name in priority_names:
+            template_path = os.path.join(template_dir, template_name)
+            if os.path.exists(template_path):
+                return template_path, template_name
+        
+        # If no priority template found, return None
+        return None, None
+
+    def create_basic_monthly_summary_structure(self, doc, replacements):
+        """Create basic document structure for monthly summary if no template exists"""
+        from docx.shared import Inches
+        
+        # Title
+        title = doc.add_heading('REKAP LEMBUR BULANAN', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Add spacing
+        doc.add_paragraph()
+        
+        # Header information
+        doc.add_heading('INFORMASI REKAP', level=1)
+        
+        # Create header table
+        header_table = doc.add_table(rows=4, cols=2)
+        header_table.style = 'Table Grid'
+        
+        # Header data
+        header_data = [
+            ['Periode', replacements['{{PERIODE_EXPORT}}']],
+            ['Tanggal Export', replacements['{{TANGGAL_EXPORT}}']],
+            ['Nomor Export', replacements['{{NOMOR_EXPORT}}']],
+            ['Status', 'Approved']
+        ]
+        
+        for i, (label, value) in enumerate(header_data):
+            header_table.cell(i, 0).text = label
+            header_table.cell(i, 1).text = value
+
     def generate_attendance_summary(self, employee, period, attendance_data):
         """
         Generate attendance summary for the period
@@ -4391,3 +4615,151 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
             return {
                 'error': f"Gagal generate corrections summary: {str(e)}"
             }
+
+    def replace_placeholders_in_document(self, doc, replacements):
+        """Replace placeholders in document with actual values"""
+        try:
+            # Replace in paragraphs
+            for paragraph in doc.paragraphs:
+                for placeholder, value in replacements.items():
+                    if placeholder in paragraph.text:
+                        paragraph.text = paragraph.text.replace(placeholder, str(value))
+            
+            # Replace in tables
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for placeholder, value in replacements.items():
+                                if placeholder in paragraph.text:
+                                    paragraph.text = paragraph.text.replace(placeholder, str(value))
+            
+            # Special handling for {{TABEL_OVERTIME}} placeholder
+            if '{{TABEL_OVERTIME}}' in replacements:
+                self.replace_tabel_overtime_placeholder(doc, replacements['{{TABEL_OVERTIME}}'])
+                
+        except Exception as e:
+            print(f"Warning: Could not replace all placeholders: {str(e)}")
+
+    def replace_tabel_overtime_placeholder(self, doc, placeholder_text):
+        """Replace {{TABEL_OVERTIME}} placeholder with actual overtime table"""
+        try:
+            # Find paragraphs containing the placeholder
+            for paragraph in doc.paragraphs:
+                if '{{TABEL_OVERTIME}}' in paragraph.text:
+                    # Clear the paragraph
+                    paragraph.clear()
+                    # Add a note that table will be added
+                    paragraph.add_run('Tabel overtime akan ditampilkan di bawah ini')
+                    break
+            
+            # Find tables containing the placeholder
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            if '{{TABEL_OVERTIME}}' in paragraph.text:
+                                # Clear the cell
+                                paragraph.clear()
+                                # Add a note that table will be added
+                                paragraph.add_run('Tabel overtime akan ditampilkan di bawah ini')
+                                break
+                                
+        except Exception as e:
+            print(f"Warning: Could not replace {{TABEL_OVERTIME}} placeholder: {str(e)}")
+
+    def add_overtime_table_to_document(self, doc, overtime_data, total_hours, total_amount):
+        """Add overtime table directly to document with professional styling"""
+        from docx.shared import Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        
+        # Add heading
+        doc.add_heading('Detail Pengajuan Overtime', level=2)
+        
+        # Create table
+        table = doc.add_table(rows=1, cols=6)
+        table.style = 'Table Grid'
+        
+        # Set column widths
+        table.columns[0].width = Inches(0.5)   # No
+        table.columns[1].width = Inches(1.0)   # Tanggal
+        table.columns[2].width = Inches(1.0)   # Jam Lembur
+        table.columns[3].width = Inches(2.5)   # Deskripsi
+        table.columns[4].width = Inches(1.2)   # Status
+        table.columns[5].width = Inches(1.2)   # Gaji Lembur
+        
+        # Add header row
+        header_row = table.rows[0]
+        headers = ['No', 'Tanggal', 'Jam Lembur', 'Deskripsi Pekerjaan', 'Status', 'Gaji Lembur']
+        
+        for i, header in enumerate(headers):
+            cell = header_row.cells[i]
+            cell.text = header
+            # Style header
+            for paragraph in cell.paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in paragraph.runs:
+                    run.bold = True
+        
+        # Add data rows
+        for i, record in enumerate(overtime_data, 1):
+            row = table.add_row()
+            
+            # Format data
+            date_str = record.date_requested.strftime('%d/%m/%Y')
+            hours_str = f"{float(record.overtime_hours):.1f} jam"
+            
+            # Truncate description
+            description = record.work_description
+            if len(description) > 50:
+                description = description[:50] + '...'
+            
+            # Format status
+            status_map = {
+                'pending': 'Menunggu',
+                'level1_approved': 'Level 1 Approved',
+                'approved': 'Final Approved',
+                'rejected': 'Ditolak'
+            }
+            status_display = status_map.get(record.status, record.status)
+            
+            # Format amount
+            amount_str = f"{float(record.overtime_amount):.2f} AED"
+            
+            # Populate row
+            row_data = [str(i), date_str, hours_str, description, status_display, amount_str]
+            
+            for j, data in enumerate(row_data):
+                cell = row.cells[j]
+                cell.text = data
+                
+                # Style cells
+                for paragraph in cell.paragraphs:
+                    if j == 0:  # No column
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif j == 2:  # Jam Lembur
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif j == 4:  # Status
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif j == 5:  # Gaji Lembur
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    else:
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        # Add summary row
+        summary_row = table.add_row()
+        summary_row.cells[0].text = 'TOTAL'
+        summary_row.cells[1].text = ''
+        summary_row.cells[2].text = f"{total_hours:.1f} jam"
+        summary_row.cells[3].text = ''
+        summary_row.cells[4].text = ''
+        summary_row.cells[5].text = f"{total_amount:.2f} AED"
+        
+        # Style summary row
+        for cell in summary_row.cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+        
+        # Add spacing
+        doc.add_paragraph()

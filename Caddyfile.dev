@@ -19,6 +19,11 @@ absensi.localhost {
 	reverse_proxy /api/overtime-requests/upload-monthly-export-template* frontend:3000
 	reverse_proxy /api/overtime-requests/reload-monthly-export-template* frontend:3000
 	
+	# Specific monthly summary actions - ensure they go to backend (MUST BE FIRST!)
+	reverse_proxy /api/employee/monthly-summary-requests/*/generate_report* backend:8000
+	reverse_proxy /api/employee/monthly-summary-requests/*/approve* backend:8000
+	reverse_proxy /api/employee/monthly-summary-requests/*/reject* backend:8000
+	
 	# Monthly summary request endpoints - specific to backend
 	reverse_proxy /api/monthly-summary-requests* backend:8000
 	reverse_proxy /api/admin/monthly-summary-requests* backend:8000

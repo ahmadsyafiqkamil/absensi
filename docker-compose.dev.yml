@@ -75,8 +75,8 @@ services:
     container_name: absensi_frontend_dev
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=https://api.absensi.localhost
+      - NEXT_PUBLIC_BACKEND_URL=https://api.absensi.localhost
       - BACKEND_URL=http://backend:8000
     ports:
       - "3000:3000"
