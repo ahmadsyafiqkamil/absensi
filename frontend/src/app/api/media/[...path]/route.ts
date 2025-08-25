@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ path: string[] }> }) {
+export async function GET(_req: Request, { params }: { params: { path: string[] } }) {
 	try {
-		const { path } = await params;
-		const raw = path || []
+		const raw = params.path || []
 		if (raw.length === 0) {
 			return NextResponse.json({ detail: 'media path required' }, { status: 400 })
 		}

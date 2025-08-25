@@ -74,6 +74,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from io import BytesIO
 import datetime
+from datetime import timedelta
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -4030,122 +4031,363 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
             }
         })
 
-    @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
-    def generate_overtime_report(self, request, pk=None):
-        """Generate overtime report for approved monthly summary request"""
+    @action(detail=True, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
+    def generate_report(self, request, pk=None):
+        """Generate overtime report data for approved monthly summary request"""
         summary_request = self.get_object()
+        user = request.user
         
-        # Only approved requests can generate report
+        # Check if user has permission to view this report
+        if not self.has_permission(request, None):
+            return Response(
+                {"detail": "Anda tidak memiliki akses untuk melihat laporan ini"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Only generate report for approved requests
         if summary_request.status != 'approved':
             return Response(
-                {"detail": "Hanya pengajuan yang sudah disetujui yang dapat generate report"}, 
+                {"detail": "Hanya pengajuan yang sudah disetujui yang dapat di-generate laporannya"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            # Parse period (YYYY-MM format)
+            # Parse period
             year, month = summary_request.request_period.split('-')
             year = int(year)
             month = int(month)
             
-            # Get overtime data that has been approved (2-level approval)
-            overtime_data = self._get_approved_overtime_data(summary_request.employee, year, month)
-            
-            # Calculate summary statistics
-            summary_stats = self._calculate_overtime_summary(overtime_data)
-            
-            # Mark as completed
-            summary_request.status = 'completed'
-            summary_request.completed_at = dj_timezone.now()
-            summary_request.completion_notes = f"Report lembur berhasil di-generate untuk periode {summary_request.request_period}"
-            summary_request.save()
-            
-            return Response({
-                "detail": "Report lembur berhasil di-generate",
-                "period": summary_request.request_period,
-                "employee": {
-                    "id": summary_request.employee.id,
-                    "name": summary_request.employee.fullname or summary_request.employee.user.username,
-                    "division": summary_request.employee.division.name if summary_request.employee.division else None
-                },
-                "overtime_summary": summary_stats,
-                "overtime_details": overtime_data,
-                "generated_at": summary_request.completed_at.isoformat()
-            })
-            
-        except ValueError:
-            return Response(
-                {"detail": "Format periode tidak valid. Gunakan format YYYY-MM"}, 
-                status=status.HTTP_400_BAD_REQUEST
+            # Get overtime data for the period
+            overtime_data = self.get_overtime_data_for_period(
+                summary_request.employee, 
+                summary_request.request_period,
+                include_approved_only=True
             )
+            
+            # Generate comprehensive summary based on request scope
+            summary_stats = self.generate_comprehensive_summary(
+                summary_request.employee, 
+                summary_request.request_period,
+                summary_request
+            )
+            
+            # Prepare response data
+            report_data = {
+                'request_info': {
+                    'id': summary_request.id,
+                    'period': summary_request.request_period,
+                    'report_type': summary_request.report_type,
+                    'request_title': summary_request.request_title,
+                    'request_description': summary_request.request_description,
+                    'data_scope': {
+                        'include_attendance': summary_request.include_attendance,
+                        'include_overtime': summary_request.include_overtime,
+                        'include_corrections': summary_request.include_corrections,
+                        'include_summary_stats': summary_request.include_summary_stats,
+                    }
+                },
+                'employee_info': {
+                    'nip': summary_request.employee.nip,
+                    'fullname': summary_request.employee.fullname or f"{summary_request.employee.user.first_name} {summary_request.employee.user.last_name}".strip(),
+                    'division': summary_request.employee.division.name if summary_request.employee.division else None,
+                    'position': summary_request.employee.position.name if summary_request.employee.position else None,
+                },
+                'approval_info': {
+                    'level1_approved_by': summary_request.level1_approved_by.username if summary_request.level1_approved_by else None,
+                    'level1_approved_at': summary_request.level1_approved_at.isoformat() if summary_request.level1_approved_at else None,
+                    'final_approved_by': summary_request.final_approved_by.username if summary_request.final_approved_by else None,
+                    'final_approved_at': summary_request.final_approved_at.isoformat() if summary_request.final_approved_at else None,
+                },
+                'overtime_summary': summary_stats,
+                'generated_at': dj_timezone.now().isoformat(),
+            }
+            
+            return Response(report_data)
+            
         except Exception as e:
             return Response(
-                {"detail": f"Error saat generate report: {str(e)}"}, 
+                {"detail": f"Gagal generate laporan: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def _get_approved_overtime_data(self, employee, year, month):
-        """Get overtime data that has been approved (2-level approval)"""
-        from django.db.models import Q
-        
-        # Get attendance records for the specified month with overtime
-        attendance_records = Attendance.objects.filter(
-            employee=employee,
-            date_local__year=year,
-            date_local__month=month,
-            overtime_minutes__gt=0  # Only records with overtime
-        ).select_related('user', 'employee', 'employee__division')
-        
-        overtime_data = []
-        
-        for attendance in attendance_records:
-            # Check if this overtime has been approved through OvertimeRequest
-            overtime_request = OvertimeRequest.objects.filter(
-                attendance=attendance,
-                status='approved'  # Final approval (2-level)
-            ).first()
+    def get_overtime_data_for_period(self, employee, period, include_approved_only=True):
+        """
+        Get overtime data for specific period and employee
+        """
+        try:
+            year, month = period.split('-')
+            year = int(year)
+            month = int(month)
             
-            if overtime_request:
-                # This overtime has been approved through 2-level approval
-                overtime_data.append({
-                    'date': attendance.date_local.isoformat(),
-                    'check_in': attendance.check_in_at_utc.isoformat() if attendance.check_in_at_utc else None,
-                    'check_out': attendance.check_out_at_utc.isoformat() if attendance.check_out_at_utc else None,
-                    'overtime_minutes': attendance.overtime_minutes,
-                    'overtime_hours': round(attendance.overtime_minutes / 60, 2),
-                    'overtime_amount': float(attendance.overtime_amount),
-                    'overtime_approved': True,
-                    'approval_notes': overtime_request.notes if overtime_request.notes else None,
-                    'is_holiday': attendance.is_holiday,
-                    'employee_note': attendance.employee_note
-                })
-        
-        return overtime_data
+            # Base query for overtime requests
+            queryset = OvertimeRequest.objects.filter(
+                employee=employee,
+                date_requested__year=year,
+                date_requested__month=month
+            ).select_related(
+                'level1_approved_by', 
+                'final_approved_by'
+            ).order_by('date_requested')
+            
+            # Filter by approval status if needed
+            if include_approved_only:
+                queryset = queryset.filter(status='approved')
+            
+            return queryset
+            
+        except (ValueError, AttributeError) as e:
+            # Return empty queryset if period format is invalid
+            return OvertimeRequest.objects.none()
 
-    def _calculate_overtime_summary(self, overtime_data):
-        """Calculate summary statistics for overtime data"""
-        if not overtime_data:
+    def generate_overtime_summary(self, employee, period, overtime_data):
+        """
+        Generate overtime summary report with detailed statistics
+        """
+        try:
+            # Basic statistics
+            total_overtime_hours = overtime_data.aggregate(
+                total=models.Sum('overtime_hours')
+            )['total'] or 0
+            
+            total_overtime_amount = overtime_data.aggregate(
+                total=models.Sum('overtime_amount')
+            )['total'] or 0
+            
+            total_requests = overtime_data.count()
+            
+            # Get work settings for calculation
+            work_settings = WorkSettings.objects.first()
+            
+            # Calculate average hourly rate
+            avg_hourly_rate = 0
+            if total_overtime_hours > 0:
+                avg_hourly_rate = float(total_overtime_amount) / float(total_overtime_hours)
+            
+            # Detailed breakdown by date
+            overtime_by_date = {}
+            for overtime in overtime_data:
+                date_str = overtime.date_requested.strftime('%Y-%m-%d')
+                if date_str not in overtime_by_date:
+                    overtime_by_date[date_str] = {
+                        'date': overtime.date_requested.strftime('%d %B %Y'),
+                        'total_hours': 0,
+                        'total_amount': 0,
+                        'requests': []
+                    }
+                
+                overtime_by_date[date_str]['total_hours'] += float(overtime.overtime_hours)
+                overtime_by_date[date_str]['total_amount'] += float(overtime.overtime_amount)
+                overtime_by_date[date_str]['requests'].append({
+                    'id': overtime.id,
+                    'hours': float(overtime.overtime_hours),
+                    'amount': float(overtime.overtime_amount),
+                    'work_description': overtime.work_description,
+                    'level1_approver': overtime.level1_approved_by.username if overtime.level1_approved_by else None,
+                    'final_approver': overtime.final_approved_by.username if overtime.final_approved_by else None,
+                    'final_approved_at': overtime.final_approved_at.isoformat() if overtime.final_approved_at else None,
+                })
+            
+            # Convert to list and sort by date
+            overtime_by_date_list = list(overtime_by_date.values())
+            overtime_by_date_list.sort(key=lambda x: x['date'])
+            
+            # Summary statistics
+            summary_stats = {
+                'period': period,
+                'total_requests': total_requests,
+                'total_overtime_hours': float(total_overtime_hours),
+                'total_overtime_amount': float(total_overtime_amount),
+                'average_hourly_rate': round(avg_hourly_rate, 2),
+                'average_daily_hours': round(float(total_overtime_hours) / len(overtime_by_date) if overtime_by_date else 0, 2),
+                'average_daily_amount': round(float(total_overtime_amount) / len(overtime_by_date) if overtime_by_date else 0, 2),
+                'workdays_with_overtime': len(overtime_by_date),
+                'overtime_by_date': overtime_by_date_list,
+            }
+            
+            return summary_stats
+            
+        except Exception as e:
+            # Return basic stats if detailed calculation fails
             return {
-                'total_overtime_days': 0,
-                'total_overtime_minutes': 0,
+                'period': period,
+                'total_requests': overtime_data.count(),
                 'total_overtime_hours': 0,
                 'total_overtime_amount': 0,
-                'average_overtime_per_day': 0,
-                'holiday_overtime_days': 0,
-                'workday_overtime_days': 0
+                'error': f"Gagal generate detail statistik: {str(e)}"
             }
-        
-        total_minutes = sum(item['overtime_minutes'] for item in overtime_data)
-        total_amount = sum(item['overtime_amount'] for item in overtime_data)
-        holiday_days = sum(1 for item in overtime_data if item['is_holiday'])
-        workday_days = sum(1 for item in overtime_data if not item['is_holiday'])
-        
-        return {
-            'total_overtime_days': len(overtime_data),
-            'total_overtime_minutes': total_minutes,
-            'total_overtime_hours': round(total_minutes / 60, 2),
-            'total_overtime_amount': round(total_amount, 2),
-            'average_overtime_per_day': round(total_minutes / len(overtime_data), 2) if overtime_data else 0,
-            'holiday_overtime_days': holiday_days,
-            'workday_overtime_days': workday_days
-        }
+
+    def get_attendance_data_for_period(self, employee, period):
+        """
+        Get attendance data for specific period and employee
+        """
+        try:
+            year, month = period.split('-')
+            year = int(year)
+            month = int(month)
+            
+            # Get attendance records for the period
+            from datetime import date
+            start_date = date(year, month, 1)
+            if month == 12:
+                end_date = date(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                end_date = date(year, month + 1, 1) - timedelta(days=1)
+            
+            queryset = Attendance.objects.filter(
+                user=employee.user,
+                date_local__gte=start_date,
+                date_local__lte=end_date
+            ).select_related('user').order_by('date_local')
+            
+            return queryset
+            
+        except (ValueError, AttributeError) as e:
+            return Attendance.objects.none()
+
+    def get_corrections_data_for_period(self, employee, period):
+        """
+        Get attendance corrections data for specific period and employee
+        """
+        try:
+            year, month = period.split('-')
+            year = int(year)
+            month = int(month)
+            
+            # Get corrections for the period
+            from datetime import date
+            start_date = date(year, month, 1)
+            if month == 12:
+                end_date = date(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                end_date = date(year, month + 1, 1) - timedelta(days=1)
+            
+            queryset = AttendanceCorrection.objects.filter(
+                employee=employee,
+                correction_date__gte=start_date,
+                correction_date__lte=end_date,
+                status='approved'  # Only approved corrections
+            ).select_related('employee', 'approved_by').order_by('correction_date')
+            
+            return queryset
+            
+        except (ValueError, AttributeError) as e:
+            return AttendanceCorrection.objects.none()
+
+    def generate_comprehensive_summary(self, employee, period, summary_request):
+        """
+        Generate comprehensive monthly summary including overtime, attendance, and corrections
+        """
+        try:
+            # Get all data types based on request scope
+            overtime_data = None
+            attendance_data = None
+            corrections_data = None
+            
+            if summary_request.include_overtime:
+                overtime_data = self.get_overtime_data_for_period(employee, period, include_approved_only=True)
+            
+            if summary_request.include_attendance:
+                attendance_data = self.get_attendance_data_for_period(employee, period)
+            
+            if summary_request.include_corrections:
+                corrections_data = self.get_corrections_data_for_period(employee, period)
+            
+            # Generate overtime summary if requested
+            overtime_summary = None
+            if overtime_data is not None:
+                overtime_summary = self.generate_overtime_summary(employee, period, overtime_data)
+            
+            # Generate attendance summary if requested
+            attendance_summary = None
+            if attendance_data is not None:
+                attendance_summary = self.generate_attendance_summary(employee, period, attendance_data)
+            
+            # Generate corrections summary if requested
+            corrections_summary = None
+            if corrections_data is not None:
+                corrections_summary = self.generate_corrections_summary(employee, period, corrections_data)
+            
+            # Combine all summaries
+            comprehensive_summary = {
+                'period': period,
+                'data_scope': {
+                    'overtime_included': summary_request.include_overtime,
+                    'attendance_included': summary_request.include_attendance,
+                    'corrections_included': summary_request.include_corrections,
+                    'summary_stats_included': summary_request.include_summary_stats,
+                },
+                'overtime_summary': overtime_summary,
+                'attendance_summary': attendance_summary,
+                'corrections_summary': corrections_summary,
+                'generated_at': dj_timezone.now().isoformat(),
+            }
+            
+            return comprehensive_summary
+            
+        except Exception as e:
+            return {
+                'period': period,
+                'error': f"Gagal generate comprehensive summary: {str(e)}"
+            }
+
+    def generate_attendance_summary(self, employee, period, attendance_data):
+        """
+        Generate attendance summary for the period
+        """
+        try:
+            total_days = attendance_data.count()
+            present_days = attendance_data.filter(check_in_at_utc__isnull=False, check_out_at_utc__isnull=False).count()
+            late_days = attendance_data.filter(lateness_minutes__gt=0).count()
+            absent_days = attendance_data.filter(check_in_at_utc__isnull=True).count()
+            
+            # Calculate total work hours
+            total_work_minutes = attendance_data.aggregate(
+                total=models.Sum('total_work_minutes')
+            )['total'] or 0
+            
+            total_work_hours = total_work_minutes / 60 if total_work_minutes > 0 else 0
+            
+            # Calculate average daily work hours
+            avg_daily_hours = total_work_hours / total_days if total_days > 0 else 0
+            
+            attendance_summary = {
+                'total_days': total_days,
+                'present_days': present_days,
+                'late_days': late_days,
+                'absent_days': absent_days,
+                'total_work_hours': round(total_work_hours, 2),
+                'average_daily_hours': round(avg_daily_hours, 2),
+                'attendance_rate': round((present_days / total_days * 100) if total_days > 0 else 0, 2),
+            }
+            
+            return attendance_summary
+            
+        except Exception as e:
+            return {
+                'error': f"Gagal generate attendance summary: {str(e)}"
+            }
+
+    def generate_corrections_summary(self, employee, period, corrections_data):
+        """
+        Generate attendance corrections summary for the period
+        """
+        try:
+            total_corrections = corrections_data.count()
+            approved_corrections = corrections_data.filter(status='approved').count()
+            pending_corrections = corrections_data.filter(status='pending').count()
+            rejected_corrections = corrections_data.filter(status='rejected').count()
+            
+            corrections_summary = {
+                'total_corrections': total_corrections,
+                'approved_corrections': approved_corrections,
+                'pending_corrections': pending_corrections,
+                'rejected_corrections': rejected_corrections,
+                'approval_rate': round((approved_corrections / total_corrections * 100) if total_corrections > 0 else 0, 2),
+            }
+            
+            return corrections_summary
+            
+        except Exception as e:
+            return {
+                'error': f"Gagal generate corrections summary: {str(e)}"
+            }

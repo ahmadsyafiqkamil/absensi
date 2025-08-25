@@ -1,6 +1,7 @@
 import { meFromServerCookies } from '@/lib/backend';
 import Header from '@/components/Header';
 import OvertimeRequestsApproval from './OvertimeRequestsApproval';
+import MonthlySummaryRequestsApproval from './MonthlySummaryRequestsApproval';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -48,7 +49,7 @@ export default async function SupervisorOvertimeRequestsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header 
         title="Persetujuan Lembur" 
-        subtitle="Kelola pengajuan lembur dari tim Anda"
+        subtitle="Kelola pengajuan lembur dan rekap bulanan dari tim Anda"
         username={me.username}
         role={role}
       />
@@ -56,14 +57,19 @@ export default async function SupervisorOvertimeRequestsPage() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Persetujuan Pengajuan Lembur</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Persetujuan Pengajuan Lembur & Rekap Bulanan</h1>
           <p className="text-gray-600 mt-2">
-            Tinjau dan setujui pengajuan lembur dari anggota tim Anda
+            Tinjau dan setujui pengajuan lembur dan rekap bulanan dari anggota tim Anda
           </p>
         </div>
 
         {/* Overtime Requests Approval */}
         <OvertimeRequestsApproval />
+        
+        {/* Monthly Summary Requests Approval */}
+        <div className="mt-12">
+          <MonthlySummaryRequestsApproval />
+        </div>
       </div>
     </div>
   );

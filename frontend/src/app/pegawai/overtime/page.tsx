@@ -1,8 +1,7 @@
 import { meFromServerCookies } from '@/lib/backend';
 import Header from '@/components/Header';
 import OvertimeRequestsManager from '../OvertimeRequestsManager';
-import MonthlySummaryRequestCard from '@/app/pegawai/MonthlySummaryRequestCard';
-import Link from 'next/link';
+import MonthlySummaryRequestManager from '../MonthlySummaryRequestManager';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -19,9 +18,9 @@ export default async function PegawaiOvertimePage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
-          <Link href="/" className="text-blue-600 hover:underline mt-4 inline-block">
+          <a href="/" className="text-blue-600 hover:underline mt-4 inline-block">
             Return to Home
-          </Link>
+          </a>
         </div>
       </div>
     )
@@ -48,9 +47,9 @@ export default async function PegawaiOvertimePage() {
         {/* Overtime Requests Manager */}
         <OvertimeRequestsManager />
         
-        {/* Monthly Summary Request Card */}
-        <div className="mt-8">
-          <MonthlySummaryRequestCard />
+        {/* Monthly Summary Request Manager */}
+        <div className="mt-12">
+          <MonthlySummaryRequestManager />
         </div>
       </div>
     </div>

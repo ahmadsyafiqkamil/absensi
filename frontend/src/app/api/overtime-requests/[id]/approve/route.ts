@@ -5,10 +5,9 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
     const cookieStore = await cookies()
     const accessToken = cookieStore.get('access_token')?.value
 
@@ -16,7 +15,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/overtime-requests/${id}/approve/`, {
+    const response = await fetch(`${BACKEND_URL}/api/overtime-requests/${params.id}/approve/`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
