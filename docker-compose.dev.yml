@@ -67,7 +67,7 @@ services:
       - ./template:/app/template
     command: ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
 
-  # Frontend Next.js (Development)
+  # Frontend Next.js (Development) - Alternative with Docker DNS
   frontend:
     build:
       context: ./frontend
@@ -75,8 +75,10 @@ services:
     container_name: absensi_frontend_dev
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=https://api.absensi.localhost
-      - NEXT_PUBLIC_BACKEND_URL=https://api.absensi.localhost
+      # Use Docker internal networking for container-to-container communication
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+      # Internal Docker networking (for container-to-container)
       - BACKEND_URL=http://backend:8000
     ports:
       - "3000:3000"
@@ -87,6 +89,10 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    # Extra hosts for domain resolution
+    extra_hosts:
+      - "absensi.localhost:127.0.0.1"
+      - "api.absensi.localhost:127.0.0.1"
 
   # Reverse proxy for local HTTPS (self-signed via Caddy internal CA)
   caddy:
