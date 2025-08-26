@@ -41,7 +41,19 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'corsheaders',
+    
+    # Legacy app (for backward compatibility during migration)
     'api',
+    
+    # New modular apps
+    'apps.core',
+    'apps.users',
+    'apps.employees',
+    'apps.attendance',
+    'apps.corrections',
+    'apps.overtime',
+    'apps.reporting',
+    'apps.settings',
 ]
 
 MIDDLEWARE = [
