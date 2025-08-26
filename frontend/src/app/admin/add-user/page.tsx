@@ -5,7 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import Header from '@/components/Header';
 
@@ -31,8 +37,8 @@ export default function AddUserPage() {
     password: "",
     group: "pegawai", // default to pegawai
     nip: "",
-    division_id: "",
-    position_id: "",
+    division_id: "none", // Changed from "" to "none"
+    position_id: "none", // Changed from "" to "none"
     gaji_pokok: "",
     tmt_kerja: "",
     tempat_lahir: "",
@@ -42,6 +48,7 @@ export default function AddUserPage() {
 
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+
   function extractErrorMessage(data: any): string {
     try {
       if (!data) return 'Unknown error';
@@ -66,7 +73,6 @@ export default function AddUserPage() {
       return 'Unknown error';
     }
   }
-
 
   // Fetch divisions and positions on component mount
   useEffect(() => {
@@ -100,7 +106,7 @@ export default function AddUserPage() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -108,8 +114,45 @@ export default function AddUserPage() {
     }));
   };
 
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const validateForm = (): string | null => {
+    if (!formData.username.trim()) {
+      return "Username is required";
+    }
+    if (!formData.password.trim()) {
+      return "Password is required";
+    }
+    if (formData.password.length < 6) {
+      return "Password must be at least 6 characters";
+    }
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return "Please enter a valid email address";
+    }
+    if (formData.nip && formData.nip.length < 3) {
+      return "NIP must be at least 3 characters";
+    }
+    if (formData.gaji_pokok && parseFloat(formData.gaji_pokok) < 0) {
+      return "Gaji Pokok cannot be negative";
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    // Validate form
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setIsLoading(true);
     setError("");
     setSuccess("");
@@ -120,9 +163,9 @@ export default function AddUserPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: formData.username,
+          username: formData.username.trim(),
           password: formData.password,
-          email: formData.email,
+          email: formData.email.trim() || '',
           group: formData.group
         })
       });
@@ -135,20 +178,24 @@ export default function AddUserPage() {
       const userData = await userResponse.json();
 
       // Then, create employee record if NIP is provided
-      if (formData.nip) {
+      if (formData.nip.trim()) {
+        // Convert "none" values to null for backend
+        const divisionId = formData.division_id === "none" ? null : formData.division_id;
+        const positionId = formData.position_id === "none" ? null : formData.position_id;
+
         const employeeResponse = await fetch('/api/admin/employees', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: userData.id,
-            nip: formData.nip,
-            division_id: formData.division_id || null,
-            position_id: formData.position_id || null,
-            gaji_pokok: formData.gaji_pokok ? formData.gaji_pokok : null,
+            nip: formData.nip.trim(),
+            division_id: divisionId,
+            position_id: positionId,
+            gaji_pokok: formData.gaji_pokok ? parseFloat(formData.gaji_pokok) : null,
             tmt_kerja: formData.tmt_kerja || null,
-            tempat_lahir: formData.tempat_lahir || null,
+            tempat_lahir: formData.tempat_lahir.trim() || null,
             tanggal_lahir: formData.tanggal_lahir || null,
-            fullname: formData.fullname || null,
+            fullname: formData.fullname.trim() || null,
           })
         });
 
@@ -159,14 +206,16 @@ export default function AddUserPage() {
       }
 
       setSuccess("User created successfully!");
+      
+      // Reset form
       setFormData({
         username: "",
         email: "",
         password: "",
         group: "pegawai",
         nip: "",
-        division_id: "",
-        position_id: "",
+        division_id: "none",
+        position_id: "none",
         gaji_pokok: "",
         tmt_kerja: "",
         tempat_lahir: "",
@@ -195,22 +244,28 @@ export default function AddUserPage() {
         role="admin"
       />
       
-      <div className="max-w-2xl mx-auto px-4 py-8">
-
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <Card>
           <CardHeader>
-            <CardTitle>Employee Information</CardTitle>
-            <CardDescription>Fill in account and employee details</CardDescription>
+            <CardTitle className="text-2xl font-bold text-gray-900">Employee Information</CardTitle>
+            <CardDescription className="text-gray-600">
+              Fill in account and employee details to create a new user
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-8">
               {/* User Account Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Account Details</h3>
+              <div className="space-y-6">
+                <div className="border-b border-gray-200 pb-4">
+                  <h3 className="text-xl font-semibold text-gray-900">Account Details</h3>
+                  <p className="text-sm text-gray-600 mt-1">Basic user account information</p>
+                </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username *</Label>
+                    <Label htmlFor="username" className="text-sm font-medium text-gray-700">
+                      Username <span className="text-red-500">*</span>
+                    </Label>
                     <Input
                       id="username"
                       name="username"
@@ -219,11 +274,14 @@ export default function AddUserPage() {
                       value={formData.username}
                       onChange={handleInputChange}
                       placeholder="Enter username"
+                      className="h-11"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                      Email
+                    </Label>
                     <Input
                       id="email"
                       name="email"
@@ -231,13 +289,16 @@ export default function AddUserPage() {
                       value={formData.email}
                       onChange={handleInputChange}
                       placeholder="Enter email address"
+                      className="h-11"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password *</Label>
+                    <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                      Password <span className="text-red-500">*</span>
+                    </Label>
                     <Input
                       id="password"
                       name="password"
@@ -245,135 +306,177 @@ export default function AddUserPage() {
                       required
                       value={formData.password}
                       onChange={handleInputChange}
-                      placeholder="Enter password"
+                      placeholder="Enter password (min 6 characters)"
+                      className="h-11"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="group">Role *</Label>
+                    <Label htmlFor="group" className="text-sm font-medium text-gray-700">
+                      Role <span className="text-red-500">*</span>
+                    </Label>
                     <Select
-                      id="group"
-                      name="group"
-                      required
                       value={formData.group}
-                      onChange={handleInputChange}
+                      onValueChange={(value: string) => handleSelectChange("group", value)}
                     >
-                      <option value="pegawai">Pegawai</option>
-                      <option value="supervisor">Supervisor</option>
-                      <option value="admin">Admin</option>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pegawai">Pegawai (Employee)</SelectItem>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
                     </Select>
                   </div>
                 </div>
               </div>
 
               {/* Employee Details Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Employee Details</h3>
+              <div className="space-y-6">
+                <div className="border-b border-gray-200 pb-4">
+                  <h3 className="text-xl font-semibold text-gray-900">Employee Details</h3>
+                  <p className="text-sm text-gray-600 mt-1">Professional and personal information</p>
+                </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="nip">NIP</Label>
-                  <Input
-                    id="nip"
-                    name="nip"
-                    type="text"
-                    value={formData.nip}
-                    onChange={handleInputChange}
-                    placeholder="Enter NIP (Employee ID)"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="fullname">Full Name</Label>
-                  <Input
-                    id="fullname"
-                    name="fullname"
-                    type="text"
-                    value={formData.fullname}
-                    onChange={handleInputChange}
-                    placeholder="Enter full name"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="nip" className="text-sm font-medium text-gray-700">
+                      NIP (Employee ID)
+                    </Label>
+                    <Input
+                      id="nip"
+                      name="nip"
+                      type="text"
+                      value={formData.nip}
+                      onChange={handleInputChange}
+                      placeholder="Enter NIP (Employee ID)"
+                      className="h-11"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="fullname" className="text-sm font-medium text-gray-700">
+                      Full Name
+                    </Label>
+                    <Input
+                      id="fullname"
+                      name="fullname"
+                      type="text"
+                      value={formData.fullname}
+                      onChange={handleInputChange}
+                      placeholder="Enter full name"
+                      className="h-11"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="division_id">Division</Label>
+                    <Label htmlFor="division_id" className="text-sm font-medium text-gray-700">
+                      Division
+                    </Label>
                     <Select
-                      id="division_id"
-                      name="division_id"
                       value={formData.division_id}
-                      onChange={handleInputChange}
+                      onValueChange={(value: string) => handleSelectChange("division_id", value)}
                     >
-                      <option value="">Select Division</option>
-                      {divisions.map((division) => (
-                        <option key={division.id} value={division.id}>
-                          {division.name}
-                        </option>
-                      ))}
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Select Division" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Division</SelectItem>
+                        {divisions.map((division) => (
+                          <SelectItem key={division.id} value={division.id.toString()}>
+                            {division.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="position_id">Position</Label>
+                    <Label htmlFor="position_id" className="text-sm font-medium text-gray-700">
+                      Position
+                    </Label>
                     <Select
-                      id="position_id"
-                      name="position_id"
                       value={formData.position_id}
-                      onChange={handleInputChange}
+                      onValueChange={(value: string) => handleSelectChange("position_id", value)}
                     >
-                      <option value="">Select Position</option>
-                      {positions.map((position) => (
-                        <option key={position.id} value={position.id}>
-                          {position.name}
-                        </option>
-                      ))}
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Select Position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Position</SelectItem>
+                        {positions.map((position) => (
+                          <SelectItem key={position.id} value={position.id.toString()}>
+                            {position.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="gaji_pokok">Gaji Pokok</Label>
+                    <Label htmlFor="gaji_pokok" className="text-sm font-medium text-gray-700">
+                      Gaji Pokok (Base Salary)
+                    </Label>
                     <Input
                       id="gaji_pokok"
                       name="gaji_pokok"
                       type="number"
                       step="0.01"
+                      min="0"
                       value={formData.gaji_pokok}
                       onChange={handleInputChange}
-                      placeholder="cth: 5000000.00"
+                      placeholder="e.g., 5000000.00"
+                      className="h-11"
                     />
                   </div>
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="tmt_kerja">TMT Kerja</Label>
+                    <Label htmlFor="tmt_kerja" className="text-sm font-medium text-gray-700">
+                      TMT Kerja (Work Start Date)
+                    </Label>
                     <Input
                       id="tmt_kerja"
                       name="tmt_kerja"
                       type="date"
                       value={formData.tmt_kerja}
                       onChange={handleInputChange}
+                      className="h-11"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="tempat_lahir">Tempat Lahir</Label>
+                    <Label htmlFor="tempat_lahir" className="text-sm font-medium text-gray-700">
+                      Tempat Lahir (Birth Place)
+                    </Label>
                     <Input
                       id="tempat_lahir"
                       name="tempat_lahir"
                       type="text"
                       value={formData.tempat_lahir}
                       onChange={handleInputChange}
-                      placeholder="cth: Jakarta"
+                      placeholder="e.g., Jakarta"
+                      className="h-11"
                     />
                   </div>
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="tanggal_lahir">Tanggal Lahir</Label>
+                    <Label htmlFor="tanggal_lahir" className="text-sm font-medium text-gray-700">
+                      Tanggal Lahir (Birth Date)
+                    </Label>
                     <Input
                       id="tanggal_lahir"
                       name="tanggal_lahir"
                       type="date"
                       value={formData.tanggal_lahir}
                       onChange={handleInputChange}
+                      className="h-11"
                     />
                   </div>
                 </div>
@@ -382,32 +485,61 @@ export default function AddUserPage() {
               {/* Error and Success Messages */}
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-                  {error}
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium">{error}</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {success && (
                 <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
-                  {success}
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium">{success}</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* Form Actions */}
-              <div className="flex gap-4 pt-4">
+              <div className="flex gap-4 pt-6 border-t border-gray-200">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => router.back()}
                   disabled={isLoading}
+                  className="px-6 py-2"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="flex-1"
+                  className="flex-1 px-6 py-2 bg-blue-600 hover:bg-blue-700"
                 >
-                  {isLoading ? "Creating Employee..." : "Create Employee"}
+                  {isLoading ? (
+                    <div className="flex items-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Creating Employee...
+                    </div>
+                  ) : (
+                    "Create Employee"
+                  )}
                 </Button>
               </div>
             </form>

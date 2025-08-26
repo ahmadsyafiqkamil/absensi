@@ -26,7 +26,7 @@ urlpatterns = [
     path('', include(router.urls)),
     
     # Role-specific endpoints
-    path('admin/', include((admin_router.urls, 'admin'), namespace='admin')),
-    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='supervisor')),
-    path('employee/', include((employee_router.urls, 'employee'), namespace='employee')),
+    path('admin/', include((admin_router.urls, 'admin'), namespace='settings-admin')),
+    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='settings-supervisor')),
+    path('employee/', include((employee_router.urls, 'employee'), namespace='settings-employee')),
 ]

@@ -28,7 +28,17 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { user_id, nip, division_id, position_id } = body;
+    const { 
+      user_id, 
+      nip, 
+      division_id, 
+      position_id, 
+      gaji_pokok, 
+      tmt_kerja, 
+      tempat_lahir, 
+      tanggal_lahir, 
+      fullname 
+    } = body;
 
     // Validate required fields
     if (!user_id || !nip) {
@@ -38,6 +48,31 @@ export async function POST(request: Request) {
       );
     }
 
+    // Prepare employee data
+    const employeeData: any = {
+      user_id,
+      nip,
+      division_id: division_id || null,
+      position_id: position_id || null,
+    };
+
+    // Add optional fields if provided
+    if (gaji_pokok !== undefined && gaji_pokok !== null) {
+      employeeData.gaji_pokok = gaji_pokok;
+    }
+    if (tmt_kerja !== undefined && tmt_kerja !== null) {
+      employeeData.tmt_kerja = tmt_kerja;
+    }
+    if (tempat_lahir !== undefined && tempat_lahir !== null) {
+      employeeData.tempat_lahir = tempat_lahir;
+    }
+    if (tanggal_lahir !== undefined && tanggal_lahir !== null) {
+      employeeData.tanggal_lahir = tanggal_lahir;
+    }
+    if (fullname !== undefined && fullname !== null) {
+      employeeData.fullname = fullname;
+    }
+
     // Call backend employee creation API (namespaced admin route)
     const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees/`, {
       method: 'POST',
@@ -45,12 +80,7 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`
       },
-      body: JSON.stringify({
-        user_id,
-        nip,
-        division_id: division_id || null,
-        position_id: position_id || null
-      })
+      body: JSON.stringify(employeeData)
     });
 
     if (!response.ok) {

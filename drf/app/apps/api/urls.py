@@ -1,5 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
 
 # Import legacy views for backward compatibility
 from api import views
@@ -49,6 +54,11 @@ urlpatterns = [
     path('users/provision', views.provision_user, name='provision-user'),
     path('users', views.users_list, name='users-list'),
     
+    # Auth endpoints (JWT)
+    path('auth/login', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/refresh', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/verify', TokenVerifyView.as_view(), name='token_verify'),
+    
     # Auth endpoints (legacy)
     path('auth/me', views.me, name='auth-me'),
     path('auth/logout', views.logout, name='auth-logout'),
@@ -64,9 +74,9 @@ urlpatterns = [
     path('', include(router.urls)),
     
     # Role-specific endpoints (legacy)
-    path('admin/', include((admin_router.urls, 'admin'), namespace='admin')),
-    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='supervisor')),
-    path('employee/', include((employee_router.urls, 'employee'), namespace='employee')),
+    path('admin/', include((admin_router.urls, 'admin'), namespace='legacy-admin')),
+    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='legacy-supervisor')),
+    path('employee/', include((employee_router.urls, 'employee'), namespace='legacy-employee')),
     
     # Legacy custom actions
     path('attendance-corrections/<int:pk>/approve', views.AttendanceCorrectionViewSet.as_view({'post': 'approve'}), name='attendance-correction-approve'),

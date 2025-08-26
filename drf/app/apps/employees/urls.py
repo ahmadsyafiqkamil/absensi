@@ -30,8 +30,11 @@ urlpatterns = [
     # Main endpoints
     path('', include(router.urls)),
     
+    # Employee-specific endpoints
+    path('me/', views.EmployeeViewSet.as_view({'get': 'me'}), name='employee-me'),
+    
     # Role-specific endpoints
-    path('admin/', include((admin_router.urls, 'admin'), namespace='admin')),
-    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='supervisor')),
-    path('employee/', include((employee_router.urls, 'employee'), namespace='employee')),
+    path('admin/', include((admin_router.urls, 'admin'), namespace='employees-admin')),
+    path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='employees-supervisor')),
+    path('employee/', include((employee_router.urls, 'employee'), namespace='employees-employee')),
 ]
