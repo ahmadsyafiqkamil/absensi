@@ -4167,6 +4167,72 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=True, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
+    def export_pdf(self, request, pk=None):
+        """Export monthly summary to PDF by converting DOCX"""
+        summary_request = self.get_object()
+        user = request.user
+        
+        # Only export for approved requests
+        if summary_request.status != 'approved':
+            return Response(
+                {"detail": "Hanya pengajuan yang sudah disetujui yang dapat di-export"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Parse period
+            year, month = summary_request.request_period.split('-')
+            year = int(year)
+            month = int(month)
+            
+            # Get overtime data for the period
+            overtime_data = self.get_overtime_data_for_period(
+                summary_request.employee, 
+                summary_request.request_period,
+                include_approved_only=True
+            )
+            
+            if not overtime_data.exists():
+                return Response(
+                    {"detail": f"Tidak ada data overtime untuk periode {summary_request.request_period}"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Generate DOCX document first using existing template system
+            docx_file = self.generate_monthly_summary_docx(
+                summary_request,
+                overtime_data,
+                summary_request.request_period
+            )
+            
+            # Convert DOCX to PDF
+            pdf_file = self.convert_docx_to_pdf(docx_file)
+            
+            # Return PDF file response
+            from django.http import FileResponse
+            import os
+            
+            filename = f"Rekap_Lembur_Bulanan_{summary_request.employee.nip}_{summary_request.request_period}.pdf"
+            
+            response = FileResponse(
+                open(pdf_file, 'rb'),
+                content_type='application/pdf'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            # Clean up temporary files
+            os.unlink(docx_file)
+            os.unlink(pdf_file)
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal export PDF: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     def get_overtime_data_for_period(self, employee, period, include_approved_only=True):
         """
         Get overtime data for specific period and employee
@@ -4895,3 +4961,42 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         
         # Add spacing
         doc.add_paragraph()
+
+    def convert_docx_to_pdf(self, docx_file_path):
+        """Convert DOCX file to PDF using docx2pdf library"""
+        try:
+            from docx2pdf import convert
+            import tempfile
+            import os
+            
+            # Create temporary PDF file
+            pdf_temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            pdf_temp.close()
+            
+            # Convert DOCX to PDF
+            convert(docx_file_path, pdf_temp.name)
+            
+            return pdf_temp.name
+            
+        except ImportError:
+            # Fallback: if docx2pdf is not available, try alternative method
+            try:
+                from docx2pdf import convert
+                import tempfile
+                import os
+                
+                # Create temporary PDF file
+                pdf_temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+                pdf_temp.close()
+                
+                # Convert DOCX to PDF
+                convert(docx_file_path, pdf_temp.name)
+                
+                return pdf_temp.name
+                
+            except Exception as e:
+                # If all methods fail, raise error
+                raise Exception(f"Tidak dapat mengkonversi DOCX ke PDF: {str(e)}")
+                
+        except Exception as e:
+            raise Exception(f"Error saat konversi DOCX ke PDF: {str(e)}")

@@ -363,6 +363,38 @@ export default function MonthlySummaryRequestManager() {
                 >
                   📄 Export DOCX
                 </Button>
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const response = await authFetch(`/api/employee/monthly-summary-requests/${request.id}/export_pdf/`);
+                      
+                      if (response.ok) {
+                        // Get blob from response
+                        const blob = await response.blob();
+                        // Create download link
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Rekap_Lembur_Bulanan_${request.request_period}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } else {
+                        alert('Gagal export PDF. Silakan coba lagi.');
+                      }
+                    } catch (error) {
+                      console.error('Export error:', error);
+                      alert('Terjadi kesalahan saat export PDF.');
+                    }
+                  }}
+                  className="text-red-600 border-red-600 hover:bg-red-50"
+                >
+                  📄 Export PDF
+                </Button>
               </>
             )}
           </div>

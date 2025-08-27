@@ -5,7 +5,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # Next.js
-.next/
 out/
 
 # Production
@@ -41,3 +40,14 @@ yarn-error.log*
 # Docker
 Dockerfile
 .dockerignore
+
+# HeroUI specific
+.heroui/
+heroui.config.js
+heroui.config.ts
+
+# Development files
+*.log
+*.md
+.eslintrc*
+.prettierrc*

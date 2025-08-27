@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { attendanceId: string } }
+  { params }: { params: Promise<{ attendanceId: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -12,7 +12,7 @@ export async function POST(
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const attendanceId = params.attendanceId
+    const { attendanceId } = await params
     
     if (!attendanceId) {
       return NextResponse.json({ detail: 'Attendance ID is required' }, { status: 400 })

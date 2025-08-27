@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import Header from '@/components/Header';
 
@@ -31,8 +31,8 @@ export default function AddUserPage() {
     password: "",
     group: "pegawai", // default to pegawai
     nip: "",
-    division_id: "",
-    position_id: "",
+    division_id: "none",
+    position_id: "none",
     gaji_pokok: "",
     tmt_kerja: "",
     tempat_lahir: "",
@@ -142,8 +142,8 @@ export default function AddUserPage() {
           body: JSON.stringify({
             user_id: userData.id,
             nip: formData.nip,
-            division_id: formData.division_id || null,
-            position_id: formData.position_id || null,
+            division_id: formData.division_id === 'none' ? null : formData.division_id,
+            position_id: formData.position_id === 'none' ? null : formData.position_id,
             gaji_pokok: formData.gaji_pokok ? formData.gaji_pokok : null,
             tmt_kerja: formData.tmt_kerja || null,
             tempat_lahir: formData.tempat_lahir || null,
@@ -165,8 +165,8 @@ export default function AddUserPage() {
         password: "",
         group: "pegawai",
         nip: "",
-        division_id: "",
-        position_id: "",
+        division_id: "none",
+        position_id: "none",
         gaji_pokok: "",
         tmt_kerja: "",
         tempat_lahir: "",
@@ -251,16 +251,15 @@ export default function AddUserPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="group">Role *</Label>
-                    <Select
-                      id="group"
-                      name="group"
-                      required
-                      value={formData.group}
-                      onChange={handleInputChange}
-                    >
-                      <option value="pegawai">Pegawai</option>
-                      <option value="supervisor">Supervisor</option>
-                      <option value="admin">Admin</option>
+                    <Select value={formData.group} onValueChange={(value) => handleInputChange({ target: { name: 'group', value } } as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pegawai">Pegawai</SelectItem>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
                     </Select>
                   </div>
                 </div>
@@ -296,35 +295,35 @@ export default function AddUserPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="division_id">Division</Label>
-                    <Select
-                      id="division_id"
-                      name="division_id"
-                      value={formData.division_id}
-                      onChange={handleInputChange}
-                    >
-                      <option value="">Select Division</option>
-                      {divisions.map((division) => (
-                        <option key={division.id} value={division.id}>
-                          {division.name}
-                        </option>
-                      ))}
+                    <Select value={formData.division_id} onValueChange={(value) => handleInputChange({ target: { name: 'division_id', value } } as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Division" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select Division</SelectItem>
+                        {divisions.map((division) => (
+                          <SelectItem key={division.id} value={String(division.id)}>
+                            {division.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="position_id">Position</Label>
-                    <Select
-                      id="position_id"
-                      name="position_id"
-                      value={formData.position_id}
-                      onChange={handleInputChange}
-                    >
-                      <option value="">Select Position</option>
-                      {positions.map((position) => (
-                        <option key={position.id} value={position.id}>
-                          {position.name}
-                        </option>
-                      ))}
+                    <Select value={formData.position_id} onValueChange={(value) => handleInputChange({ target: { name: 'position_id', value } } as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select Position</SelectItem>
+                        {positions.map((position) => (
+                          <SelectItem key={position.id} value={String(position.id)}>
+                            {position.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
                 </div>

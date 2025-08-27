@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 
 export async function GET(
   request: Request,
-  { params }: { params: { employeeId: string } }
+  { params }: { params: Promise<{ employeeId: string }> }
 ) {
   try {
     const { employeeId } = await params;

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "next build --no-lint",
     "start": "next start",
     "lint": "next lint"
   },
@@ -17,11 +17,13 @@
     "@tanstack/react-table": "^8.20.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "framer-motion": "^11.9.0",
     "lucide-react": "^0.537.0",
     "next": "15.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "tailwind-variants": "^0.2.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

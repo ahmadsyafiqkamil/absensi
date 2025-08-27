@@ -80,6 +80,9 @@ services:
       - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
       # Internal Docker networking (for container-to-container)
       - BACKEND_URL=http://backend:8000
+      # HeroUI specific environment variables
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
     ports:
       - "3000:3000"
     depends_on:
@@ -89,10 +92,18 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
     # Extra hosts for domain resolution
     extra_hosts:
       - "absensi.localhost:127.0.0.1"
       - "api.absensi.localhost:127.0.0.1"
+    # Health check for frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Reverse proxy for local HTTPS (self-signed via Caddy internal CA)
   caddy:
