@@ -28,7 +28,17 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { user_id, nip, division_id, position_id } = body;
+    const { 
+      user_id, 
+      nip, 
+      division_id, 
+      position_id, 
+      fullname, 
+      gaji_pokok, 
+      tmt_kerja, 
+      tempat_lahir, 
+      tanggal_lahir 
+    } = body;
 
     // Validate required fields
     if (!user_id || !nip) {
@@ -48,8 +58,13 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         user_id,
         nip,
-        division_id: division_id || null,
-        position_id: position_id || null
+        division_id: division_id === 'none' ? null : division_id,
+        position_id: position_id === 'none' ? null : position_id,
+        fullname: fullname || null,
+        gaji_pokok: gaji_pokok || null,
+        tmt_kerja: tmt_kerja || null,
+        tempat_lahir: tempat_lahir || null,
+        tanggal_lahir: tanggal_lahir || null,
       })
     });
 

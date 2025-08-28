@@ -183,12 +183,16 @@ export default function MonthlySummaryRequestManager() {
     }
 
     try {
+      // Prepare data for submission, excluding null/empty fields
+      const submitData = { ...formData };
+      
+      console.log(submitData);
       const response = await authFetch('/api/employee/monthly-summary-requests/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       if (response.ok) {

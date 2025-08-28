@@ -20,9 +20,9 @@ export async function GET(request: Request) {
     if (month) queryParams.append('month', month)
     
     const queryString = queryParams.toString()
-    const url = `/api/attendance/report/pdf${queryString ? `?${queryString}` : ''}`
+    const url = `api/attendance/report/pdf${queryString ? `?${queryString}` : ''}`
     
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}${url}`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/${url}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,

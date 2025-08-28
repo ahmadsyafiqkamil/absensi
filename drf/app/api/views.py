@@ -75,6 +75,7 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 import datetime
 from datetime import timedelta
+from django.db import IntegrityError
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -284,6 +285,13 @@ class WorkSettingsViewSet(viewsets.ViewSet):
             friday_end = serializer.validated_data.get("friday_end_time", obj.friday_end_time)
             if friday_start >= friday_end:
                 return JsonResponse({"detail": "friday_start_time must be earlier than friday_end_time"}, status=400)
+            
+            # Validation for earliest check-in time
+            earliest_check_in = serializer.validated_data.get("earliest_check_in_time", obj.earliest_check_in_time)
+            if earliest_check_in >= start:
+                return JsonResponse({
+                    "detail": "earliest_check_in_time must be earlier than start_time"
+                }, status=400)
             
             workdays = serializer.validated_data.get("workdays", obj.workdays)
             if not isinstance(workdays, list) or not all(isinstance(x, int) and 0 <= x <= 6 for x in workdays):
@@ -1033,6 +1041,14 @@ def attendance_check_in(request):
         # evaluate_lateness expects a datetime; we pass now (server) which will be normalized
         res = evaluate_lateness_as_dict(now)
         minutes_late = int(res.get('minutes_late') or 0)
+    
+    # Validate earliest check-in time
+    if ws.earliest_check_in_enabled:
+        earliest_check_in_local = datetime.combine(date_local, ws.earliest_check_in_time, tz)
+        if local_now < earliest_check_in_local:
+            return JsonResponse({
+                'detail': f'Check-in terlalu awal. Jam absen dibuka mulai {ws.earliest_check_in_time.strftime("%H:%M")}'
+            }, status=400)
 
     att.check_in_at_utc = now
     att.check_in_lat = lat
@@ -1200,10 +1216,7 @@ def attendance_report(request):
     attendance_qs = Attendance.objects.filter(user=user)
     
     # Apply date filters
-    if start_date:
-        attendance_qs = attendance_qs.filter(date_local__gte=start_date)
-    if end_date:
-        attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+    # Priority: month filter overrides date range filters
     if month:
         # Parse month and filter by year-month
         try:
@@ -1212,8 +1225,18 @@ def attendance_report(request):
                 date_local__year=year,
                 date_local__month=month_num
             )
+            # Log the filter being applied
+            print(f"Applied month filter: {year}-{month_num}")
         except ValueError:
             return JsonResponse({"detail": "invalid_month_format_use_yyyy_mm"}, status=400)
+    else:
+        # Apply date range filters (can be partial - just start or just end)
+        if start_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+            print(f"Applied start_date filter: {start_date}")
+        if end_date:
+            attendance_qs = attendance_qs.filter(date_local__lte=end_date)
+            print(f"Applied end_date filter: {end_date}")
     
     # Get attendance records
     attendances = attendance_qs.order_by('-date_local')
@@ -1288,14 +1311,31 @@ def attendance_report_pdf(request):
     end_date = request.GET.get('end_date')
     month = request.GET.get('month')
     
+    # Validate date formats
+    if start_date:
+        try:
+            from datetime import datetime
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        except ValueError:
+            return JsonResponse({"detail": "Invalid start_date format. Use YYYY-MM-DD"}, status=400)
+    
+    if end_date:
+        try:
+            from datetime import datetime
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            return JsonResponse({"detail": "Invalid end_date format. Use YYYY-MM-DD"}, status=400)
+    
+    # Validate that end_date is not before start_date
+    if start_date and end_date:
+        if end_dt < start_dt:
+            return JsonResponse({"detail": "end_date cannot be before start_date"}, status=400)
+    
     # Build attendance queryset
     attendance_qs = Attendance.objects.filter(user=user)
     
     # Apply date filters
-    if start_date:
-        attendance_qs = attendance_qs.filter(date_local__gte=start_date)
-    if end_date:
-        attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+    # Priority: month filter overrides date range filters
     if month:
         try:
             year, month_num = month.split('-')
@@ -1305,6 +1345,12 @@ def attendance_report_pdf(request):
             )
         except ValueError:
             return JsonResponse({"detail": "invalid_month_format_use_yyyy_mm"}, status=400)
+    else:
+        # Apply date range filters (can be partial - just start or just end)
+        if start_date:
+            attendance_qs = attendance_qs.filter(date_local__gte=start_date)
+        if end_date:
+            attendance_qs = attendance_qs.filter(date_local__lte=end_date)
     
     # Get attendance records
     attendances = attendance_qs.order_by('-date_local')
@@ -1539,7 +1585,7 @@ def supervisor_team_attendance_pdf(request):
         if start_date:
             attendance_qs = attendance_qs.filter(date_local__gte=start_date)
         if end_date:
-            attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+            attendance_qs = attendance_qs.filter(date_local__lte=end_date)
         
         # Get attendance records
         attendances = attendance_qs.order_by('-date_local')
@@ -1818,7 +1864,7 @@ def supervisor_team_attendance_pdf_alt(request):
         if start_date:
             attendance_qs = attendance_qs.filter(date_local__gte=start_date)
         if end_date:
-            attendance_qs = attendance_qs.filter(date_local__gte=end_date)
+            attendance_qs = attendance_qs.filter(date_local__lte=end_date)
         
         # Get attendance records
         attendances = attendance_qs.order_by('-date_local')
@@ -2397,8 +2443,17 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         try:
             employee = user.employee
             serializer.save(user=user, employee=employee)
-        except:
+        except AttributeError:
             raise serializers.ValidationError("User tidak memiliki profil employee")
+        except IntegrityError as e:
+            if 'unique constraint' in str(e).lower() or 'duplicate' in str(e).lower():
+                raise serializers.ValidationError(
+                    "Anda sudah memiliki pengajuan rekap untuk periode dan jenis laporan yang sama. "
+                    "Silakan gunakan pengajuan yang sudah ada atau tunggu hingga selesai."
+                )
+            raise serializers.ValidationError(f"Terjadi kesalahan database: {str(e)}")
+        except Exception as e:
+            raise serializers.ValidationError(f"Terjadi kesalahan: {str(e)}")
     
     def create(self, request, *args, **kwargs):
         """Override create to ensure only employees can create requests"""
@@ -3834,8 +3889,17 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         try:
             employee = user.employee
             serializer.save(user=user, employee=employee)
-        except:
+        except AttributeError:
             raise serializers.ValidationError("User tidak memiliki profil employee")
+        except IntegrityError as e:
+            if 'unique constraint' in str(e).lower() or 'duplicate' in str(e).lower():
+                raise serializers.ValidationError(
+                    "Anda sudah memiliki pengajuan rekap untuk periode dan jenis laporan yang sama. "
+                    "Silakan gunakan pengajuan yang sudah ada atau tunggu hingga selesai."
+                )
+            raise serializers.ValidationError(f"Terjadi kesalahan database: {str(e)}")
+        except Exception as e:
+            raise serializers.ValidationError(f"Terjadi kesalahan: {str(e)}")
     
     def create(self, request, *args, **kwargs):
         """Override create to ensure only employees can create requests"""

@@ -30,6 +30,10 @@ class WorkSettingsAdmin(admin.ModelAdmin):
         ('Regular Work Hours', {
             'fields': ('start_time', 'end_time', 'required_minutes', 'grace_minutes')
         }),
+        ('Check-in Restrictions', {
+            'fields': ('earliest_check_in_enabled', 'earliest_check_in_time'),
+            'description': 'Restrict when employees can start checking in'
+        }),
         ('Friday Special Hours', {
             'fields': ('friday_start_time', 'friday_end_time', 'friday_required_minutes', 'friday_grace_minutes'),
             'description': 'Special working hours for Fridays (9:00-13:00)'

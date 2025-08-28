@@ -132,6 +132,18 @@ class WorkSettings(models.Model):
         verbose_name="Overtime Threshold (Minutes)",
         help_text="Minimum extra minutes before overtime starts counting (e.g., 60 = 1 hour buffer)",
     )
+    
+    # Early check-in restriction settings
+    earliest_check_in_time = models.TimeField(
+        default=time(6, 0),  # Default: 06:00
+        verbose_name="Earliest Check-in Time",
+        help_text="Earliest time employees can check in (e.g., 06:00)"
+    )
+    earliest_check_in_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Enable Early Check-in Restriction",
+        help_text="Whether to enforce earliest check-in time restriction"
+    )
 
     class Meta:
         verbose_name = "Work Settings"

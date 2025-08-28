@@ -26,6 +26,8 @@ type WorkSettings = {
   overtime_rate_workday: number | string
   overtime_rate_holiday: number | string
   overtime_threshold_minutes: number
+  earliest_check_in_enabled?: boolean
+  earliest_check_in_time?: string
 }
 
 type Holiday = { id: number; date: string; note?: string }
@@ -60,7 +62,13 @@ export default function SettingsClient() {
           fetch('/api/admin/settings/work').then(r => r.json()),
           fetch(`/api/admin/settings/holidays?page=${1}&page_size=${10}`).then(r => r.json()),
         ])
-        setSettings(s)
+        // Set default values for new fields if they don't exist
+        const settingsWithDefaults = {
+          ...s,
+          earliest_check_in_enabled: s.earliest_check_in_enabled ?? false,
+          earliest_check_in_time: s.earliest_check_in_time ?? '06:00'
+        }
+        setSettings(settingsWithDefaults)
         setHolidays(h?.results ?? [])
         setHolidaysCount(h?.count ?? 0)
         setHolidaysPage(1)
@@ -310,6 +318,45 @@ export default function SettingsClient() {
               </div>
             </div>
           </div>
+
+          {/* Check-in Restrictions */}
+          <div className="border-t pt-4">
+            <div className="text-lg font-semibold mb-4 text-orange-600">Pembatasan Awal Jam Absensi</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="earliest_check_in_enabled"
+                  checked={settings.earliest_check_in_enabled || false}
+                  onChange={(e) => setSettings({ ...settings, earliest_check_in_enabled: e.target.checked })}
+                  className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                />
+                <Label htmlFor="earliest_check_in_enabled" className="text-sm font-medium">
+                  Aktifkan pembatasan jam absensi
+                </Label>
+              </div>
+              <div className="grid gap-2">
+                <Label>Jam paling awal untuk absen</Label>
+                <Input
+                  type="time"
+                  value={settings.earliest_check_in_time || '06:00'}
+                  onChange={(e) => setSettings({ ...settings, earliest_check_in_time: e.target.value })}
+                  disabled={!settings.earliest_check_in_enabled}
+                />
+                <div className="text-xs text-gray-500">
+                  Employee tidak bisa absen sebelum jam ini
+                </div>
+              </div>
+            </div>
+            {settings.earliest_check_in_enabled && (
+              <div className="mt-4 p-3 bg-orange-50 rounded-lg">
+                <div className="text-sm text-orange-800">
+                  <strong>Info:</strong> Pembatasan jam absensi aktif. Employee hanya bisa absen mulai jam {settings.earliest_check_in_time || '06:00'}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="grid gap-2">
               <Label>Latitude Kantor</Label>

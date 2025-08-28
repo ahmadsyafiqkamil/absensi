@@ -77,9 +77,15 @@ export default function PegawaiAttendanceReportPage() {
       setError(null);
       
       const params = new URLSearchParams();
-      if (filters.start_date) params.append('start_date', filters.start_date);
-      if (filters.end_date) params.append('end_date', filters.end_date);
-      if (filters.month) params.append('month', filters.month);
+      
+      // Priority: month filter overrides date range filters
+      if (filters.month) {
+        params.append('month', filters.month);
+      } else {
+        // Only use date range if month is not set
+        if (filters.start_date) params.append('start_date', filters.start_date);
+        if (filters.end_date) params.append('end_date', filters.end_date);
+      }
       
       const response = await fetch(`/api/attendance/report?${params.toString()}`);
       
@@ -314,33 +320,68 @@ export default function PegawaiAttendanceReportPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                  {filters.month && <span className="text-gray-400 ml-1">(disabled when month is selected)</span>}
+                </label>
                 <input
                   type="date"
                   value={filters.start_date}
                   onChange={(e) => setFilters(prev => ({ ...prev, start_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  disabled={!!filters.month}
+                  className={`w-full border border-gray-300 rounded-md px-3 py-2 ${filters.month ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                  {filters.month && <span className="text-gray-400 ml-1">(disabled when month is selected)</span>}
+                </label>
                 <input
                   type="date"
                   value={filters.end_date}
                   onChange={(e) => setFilters(prev => ({ ...prev, end_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  disabled={!!filters.month}
+                  className={`w-full border border-gray-300 rounded-md px-3 py-2 ${filters.month ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Month (YYYY-MM)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Month (YYYY-MM)
+                  <span className="text-gray-400 ml-1">(overrides date range)</span>
+                </label>
                 <input
                   type="month"
                   value={filters.month}
-                  onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
+                  onChange={(e) => {
+                    const monthValue = e.target.value;
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      month: monthValue,
+                      // Clear date range when month is selected
+                      start_date: monthValue ? '' : prev.start_date,
+                      end_date: monthValue ? '' : prev.end_date
+                    }));
+                  }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 />
               </div>
             </div>
+            
+            {/* Filter Summary */}
+            {(filters.start_date || filters.end_date || filters.month) && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="text-sm text-blue-800">
+                  <strong>Active Filters:</strong>
+                  {filters.month && (
+                    <span className="ml-2">Month: {filters.month}</span>
+                  )}
+                  {!filters.month && filters.start_date && filters.end_date && (
+                    <span className="ml-2">Date Range: {filters.start_date} to {filters.end_date}</span>
+                  )}
+                </div>
+              </div>
+            )}
             
             {/* Reset Filter Button */}
             <div className="mt-4 flex justify-end">

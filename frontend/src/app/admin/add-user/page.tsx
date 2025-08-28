@@ -108,6 +108,13 @@ export default function AddUserPage() {
     }));
   };
 
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -251,7 +258,7 @@ export default function AddUserPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="group">Role *</Label>
-                    <Select value={formData.group} onValueChange={(value) => handleInputChange({ target: { name: 'group', value } } as any)}>
+                    <Select value={formData.group} onValueChange={(value) => handleSelectChange('group', value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
@@ -295,7 +302,7 @@ export default function AddUserPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="division_id">Division</Label>
-                    <Select value={formData.division_id} onValueChange={(value) => handleInputChange({ target: { name: 'division_id', value } } as any)}>
+                    <Select value={formData.division_id} onValueChange={(value) => handleSelectChange('division_id', value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select Division" />
                       </SelectTrigger>
@@ -312,7 +319,7 @@ export default function AddUserPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="position_id">Position</Label>
-                    <Select value={formData.position_id} onValueChange={(value) => handleInputChange({ target: { name: 'position_id', value } } as any)}>
+                    <Select value={formData.position_id} onValueChange={(value) => handleSelectChange('position_id', value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select Position" />
                       </SelectTrigger>
