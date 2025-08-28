@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
 
 
@@ -953,3 +954,73 @@ class MonthlySummaryRequestCreateSerializer(serializers.ModelSerializer):
         if value and value < date.today():
             raise serializers.ValidationError("Tanggal target selesai tidak boleh di masa lalu")
         return value
+
+
+# ============================================================================
+# GROUP SERIALIZERS
+# ============================================================================
+
+class GroupSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk Group - Basic access untuk semua role
+    """
+    class Meta:
+        model = Group
+        fields = ["id", "name"]
+        read_only_fields = ["id"]
+
+
+class GroupAdminSerializer(serializers.ModelSerializer):
+    """
+    Admin serializer untuk Group - Full access
+    """
+    class Meta:
+        model = Group
+        fields = ["id", "name"]
+        read_only_fields = ["id"]
+
+
+class GroupCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat Group baru
+    """
+    class Meta:
+        model = Group
+        fields = ["name"]
+
+    def validate_name(self, value):
+        # Check if group name already exists
+        if Group.objects.filter(name=value).exists():
+            raise serializers.ValidationError("Group with this name already exists.")
+        return value
+
+
+class GroupUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update Group
+    """
+    class Meta:
+        model = Group
+        fields = ["name"]
+
+    def validate_name(self, value):
+        # Check if group name already exists (excluding current instance)
+        instance = self.instance
+        if instance and Group.objects.filter(name=value).exclude(id=instance.id).exists():
+            raise serializers.ValidationError("Group with this name already exists.")
+        return value
+
+
+class GroupDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk detail Group dengan informasi user
+    """
+    user_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = ["id", "name", "user_count"]
+        read_only_fields = ["id", "user_count"]
+    
+    def get_user_count(self, obj):
+        return obj.user_set.count()

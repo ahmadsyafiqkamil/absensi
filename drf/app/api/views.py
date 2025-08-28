@@ -44,6 +44,11 @@ from .serializers import (
     MonthlySummaryRequestSupervisorSerializer,
     MonthlySummaryRequestEmployeeSerializer,
     MonthlySummaryRequestCreateSerializer,
+    GroupSerializer,
+    GroupCreateSerializer,
+    GroupUpdateSerializer,
+    GroupDetailSerializer,
+    GroupAdminSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -5064,3 +5069,124 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 
         except Exception as e:
             raise Exception(f"Error saat konversi DOCX ke PDF: {str(e)}")
+
+
+# Group ViewSets
+class GroupViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen Group dengan role-based access control
+    """
+    permission_classes = [IsAdminOrReadOnly]
+    pagination_class = DefaultPagination
+    
+    def get_queryset(self):
+        return Group.objects.all().order_by('name')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return GroupCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return GroupUpdateSerializer
+        elif self.action == 'retrieve':
+            return GroupDetailSerializer
+        return GroupSerializer
+    
+    def perform_create(self, serializer):
+        serializer.save()
+    
+    def perform_update(self, serializer):
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        # Check if group has users before deletion
+        if instance.user_set.exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Cannot delete group that has users. Please remove all users from this group first.")
+        instance.delete()
+
+
+class AdminGroupViewSet(viewsets.ModelViewSet):
+    """
+    Admin ViewSet untuk manajemen Group - Full access
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+    
+    def get_queryset(self):
+        return Group.objects.all().order_by('name')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return GroupCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return GroupUpdateSerializer
+        elif self.action == 'retrieve':
+            return GroupDetailSerializer
+        return GroupAdminSerializer
+    
+    def perform_create(self, serializer):
+        serializer.save()
+    
+    def perform_update(self, serializer):
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        # Check if group has users before deletion
+        if instance.user_set.exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Cannot delete group that has users. Please remove all users from this group first.")
+        instance.delete()
+
+
+class SupervisorGroupViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Supervisor ViewSet untuk Group - Read-only access
+    """
+    permission_classes = [IsAdminOrSupervisorReadOnly]
+    pagination_class = DefaultPagination
+    serializer_class = GroupSerializer
+    
+    def get_queryset(self):
+        return Group.objects.all().order_by('name')
+
+
+class EmployeeGroupViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Employee ViewSet untuk Group - Read-only access
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
+    serializer_class = GroupSerializer
+    
+    def get_queryset(self):
+        return Group.objects.all().order_by('name')
+
+
+class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AttendanceSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Attendance.objects.select_related('employee').filter(user=user)
+        start = self.request.query_params.get('start')
+        end = self.request.query_params.get('end')
+        month = self.request.query_params.get('month')
+        
+        if start:
+            qs = qs.filter(date_local__gte=start)
+        if end:
+            qs = qs.filter(date_local__lte=end)
+        if month:
+            # Parse month and filter by year-month
+            try:
+                year, month_num = month.split('-')
+                qs = qs.filter(
+                    date_local__year=year,
+                    date_local__month=month_num
+                )
+            except ValueError:
+                pass  # Ignore invalid month format
+        
+        return qs.order_by('-date_local')

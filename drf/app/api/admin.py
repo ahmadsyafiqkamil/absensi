@@ -1,5 +1,28 @@
 from django.contrib import admin
+from django.contrib.auth.models import Group
 from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
+
+# Unregister the default Group admin and register our custom one
+admin.site.unregister(Group)
+
+@admin.register(Group)
+class GroupAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "user_count")
+    search_fields = ("name",)
+    ordering = ("name",)
+    
+    def user_count(self, obj):
+        return obj.user_set.count()
+    user_count.short_description = "Number of Users"
+    
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.user_set.exists():
+            return False  # Prevent deletion of groups with users
+        return super().has_delete_permission(request, obj)
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('user_set')
+
 
 @admin.register(Division)
 class DivisionAdmin(admin.ModelAdmin):
