@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 interface Group {
   id: number;
@@ -18,6 +19,9 @@ interface Permission {
   name: string;
   codename: string;
   content_type: string;
+  permission_type: string;
+  permission_action: string;
+  is_active: boolean;
 }
 
 interface User {
@@ -179,47 +183,63 @@ export default function GroupDetail({ groupId }: GroupDetailProps) {
         </CardContent>
       </Card>
 
-      {/* Permissions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Permissions ({group.permissions?.length || 0})</CardTitle>
-          <CardDescription>What users in this group can do</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {group.permissions && group.permissions.length > 0 ? (
-            <div className="space-y-4">
-              {Object.entries(groupedPermissions).map(([contentType, permissions]) => (
-                <div key={contentType} className="border rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-3 capitalize">
-                    {contentType.replace('_', ' ')} ({permissions.length})
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {permissions.map((permission) => (
-                      <div
-                        key={permission.id}
-                        className="flex items-center justify-between p-2 bg-gray-50 rounded"
-                      >
-                        <span className="text-sm text-gray-700">{permission.name}</span>
-                        <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                          {permission.codename}
-                        </span>
+                  {/* Permissions */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Permissions ({group.permissions?.length || 0})</CardTitle>
+                    <CardDescription>What users in this group can do</CardDescription>
+                  </div>
+                  <Link href={`/admin/groups/${groupId}/permissions`}>
+                    <Button variant="outline" size="sm" className="text-purple-600 hover:text-purple-700 hover:bg-purple-50">
+                      Manage Permissions
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {group.permissions && group.permissions.length > 0 ? (
+                  <div className="space-y-4">
+                    {Object.entries(groupedPermissions).map(([contentType, permissions]) => (
+                      <div key={contentType} className="border rounded-lg p-4">
+                        <h4 className="font-medium text-gray-900 mb-3 capitalize">
+                          {contentType.replace('_', ' ')} ({permissions.length})
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {permissions.map((permission) => (
+                            <div
+                              key={permission.id}
+                              className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                            >
+                              <span className="text-sm text-gray-700">{permission.name}</span>
+                              <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                                {permission.codename}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p>No permissions assigned to this group</p>
-              <p className="text-sm">Users in this group will have no special access</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No permissions assigned to this group</p>
+                    <p className="text-sm">Users in this group will have no special access</p>
+                    <div className="mt-4">
+                      <Link href={`/admin/groups/${groupId}/permissions`}>
+                        <Button variant="outline" size="sm">
+                          Add Permissions
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card> 
 
       {/* Users in Group */}
       <Card>

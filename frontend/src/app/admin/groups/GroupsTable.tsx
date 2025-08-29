@@ -8,10 +8,20 @@ import Link from 'next/link';
 interface Group {
   id: number;
   name: string;
-  permissions: string[];
+  permissions: Permission[];
   user_set: number[];
   created_at?: string;
   updated_at?: string;
+}
+
+interface Permission {
+  id: number;
+  name: string;
+  codename: string;
+  content_type: string;
+  permission_type: string;
+  permission_action: string;
+  is_active: boolean;
 }
 
 interface GroupsResponse {
@@ -190,21 +200,24 @@ export default function GroupsTable() {
                   <td className="py-3 px-4">
                     <div className="flex flex-wrap gap-1">
                       {group.permissions && group.permissions.length > 0 ? (
-                        group.permissions.slice(0, 3).map((permission, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                          >
-                            {permission}
-                          </span>
-                        ))
+                        <>
+                          {group.permissions.slice(0, 2).map((permission, index) => (
+                            <span
+                              key={permission.id}
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                              title={`${permission.name} (${permission.codename})`}
+                            >
+                              {permission.name}
+                            </span>
+                          ))}
+                          {group.permissions.length > 2 && (
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              +{group.permissions.length - 2} more
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <span className="text-gray-400 text-xs">No permissions</span>
-                      )}
-                      {group.permissions && group.permissions.length > 3 && (
-                        <span className="text-xs text-gray-500">
-                          +{group.permissions.length - 3} more
-                        </span>
                       )}
                     </div>
                   </td>
@@ -227,6 +240,11 @@ export default function GroupsTable() {
                       <Link href={`/admin/groups/${group.id}/edit`}>
                         <Button variant="outline" size="sm">
                           Edit
+                        </Button>
+                      </Link>
+                      <Link href={`/admin/groups/${group.id}/permissions`}>
+                        <Button variant="outline" size="sm" className="text-purple-600 hover:text-purple-700 hover:bg-purple-50">
+                          Permissions
                         </Button>
                       </Link>
                       <Button

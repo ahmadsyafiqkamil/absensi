@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
 
 
 # ============================================================================
@@ -1024,3 +1024,204 @@ class GroupDetailSerializer(serializers.ModelSerializer):
     
     def get_user_count(self, obj):
         return obj.user_set.count()
+
+
+# ============================================================================
+# PERMISSION SERIALIZERS
+# ============================================================================
+
+class BulkPermissionUpdateSerializer(serializers.Serializer):
+    """
+    Serializer untuk bulk update permissions
+    """
+    group_id = serializers.IntegerField()
+    permissions = serializers.ListField(
+        child=serializers.DictField()
+    )
+    
+    def validate_permissions(self, value):
+        """Validate permissions format"""
+        for perm in value:
+            if 'permission_type' not in perm or 'permission_action' not in perm:
+                raise serializers.ValidationError(
+                    "Each permission must have 'permission_type' and 'permission_action' keys"
+                )
+            
+            # Validate permission type and action values
+            valid_types = [choice[0] for choice in GroupPermission.PERMISSION_TYPES]
+            valid_actions = [choice[0] for choice in GroupPermission.PERMISSION_ACTIONS]
+            
+            if perm['permission_type'] not in valid_types:
+                raise serializers.ValidationError(f"Invalid permission type: {perm['permission_type']}")
+            
+            if perm['permission_action'] not in valid_actions:
+                raise serializers.ValidationError(f"Invalid permission action: {perm['permission_action']}")
+        
+        return value
+
+
+# ============================================================================
+# PERMISSION SERIALIZERS
+# ============================================================================
+
+class GroupPermissionSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk GroupPermission - Basic access
+    """
+    permission_type_display = serializers.CharField(source='get_permission_type_display', read_only=True)
+    permission_action_display = serializers.CharField(source='get_permission_action_display', read_only=True)
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    
+    class Meta:
+        model = GroupPermission
+        fields = [
+            "id", "group", "group_name", "permission_type", "permission_type_display",
+            "permission_action", "permission_action_display", "is_active",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroupPermissionCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat GroupPermission baru
+    """
+    class Meta:
+        model = GroupPermission
+        fields = ["group", "permission_type", "permission_action", "is_active"]
+    
+    def validate(self, data):
+        # Check if permission already exists for this group
+        if GroupPermission.objects.filter(
+            group=data['group'],
+            permission_type=data['permission_type'],
+            permission_action=data['permission_action']
+        ).exists():
+            raise serializers.ValidationError(
+                "Permission already exists for this group, type, and action combination."
+            )
+        return data
+
+
+class GroupPermissionUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update GroupPermission
+    """
+    class Meta:
+        model = GroupPermission
+        fields = ["permission_type", "permission_action", "is_active"]
+    
+    def validate(self, data):
+        instance = self.instance
+        if instance:
+            # Check if updated combination already exists (excluding current instance)
+            if GroupPermission.objects.filter(
+                group=instance.group,
+                permission_type=data.get('permission_type', instance.permission_type),
+                permission_action=data.get('permission_action', instance.permission_action)
+            ).exclude(id=instance.id).exists():
+                raise serializers.ValidationError(
+                    "Permission already exists for this group, type, and action combination."
+                )
+        return data
+
+
+class GroupPermissionDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk detail GroupPermission
+    """
+    permission_type_display = serializers.CharField(source='get_permission_type_display', read_only=True)
+    permission_action_display = serializers.CharField(source='get_permission_action_display', read_only=True)
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    
+    class Meta:
+        model = GroupPermission
+        fields = [
+            "id", "group", "group_name", "permission_type", "permission_type_display",
+            "permission_action", "permission_action_display", "is_active",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroupPermissionTemplateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk GroupPermissionTemplate
+    """
+    class Meta:
+        model = GroupPermissionTemplate
+        fields = [
+            "id", "name", "description", "permissions", "is_active",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroupPermissionTemplateCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat GroupPermissionTemplate baru
+    """
+    class Meta:
+        model = GroupPermissionTemplate
+        fields = ["name", "description", "permissions", "is_active"]
+    
+    def validate_permissions(self, value):
+        """Validate permissions format"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Permissions must be a list")
+        
+        for perm in value:
+            if not isinstance(perm, dict):
+                raise serializers.ValidationError("Each permission must be a dictionary")
+            
+            if 'type' not in perm or 'action' not in perm:
+                raise serializers.ValidationError("Each permission must have 'type' and 'action' keys")
+            
+            # Validate permission type and action values
+            valid_types = [choice[0] for choice in GroupPermission.PERMISSION_TYPES]
+            valid_actions = [choice[0] for choice in GroupPermission.PERMISSION_ACTIONS]
+            
+            if perm['type'] not in valid_types:
+                raise serializers.ValidationError(f"Invalid permission type: {perm['type']}")
+            
+            if perm['action'] not in valid_actions:
+                raise serializers.ValidationError(f"Invalid permission action: {perm['action']}")
+        
+        return value
+
+
+class GroupPermissionTemplateUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update GroupPermissionTemplate
+    """
+    class Meta:
+        model = GroupPermissionTemplate
+        fields = ["name", "description", "permissions", "is_active"]
+
+
+class GroupWithPermissionsSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk Group dengan permissions detail
+    """
+    permissions = GroupPermissionSerializer(source='custom_permissions', many=True, read_only=True)
+    permission_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = ["id", "name", "permissions", "permission_count"]
+        read_only_fields = ["id"]
+    
+    def get_permission_count(self, obj):
+        return obj.custom_permissions.filter(is_active=True).count()
+
+
+class PermissionSummarySerializer(serializers.Serializer):
+    """
+    Serializer untuk summary permissions
+    """
+    group_id = serializers.IntegerField()
+    group_name = serializers.CharField()
+    total_permissions = serializers.IntegerField()
+    active_permissions = serializers.IntegerField()
+    permission_types = serializers.ListField(child=serializers.CharField())
+    permission_actions = serializers.ListField(child=serializers.CharField())

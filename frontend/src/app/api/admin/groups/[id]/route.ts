@@ -48,7 +48,36 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    // Forward request to Django backend
+    // If updating permissions, use the bulk update endpoint
+    if (body.permissions) {
+      const response = await fetch(`${BACKEND_URL}/api/admin/permission-management/bulk_update/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Forward cookies for authentication
+          Cookie: request.headers.get('cookie') || '',
+        },
+        body: JSON.stringify({
+          groups: [{
+            id: parseInt(id),
+            permissions: body.permissions.map((permId: number) => ({ id: permId }))
+          }]
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return NextResponse.json(
+          errorData,
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
+    }
+
+    // For other updates, use the regular group endpoint
     const response = await fetch(`${BACKEND_URL}/api/admin/groups/${id}/`, {
       method: 'PUT',
       headers: {

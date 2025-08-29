@@ -56,6 +56,8 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         // Forward cookies for authentication
         Cookie: request.headers.get('cookie') || '',
+        // Forward CSRF token if present
+        'X-CSRFToken': request.headers.get('x-csrftoken') || '',
       },
       body: JSON.stringify(body),
     });

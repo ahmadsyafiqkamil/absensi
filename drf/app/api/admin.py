@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
 
 # Unregister the default Group admin and register our custom one
 admin.site.unregister(Group)
@@ -192,3 +192,57 @@ class MonthlySummaryRequestAdmin(admin.ModelAdmin):
             from django.utils import timezone
             obj.completed_at = timezone.now()
         super().save_model(request, obj, form, change)
+
+
+@admin.register(GroupPermission)
+class GroupPermissionAdmin(admin.ModelAdmin):
+    list_display = ("id", "group", "permission_type", "permission_action", "is_active", "created_at")
+    list_filter = ("group", "permission_type", "permission_action", "is_active", "created_at")
+    search_fields = ("group__name", "permission_type", "permission_action")
+    ordering = ("group__name", "permission_type", "permission_action")
+    readonly_fields = ("created_at", "updated_at")
+    
+    fieldsets = (
+        ('Permission Information', {
+            'fields': ('group', 'permission_type', 'permission_action', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('group')
+
+
+@admin.register(GroupPermissionTemplate)
+class GroupPermissionTemplateAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "description", "permission_count", "is_active", "created_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("name", "description")
+    ordering = ("name",)
+    readonly_fields = ("created_at", "updated_at")
+    
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('name', 'description', 'is_active')
+        }),
+        ('Permissions', {
+            'fields': ('permissions',),
+            'description': 'Format: [{"type": "attendance", "action": "view"}, {"type": "employee", "action": "create"}]'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def permission_count(self, obj):
+        if isinstance(obj.permissions, list):
+            return len(obj.permissions)
+        return 0
+    permission_count.short_description = "Permission Count"
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request)

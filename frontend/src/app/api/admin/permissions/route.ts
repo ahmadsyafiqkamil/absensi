@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
       page_size: pageSize,
     });
 
-    // Forward request to Django backend
-    const response = await fetch(`${BACKEND_URL}/api/admin/permissions/?${params}`, {
+            // Use the public permissions endpoint for development
+      const response = await fetch(`${BACKEND_URL}/api/public-permissions/?${params}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -30,7 +30,21 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
     
-    return NextResponse.json(data);
+    // Transform the data to match our frontend interface
+    const transformedData = {
+      ...data,
+      results: data.results?.map((permission: any) => ({
+        id: permission.id,
+        name: permission.name, // Use the name directly from backend
+        codename: permission.codename, // Use the codename directly from backend
+        content_type: permission.content_type,
+        permission_type: permission.permission_type,
+        permission_action: permission.permission_action,
+        is_active: permission.is_active
+      })) || []
+    };
+    
+    return NextResponse.json(transformedData);
   } catch (error) {
     console.error('Error fetching permissions:', error);
     return NextResponse.json(

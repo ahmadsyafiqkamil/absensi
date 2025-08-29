@@ -11,7 +11,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import serializers
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -49,6 +49,15 @@ from .serializers import (
     GroupUpdateSerializer,
     GroupDetailSerializer,
     GroupAdminSerializer,
+    GroupPermissionSerializer,
+    GroupPermissionCreateSerializer,
+    GroupPermissionUpdateSerializer,
+    GroupPermissionDetailSerializer,
+    GroupPermissionTemplateSerializer,
+    GroupPermissionTemplateCreateSerializer,
+    GroupPermissionTemplateUpdateSerializer,
+    GroupWithPermissionsSerializer,
+    BulkPermissionUpdateSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -81,6 +90,10 @@ from io import BytesIO
 import datetime
 from datetime import timedelta
 from django.db import IntegrityError
+from django.db import transaction
+from django.middleware.csrf import get_token
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -5162,6 +5175,178 @@ class EmployeeGroupViewSet(viewsets.ReadOnlyModelViewSet):
         return Group.objects.all().order_by('name')
 
 
+class GroupPermissionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen GroupPermission
+    """
+    permission_classes = [IsAdmin]
+    
+    def list(self, request, *args, **kwargs):
+        """
+        Override list method untuk allow anonymous access di development
+        """
+        # Allow anonymous access for development
+        if settings.DEBUG:
+            self.permission_classes = []
+        return super().list(request, *args, **kwargs)
+    pagination_class = DefaultPagination
+    
+    def get_queryset(self):
+        return GroupPermission.objects.select_related('group').all().order_by('group__name', 'permission_type', 'permission_action')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return GroupPermissionCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return GroupPermissionUpdateSerializer
+        elif self.action == 'retrieve':
+            return GroupPermissionDetailSerializer
+        return GroupPermissionSerializer
+
+
+class GroupPermissionTemplateViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen GroupPermissionTemplate
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+    serializer_class = GroupPermissionTemplateSerializer
+    
+    def get_queryset(self):
+        return GroupPermissionTemplate.objects.all().order_by('name')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return GroupPermissionTemplateCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return GroupPermissionTemplateUpdateSerializer
+        return GroupPermissionTemplateSerializer
+    
+    @action(detail=True, methods=['post'])
+    def apply_to_group(self, request, pk=None):
+        """Apply template permissions to a specific group"""
+        template = self.get_object()
+        group_id = request.data.get('group_id')
+        
+        if not group_id:
+            return JsonResponse({"detail": "group_id is required"}, status=400)
+        
+        try:
+            group = Group.objects.get(id=group_id)
+            template.apply_to_group(group)
+            return JsonResponse({"detail": f"Template '{template.name}' applied to group '{group.name}' successfully"})
+        except Group.DoesNotExist:
+            return JsonResponse({"detail": "Group not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"detail": str(e)}, status=500)
+
+
+class AdminGroupWithPermissionsViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Admin ViewSet untuk Group dengan permissions detail
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+    serializer_class = GroupWithPermissionsSerializer
+    
+    def get_queryset(self):
+        return Group.objects.prefetch_related('custom_permissions').all().order_by('name')
+
+
+class PermissionManagementViewSet(viewsets.ViewSet):
+    """
+    ViewSet untuk manajemen permission secara bulk
+    """
+    permission_classes = [IsAdmin]
+    
+    @action(detail=False, methods=['post'])
+    def bulk_update(self, request):
+        """Bulk update permissions for multiple groups"""
+        serializer = BulkPermissionUpdateSerializer(data=request.data, many=True)
+        if serializer.is_valid():
+            try:
+                with transaction.atomic():
+                    for item in serializer.validated_data:
+                        group_id = item['group_id']
+                        permissions = item['permissions']
+                        
+                        # Clear existing permissions for this group
+                        GroupPermission.objects.filter(group_id=group_id).delete()
+                        
+                        # Create new permissions
+                        for perm in permissions:
+                            GroupPermission.objects.create(
+                                group_id=group_id,
+                                permission_type=perm['permission_type'],
+                                permission_action=perm['permission_action'],
+                                is_active=perm.get('is_active', True)
+                            )
+                
+                return JsonResponse({"detail": "Permissions updated successfully"})
+            except Exception as e:
+                return JsonResponse({"detail": str(e)}, status=500)
+        return JsonResponse(serializer.errors, status=400)
+    
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get permission summary for all groups"""
+        groups = Group.objects.prefetch_related('custom_permissions').all()
+        summary_data = []
+        
+        for group in groups:
+            permissions = group.custom_permissions.filter(is_active=True)
+            permission_types = list(set(perm.permission_type for perm in permissions))
+            permission_actions = list(set(perm.permission_action for perm in permissions))
+            
+            summary_data.append({
+                'group_id': group.id,
+                'group_name': group.name,
+                'total_permissions': group.custom_permissions.count(),
+                'active_permissions': permissions.count(),
+                'permission_types': permission_types,
+                'permission_actions': permission_actions
+            })
+        
+        return JsonResponse(summary_data, safe=False)
+    
+    @action(detail=False, methods=['post'])
+    def copy_permissions(self, request):
+        """Copy permissions from one group to another"""
+        source_group_id = request.data.get('source_group_id')
+        target_group_id = request.data.get('target_group_id')
+        
+        if not source_group_id or not target_group_id:
+            return JsonResponse({"detail": "Both source_group_id and target_group_id are required"}, status=400)
+        
+        try:
+            source_group = Group.objects.get(id=source_group_id)
+            target_group = Group.objects.get(id=target_group_id)
+            
+            # Get source permissions
+            source_permissions = GroupPermission.objects.filter(group=source_group, is_active=True)
+            
+            # Clear target permissions
+            GroupPermission.objects.filter(group=target_group).delete()
+            
+            # Copy permissions
+            for perm in source_permissions:
+                GroupPermission.objects.create(
+                    group=target_group,
+                    permission_type=perm.permission_type,
+                    permission_action=perm.permission_action,
+                    is_active=perm.is_active
+                )
+            
+            return JsonResponse({
+                "detail": f"Permissions copied from '{source_group.name}' to '{target_group.name}' successfully",
+                "copied_permissions": source_permissions.count()
+            })
+        except Group.DoesNotExist:
+            return JsonResponse({"detail": "One or both groups not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"detail": str(e)}, status=500)
+
+
 class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AttendanceSerializer
     permission_classes = [IsAuthenticated]
@@ -5190,3 +5375,56 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                 pass  # Ignore invalid month format
         
         return qs.order_by('-date_local')
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+def csrf_token_view(request):
+    """
+    Get CSRF token for frontend
+    """
+    return JsonResponse({
+        'csrfToken': get_token(request)
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_permissions_view(request):
+    """
+    Get all available permissions for frontend (development only)
+    """
+    from django.contrib.auth.models import Permission
+    from django.contrib.contenttypes.models import ContentType
+    
+    # Get all Django permissions
+    permissions = Permission.objects.select_related('content_type').all()
+    
+    # Transform to match frontend interface
+    results = []
+    for perm in permissions:
+        # Extract action from codename (e.g., "add_attendance" -> "add")
+        action = perm.codename.split('_')[0] if '_' in perm.codename else perm.codename
+        
+        # Create human-readable name
+        model_name = perm.content_type.model.replace('_', ' ').title()
+        action_name = action.replace('_', ' ').title()
+        
+        # Fix codename to be just the action
+        codename = action
+        
+        results.append({
+            'id': perm.id,
+            'name': f"{model_name} - {action_name}",
+            'codename': codename,
+            'content_type': perm.content_type.model,
+            'permission_type': perm.content_type.model,
+            'permission_action': action,
+            'is_active': True
+        })
+    
+    return JsonResponse({
+        'count': len(results),
+        'results': results
+    })

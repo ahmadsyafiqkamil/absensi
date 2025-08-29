@@ -32,6 +32,9 @@ router.register(r'divisions', views.DivisionViewSet, basename='division')
 router.register(r'positions', views.PositionViewSet, basename='position')
 router.register(r'employees', views.EmployeeViewSet, basename='employee')
 router.register(r'groups', views.GroupViewSet, basename='group')
+router.register(r'group-permissions', views.GroupPermissionViewSet, basename='group-permission')
+router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='permission-template')
+router.register(r'permission-management', views.PermissionManagementViewSet, basename='permission-management')
 router.register(r'settings/work', views.WorkSettingsViewSet, basename='work-settings')
 router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
 router.register(r'attendance', views.AttendanceViewSet, basename='attendance')
@@ -45,6 +48,10 @@ admin_router.register(r'divisions', views.AdminDivisionViewSet, basename='admin-
 admin_router.register(r'positions', views.AdminPositionViewSet, basename='admin-position')
 admin_router.register(r'employees', views.AdminEmployeeViewSet, basename='admin-employee')
 admin_router.register(r'groups', views.AdminGroupViewSet, basename='admin-group')
+admin_router.register(r'groups-with-permissions', views.AdminGroupWithPermissionsViewSet, basename='admin-group-with-permissions')
+admin_router.register(r'group-permissions', views.GroupPermissionViewSet, basename='admin-group-permission')
+admin_router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='admin-permission-template')
+admin_router.register(r'permission-management', views.PermissionManagementViewSet, basename='admin-permission-management')
 admin_router.register(r'settings/work', views.AdminWorkSettingsViewSet, basename='admin-work-settings')
 admin_router.register(r'settings/holidays', views.AdminHolidayViewSet, basename='admin-holiday')
 admin_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='admin-monthly-summary-request')
@@ -117,6 +124,12 @@ urlpatterns += [
     
     # Supervisor approvals summary endpoint for dashboard card
     path('supervisor/approvals/summary', views.supervisor_approvals_summary, name='supervisor-approvals-summary'),
+    
+    # CSRF token endpoint
+    path('csrf-token/', views.csrf_token_view, name='csrf-token'),
+    
+    # Public permissions endpoint (development only)
+    path('public-permissions/', views.public_permissions_view, name='public-permissions'),
 ]
 
 
