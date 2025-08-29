@@ -4,11 +4,12 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const backendUrl = `${BACKEND_URL}/api/supervisor/monthly-summary-requests/${params.id}/reject/`;
+    const backendUrl = `${BACKEND_URL}/api/supervisor/monthly-summary-requests/${id}/reject/`;
     
     const response = await fetch(backendUrl, {
       method: 'POST',
@@ -23,7 +24,7 @@ export async function POST(
     
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    console.error('Error proxying reject action:', error);
+    console.error('Error proxying reject:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

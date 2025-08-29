@@ -4,11 +4,12 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${params.id}/generate_report/`;
+    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${id}/generate_report/`;
     
     const response = await fetch(backendUrl, {
       method: 'POST',

@@ -51,29 +51,49 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen grid place-items-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Login</CardTitle>
-          <CardDescription>Masuk untuk melanjutkan</CardDescription>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold text-gray-900">Login</CardTitle>
+          <CardDescription className="text-gray-600">Masuk untuk melanjutkan</CardDescription>
         </CardHeader>
         <CardContent>
-          <form id="login-form" className="grid gap-4" onSubmit={handleSubmit}>
-            <div className="grid gap-2">
-              <Label htmlFor="username">Username</Label>
-              <Input id="username" name="username" placeholder="username" />
+          <form id="login-form" className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="username" className="text-sm font-medium text-gray-700">Username</Label>
+              <Input 
+                id="username" 
+                name="username" 
+                placeholder="Masukkan username" 
+                className="w-full"
+                required
+              />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" placeholder="********" />
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
+              <Input 
+                id="password" 
+                name="password" 
+                type="password" 
+                placeholder="Masukkan password" 
+                className="w-full"
+                required
+              />
             </div>
             {error && (
-              <div className="text-red-500 text-sm">{error}</div>
+              <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-md border border-red-200">
+                {error}
+              </div>
             )}
           </form>
         </CardContent>
         <CardFooter>
-          <Button className="w-full" type="submit" form="login-form" disabled={isLoading}>
+          <Button 
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
+            type="submit" 
+            form="login-form" 
+            disabled={isLoading}
+          >
             {isLoading ? 'Logging in...' : 'Login'}
           </Button>
         </CardFooter>

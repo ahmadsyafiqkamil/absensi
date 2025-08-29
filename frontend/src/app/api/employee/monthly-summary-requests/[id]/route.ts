@@ -4,11 +4,12 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const url = new URL(request.url);
-    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${params.id}/${url.search}`;
+    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${id}/${url.search}`;
     
     const response = await fetch(backendUrl, {
       method: 'GET',
@@ -32,11 +33,12 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${params.id}/`;
+    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${id}/`;
     
     const response = await fetch(backendUrl, {
       method: 'PUT',
@@ -61,10 +63,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${params.id}/`;
+    const { id } = await params;
+    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${id}/`;
     
     const response = await fetch(backendUrl, {
       method: 'DELETE',
