@@ -168,6 +168,29 @@ export default function PegawaiAttendanceReportPage() {
     return record.within_geofence ? 'WFO' : 'WFA';
   };
 
+  // Get WFA/WFO status with color styling
+  const getWfaWfoWithColor = (record: AttendanceRecord) => {
+    if (!record.check_in_at_utc) return '-';
+    const status = record.within_geofence ? 'WFO' : 'WFA';
+    const colorClass = record.within_geofence ? 'text-green-600 bg-green-100' : 'text-orange-600 bg-orange-100';
+    return (
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${colorClass}`}>
+        {status}
+      </span>
+    );
+  };
+
+  // Check if record needs correction (WFA or has issues)
+  const needsCorrection = (record: AttendanceRecord) => {
+    // WFA records always need correction
+    if (record.check_in_at_utc && !record.within_geofence) return true;
+    // Records with system notes (geofence warnings) need correction
+    if (record.note && record.note.includes('luar area kantor')) return true;
+    // Records with missing check-in or check-out
+    if (!record.check_in_at_utc || !record.check_out_at_utc) return true;
+    return false;
+  };
+
   // TanStack Table columns
   const columns: ColumnDef<AttendanceRecord>[] = [
     { header: 'Tanggal', accessorKey: 'date_local', cell: ({ row }) => formatDate(row.original.date_local) },
@@ -176,7 +199,7 @@ export default function PegawaiAttendanceReportPage() {
         {getStatusText(row.original)}
       </span>
     ) },
-    { header: 'WFA/WFO', id: 'wfa_wfo', cell: ({ row }) => getWfaWfo(row.original) },
+    { header: 'WFA/WFO', id: 'wfa_wfo', cell: ({ row }) => getWfaWfoWithColor(row.original) },
     { header: 'Check-in', id: 'check_in', cell: ({ row }) => formatTime(row.original.check_in_at_utc) },
     { header: 'Check-out', id: 'check_out', cell: ({ row }) => formatTime(row.original.check_out_at_utc) },
     { header: 'Terlambat (m)', accessorKey: 'minutes_late', cell: ({ getValue }) => <span className="block text-center">{String(getValue<number>())}</span> },
@@ -196,11 +219,38 @@ export default function PegawaiAttendanceReportPage() {
         {row.original.note || row.original.employee_note || '-'}
       </div>
     ) },
+    { header: 'Actions', id: 'actions', cell: ({ row }) => {
+      const record = row.original;
+      if (needsCorrection(record)) {
+        return (
+          <div className="flex flex-col gap-1">
+            <Link href={`/pegawai/corrections?date=${record.date_local}`}>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="text-xs px-2 py-1 h-auto bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+              >
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Perbaiki
+              </Button>
+            </Link>
+            {!record.within_geofence && record.check_in_at_utc && (
+              <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                ⚠️ WFA
+              </span>
+            )}
+          </div>
+        );
+      }
+      return (
+        <span className="text-xs text-gray-500">-</span>
+      );
+    }},
     { header: 'Dibuat', id: 'created', cell: ({ row }) => formatDateTime(row.original.created_at) },
     { header: 'Diubah', id: 'updated', cell: ({ row }) => formatDateTime(row.original.updated_at) },
   ];
-
-
 
   if (loading) {
     return (
@@ -491,7 +541,7 @@ function TanstackTable({ data, columns }: { data: AttendanceRecord[]; columns: C
 
   return (
     <div className="overflow-x-auto bg-white border rounded-md">
-      <div className="p-3 grid gap-2 md:grid-cols-4 grid-cols-1 border-b bg-gray-50">
+      <div className="p-3 grid gap-2 md:grid-cols-5 grid-cols-1 border-b bg-gray-50">
         <input
           placeholder="Filter Tanggal (YYYY-MM-DD)"
           value={(table.getColumn('date_local')?.getFilterValue() as string) ?? ''}
@@ -516,6 +566,16 @@ function TanstackTable({ data, columns }: { data: AttendanceRecord[]; columns: C
           onChange={(e) => table.getColumn('ip_out')?.setFilterValue(e.target.value)}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
         />
+        <select
+          value={(table.getColumn('actions')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('actions')?.setFilterValue(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">All Actions</option>
+          <option value="needs_correction">Needs Correction</option>
+          <option value="wfa">WFA Records</option>
+          <option value="no_action">No Action Needed</option>
+        </select>
       </div>
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
