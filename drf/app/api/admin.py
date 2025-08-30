@@ -32,8 +32,18 @@ class DivisionAdmin(admin.ModelAdmin):
 
 @admin.register(Position)
 class PositionAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
+    list_display = ("id", "name", "approval_level", "can_approve_overtime_org_wide")
     search_fields = ("name",)
+    list_filter = ("approval_level", "can_approve_overtime_org_wide")
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name',)
+        }),
+        ('Approval Permissions', {
+            'fields': ('approval_level', 'can_approve_overtime_org_wide'),
+            'description': 'Set approval level and organization-wide approval permission'
+        }),
+    )
 
 
 @admin.register(Employee)

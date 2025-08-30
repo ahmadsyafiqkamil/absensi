@@ -123,7 +123,8 @@ class IsAdminOrSupervisorWithApproval(permissions.BasePermission):
     
     Access Control:
     - Admin: full access (CRUD operations)
-    - Supervisor: read access + approval actions (POST for approve/reject)
+    - Supervisor with approval permission: read access + approval actions (POST for approve/reject)
+    - Supervisor without approval permission (level 0): read access only, no approval actions
     - Employee: no access
     
     Use Case:
@@ -139,18 +140,28 @@ class IsAdminOrSupervisorWithApproval(permissions.BasePermission):
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return True
         
-        # Supervisor: read access + approval actions (approve/reject)
+        # Supervisor: check approval level
         if user.groups.filter(name='supervisor').exists():
             # Allow GET, HEAD, OPTIONS for read access
             if request.method in ("GET", "HEAD", "OPTIONS"):
                 return True
             
-            # Allow POST for approval actions (approve/reject)
+            # Check approval level for approval actions
             if request.method == "POST":
-                # Check if this is an approval action
                 action = getattr(view, 'action', None)
                 if action in ['approve', 'reject']:
-                    return True
+                    # Check if supervisor has approval permission
+                    try:
+                        supervisor_employee = user.employee
+                        if (supervisor_employee and supervisor_employee.position and 
+                            supervisor_employee.position.approval_level == 0):
+                            # Level 0: no approval permission
+                            return False
+                        # Level 1 or 2: has approval permission
+                        return True
+                    except:
+                        # If employee/position not found, deny approval
+                        return False
             
             return False
         
@@ -163,7 +174,8 @@ class IsAdminOrSupervisorOvertimeApproval(permissions.BasePermission):
     
     Access Control:
     - Admin: full access
-    - Supervisor: can approve overtime for their division
+    - Supervisor with approval permission: can approve overtime for their division
+    - Supervisor without approval permission (level 0): no access to overtime approval
     - Employee: no access
     
     Use Case:
@@ -178,9 +190,19 @@ class IsAdminOrSupervisorOvertimeApproval(permissions.BasePermission):
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return True
         
-        # Supervisor: can approve overtime
+        # Supervisor: check approval level
         if user.groups.filter(name='supervisor').exists():
-            return True
+            try:
+                supervisor_employee = user.employee
+                if (supervisor_employee and supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    # Level 0: no approval permission
+                    return False
+                # Level 1 or 2: has approval permission
+                return True
+            except:
+                # If employee/position not found, deny access
+                return False
         
         return False
 
@@ -466,6 +488,7 @@ class IsOvertimeRequestApprover(permissions.BasePermission):
     - Admin: can approve any overtime request (both level 1 and final)
     - Supervisor with org-wide approval: can approve any overtime request (final approval)
     - Supervisor (division): can approve overtime requests from their division (level 1)
+    - Supervisor without approval permission (level 0): no approval permission
     - Employee: no approval permission
     
     Use Case:
@@ -481,9 +504,19 @@ class IsOvertimeRequestApprover(permissions.BasePermission):
         if request.user.is_superuser or request.user.groups.filter(name='admin').exists():
             return True
         
-        # Supervisor can approve
+        # Supervisor: check approval level
         if request.user.groups.filter(name='supervisor').exists():
-            return True
+            try:
+                supervisor_employee = request.user.employee
+                if (supervisor_employee and supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    # Level 0: no approval permission
+                    return False
+                # Level 1 or 2: has approval permission
+                return True
+            except:
+                # If employee/position not found, deny access
+                return False
         
         return False
     
@@ -499,6 +532,12 @@ class IsOvertimeRequestApprover(permissions.BasePermission):
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
+                
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    # Level 0: No approval permission
+                    return False
                 
                 # Check if supervisor has org-wide approval permission
                 if (supervisor_employee.position and 

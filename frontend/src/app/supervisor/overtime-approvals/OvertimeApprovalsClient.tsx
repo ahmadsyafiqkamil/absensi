@@ -5,6 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { OvertimeStatus } from '@/components/ui/overtime-status'
+import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning'
+import { PermissionGuard, ApprovalButton } from '@/components/ui/permission-guard'
+import { useSupervisorApprovalLevel } from '@/lib/hooks'
 import { formatCurrency, formatDate, formatTime, formatDuration } from '@/app/utils/formatters'
 
 interface OvertimeRecord {
@@ -46,6 +49,7 @@ interface SupervisorInfo {
 }
 
 export default function OvertimeApprovalsClient() {
+  const { approvalLevel, canApprove, isLevel0, loading: approvalLevelLoading } = useSupervisorApprovalLevel()
   const [overtimeData, setOvertimeData] = useState<OvertimeReport | null>(null)
   const [supervisorInfo, setSupervisorInfo] = useState<SupervisorInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -100,11 +104,8 @@ export default function OvertimeApprovalsClient() {
       if (response.ok) {
         const data = await response.json()
         setOvertimeData(data)
-
-        if (supervisorInfo) {
-          const uniqueEmployees = new Set(data.overtime_records.map((r: OvertimeRecord) => r.employee.nip))
-          setSupervisorInfo(prev => prev ? { ...prev, employeeCount: uniqueEmployees.size } : null)
-        }
+      } else {
+        console.error('Failed to fetch overtime data')
       }
     } catch (error) {
       console.error('Error fetching overtime data:', error)
@@ -113,10 +114,14 @@ export default function OvertimeApprovalsClient() {
     }
   }
 
-  const handleApproveOvertime = async (attendanceId: number) => {
+  const handleApproveOvertime = async (id: number) => {
+    if (isLevel0) {
+      return // Level 0 supervisors cannot approve
+    }
+
+    setApproving(id)
     try {
-      setApproving(attendanceId)
-      const response = await fetch(`/api/overtime/${attendanceId}/approve`, {
+      const response = await fetch(`/api/overtime/approve/${id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,14 +129,13 @@ export default function OvertimeApprovalsClient() {
       })
 
       if (response.ok) {
-        await fetchOvertimeData()
+        // Refresh data after approval
+        fetchOvertimeData()
       } else {
-        const errorData = await response.json().catch(() => ({}))
-        alert(`Error approving overtime: ${errorData.detail || 'Unknown error'}`)
+        console.error('Failed to approve overtime')
       }
     } catch (error) {
       console.error('Error approving overtime:', error)
-      alert('Error approving overtime. Please try again.')
     } finally {
       setApproving(null)
     }
@@ -141,10 +145,10 @@ export default function OvertimeApprovalsClient() {
     setDateRange(prev => ({ ...prev, [field]: value }))
   }
 
-  if (loading) {
+  if (loading || approvalLevelLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-gray-500">Loading overtime data...</div>
+        <div className="text-gray-500">Loading...</div>
       </div>
     )
   }
@@ -162,6 +166,12 @@ export default function OvertimeApprovalsClient() {
 
   return (
     <div className="space-y-6">
+      {/* Approval Level Warning */}
+      {approvalLevel !== null && (
+        <ApprovalLevelWarning approvalLevel={approvalLevel} />
+      )}
+
+      {/* Division Information */}
       {supervisorInfo && (
         <Card className="bg-blue-50 border-blue-200">
           <CardHeader className="pb-3">
@@ -187,6 +197,7 @@ export default function OvertimeApprovalsClient() {
         </Card>
       )}
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -225,6 +236,7 @@ export default function OvertimeApprovalsClient() {
         </Card>
       </div>
 
+      {/* Date Range Filter */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">Date Range Filter</CardTitle>
@@ -263,6 +275,7 @@ export default function OvertimeApprovalsClient() {
         </CardContent>
       </Card>
 
+      {/* Filter Buttons */}
       <div className="flex space-x-2">
         <Button variant={filter === 'pending' ? 'default' : 'outline'} onClick={() => setFilter('pending')}>
           Pending ({pendingRecords.length})
@@ -275,6 +288,7 @@ export default function OvertimeApprovalsClient() {
         </Button>
       </div>
 
+      {/* Overtime Records Table */}
       <Card>
         <CardHeader>
           <CardTitle>
@@ -338,9 +352,12 @@ export default function OvertimeApprovalsClient() {
                       </td>
                       <td className="py-3 px-2">
                         {!record.overtime_approved ? (
-                          <Button size="sm" onClick={() => handleApproveOvertime(record.id)} disabled={approving === record.id} className="bg-green-600 hover:bg-green-700">
-                            {approving === record.id ? 'Approving...' : 'Approve'}
-                          </Button>
+                          <ApprovalButton
+                            onApprove={() => handleApproveOvertime(record.id)}
+                            disabled={approving === record.id}
+                            loading={approving === record.id}
+                            className="w-full"
+                          />
                         ) : (
                           <div className="text-sm text-gray-500">
                             <div className="font-medium text-green-600">✓ Approved</div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { getCSRFHeaders } from '@/lib/csrf';
 
 interface Group {
   id: number;
@@ -47,8 +48,12 @@ export default function GroupPermissionsManager({ groupId }: GroupPermissionsMan
       
       // Fetch group details and available permissions in parallel
       const [groupResponse, permissionsResponse] = await Promise.all([
-        fetch(`/api/admin/groups/${groupId}/`),
-        fetch('/api/admin/permissions/')
+        fetch(`/api/admin/groups/${groupId}/`, {
+          credentials: 'include'
+        }),
+        fetch('/api/admin/permissions/', {
+          credentials: 'include'
+        })
       ]);
       
       if (!groupResponse.ok) {
@@ -111,13 +116,39 @@ export default function GroupPermissionsManager({ groupId }: GroupPermissionsMan
       setSaving(true);
       setError(null);
       
+      // Transform selected permission IDs to the format expected by backend
+      // Get all unique permission types from availablePermissions dynamically
+      const validPermissionTypes = [...new Set(availablePermissions.map(perm => perm.permission_type))];
+      
+      console.log('DEBUG: selectedPermissions:', selectedPermissions);
+      console.log('DEBUG: availablePermissions length:', availablePermissions.length);
+      console.log('DEBUG: availablePermissions sample:', availablePermissions.slice(0, 3));
+      
+      // Map Django permission actions to custom permission actions
+      const actionMapping: Record<string, string> = {
+        'add': 'create',
+        'change': 'edit',
+        'delete': 'delete',
+        'view': 'view'
+      };
+
+      const permissionsToUpdate = availablePermissions
+        .filter(perm => selectedPermissions.includes(perm.id))
+        .filter(perm => validPermissionTypes.includes(perm.permission_type))
+        .map(perm => ({
+          permission_type: perm.permission_type,
+          permission_action: actionMapping[perm.permission_action] || perm.permission_action
+        }));
+      
+      console.log('DEBUG: permissionsToUpdate:', permissionsToUpdate);
+      console.log('DEBUG: payload to send:', { permissions: permissionsToUpdate });
+
       const response = await fetch(`/api/admin/groups/${groupId}/`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await getCSRFHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
-          permissions: selectedPermissions
+          permissions: permissionsToUpdate
         }),
       });
 

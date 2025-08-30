@@ -16,9 +16,6 @@ interface Group {
 
 interface Permission {
   id: number;
-  name: string;
-  codename: string;
-  content_type: string;
   permission_type: string;
   permission_action: string;
   is_active: boolean;
@@ -60,6 +57,9 @@ export default function GroupDetail({ groupId }: GroupDetailProps) {
       }
       
       const data: Group = await response.json();
+      console.log('DEBUG: GroupDetail - Received data:', data);
+      console.log('DEBUG: GroupDetail - Permissions count:', data.permissions?.length);
+      console.log('DEBUG: GroupDetail - Users count:', data.user_set?.length);
       setGroup(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch group details');
@@ -92,7 +92,7 @@ export default function GroupDetail({ groupId }: GroupDetailProps) {
   };
 
   const groupedPermissions = group?.permissions?.reduce((acc, permission) => {
-    const contentType = permission.content_type;
+    const contentType = permission.permission_type;
     if (!acc[contentType]) {
       acc[contentType] = [];
     }
@@ -212,9 +212,11 @@ export default function GroupDetail({ groupId }: GroupDetailProps) {
                               key={permission.id}
                               className="flex items-center justify-between p-2 bg-gray-50 rounded"
                             >
-                              <span className="text-sm text-gray-700">{permission.name}</span>
+                              <span className="text-sm text-gray-700 capitalize">
+                                {permission.permission_type} - {permission.permission_action}
+                              </span>
                               <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                                {permission.codename}
+                                {permission.is_active ? 'Active' : 'Inactive'}
                               </span>
                             </div>
                           ))}

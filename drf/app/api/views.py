@@ -2509,13 +2509,28 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         
         # Check if user is org-wide supervisor
         is_org_wide_supervisor = False
+        # Check if user has no approval permission (level 0)
+        has_no_approval = False
+        
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
-                is_org_wide_supervisor = (supervisor_employee.position and 
-                                        supervisor_employee.position.can_approve_overtime_org_wide)
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    has_no_approval = True
+                else:
+                    is_org_wide_supervisor = (supervisor_employee.position and 
+                                            supervisor_employee.position.can_approve_overtime_org_wide)
             except:
                 pass
+        
+        # Reject if user has no approval permission
+        if has_no_approval:
+            return Response(
+                {"detail": "Anda tidak memiliki permission untuk melakukan approval"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Admin can approve any status
         if is_admin:
@@ -3939,13 +3954,28 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         
         # Check if user is org-wide supervisor
         is_org_wide_supervisor = False
+        # Check if user has no approval permission (level 0)
+        has_no_approval = False
+        
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
-                is_org_wide_supervisor = (supervisor_employee.position and 
-                                        supervisor_employee.position.can_approve_overtime_org_wide)
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    has_no_approval = True
+                else:
+                    is_org_wide_supervisor = (supervisor_employee.position and 
+                                            supervisor_employee.position.can_approve_overtime_org_wide)
             except:
                 pass
+        
+        # Reject if user has no approval permission
+        if has_no_approval:
+            return Response(
+                {"detail": "Anda tidak memiliki permission untuk melakukan approval"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Admin can approve any status
         if is_admin:
@@ -5262,6 +5292,8 @@ class PermissionManagementViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def bulk_update(self, request):
         """Bulk update permissions for multiple groups"""
+        print(f"DEBUG: Received data: {request.data}")
+        print(f"DEBUG: Data type: {type(request.data)}")
         serializer = BulkPermissionUpdateSerializer(data=request.data, many=True)
         if serializer.is_valid():
             try:
@@ -5285,7 +5317,7 @@ class PermissionManagementViewSet(viewsets.ViewSet):
                 return JsonResponse({"detail": "Permissions updated successfully"})
             except Exception as e:
                 return JsonResponse({"detail": str(e)}, status=500)
-        return JsonResponse(serializer.errors, status=400)
+        return JsonResponse({"errors": serializer.errors}, status=400)
     
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -5379,7 +5411,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
-@method_decorator(ensure_csrf_cookie, name='dispatch')
+@ensure_csrf_cookie
 def csrf_token_view(request):
     """
     Get CSRF token for frontend

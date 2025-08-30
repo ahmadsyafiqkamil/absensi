@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Header from '@/components/Header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning'
+import { PermissionGuard, ApprovalButton } from '@/components/ui/permission-guard'
+import { useSupervisorApprovalLevel } from '@/lib/hooks'
 
 type Item = {
   id: number
@@ -23,6 +26,7 @@ type Item = {
 }
 
 export default function ApprovalsPage() {
+  const { approvalLevel, canApprove, isLevel0, loading: approvalLevelLoading } = useSupervisorApprovalLevel()
   const [me, setMe] = useState<{ username: string; groups: string[] } | null>(null)
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,6 +58,11 @@ export default function ApprovalsPage() {
   useEffect(() => { load() }, [])
 
   async function act(id: number, action: 'approve' | 'reject') {
+    if (isLevel0) {
+      setError('Anda tidak memiliki permission untuk melakukan approval')
+      return
+    }
+
     setSubmittingId(id)
     setError(null)
     try {
@@ -97,69 +106,127 @@ export default function ApprovalsPage() {
 
   const role = me?.groups?.includes('admin') ? 'admin' : 'supervisor'
 
+  if (loading || approvalLevelLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header title="Approvals" subtitle="Review and approve attendance corrections" username={me?.username || ''} role={role} />
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="text-center py-8">
+            <div className="text-gray-500">Loading...</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="Pending Approvals" subtitle="Koreksi absensi menunggu persetujuan Anda" username={me?.username || ''} role={role} />
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <Header title="Approvals" subtitle="Review and approve attendance corrections" username={me?.username || ''} role={role} />
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Approval Level Warning */}
+        {approvalLevel !== null && (
+          <ApprovalLevelWarning approvalLevel={approvalLevel} className="mb-6" />
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>Pengajuan Pending</CardTitle>
-            <CardDescription>Hanya menampilkan pegawai dalam divisi Anda.</CardDescription>
+            <CardTitle>Pending Attendance Corrections</CardTitle>
+            <CardDescription>
+              {isLevel0 
+                ? 'You can view pending corrections but cannot approve them due to Level 0 permission'
+                : 'Review and approve attendance correction requests from your team members'
+              }
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3">
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{error}</div>}
-            {loading ? (
-              <div className="text-gray-600">Memuat...</div>
-            ) : items.length === 0 ? (
-              <div className="text-gray-600">Tidak ada pengajuan pending.</div>
+          <CardContent>
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                <div className="text-red-800">{error}</div>
+              </div>
+            )}
+
+            {items.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">No pending corrections found</div>
             ) : (
-              <div className="grid gap-2">
-                {items.map((it) => (
-                  <div key={it.id} className="border rounded p-3 text-sm">
-                    <div className="flex justify-between">
-                      <div className="font-medium">{it.date_local} — {it.type.replaceAll('_',' ')}</div>
-                      <div className="text-xs text-amber-600">{it.status}</div>
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <div key={item.id} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="font-medium">
+                          {item.user?.first_name} {item.user?.last_name} ({item.user?.username})
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Date: {new Date(item.date_local).toLocaleDateString('id-ID')}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Type: {item.type.replace('_', ' ').toUpperCase()}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-500">
+                          {new Date(item.created_at).toLocaleDateString('id-ID')}
+                        </div>
+                      </div>
                     </div>
-                    {it.user && (
-                      <div className="text-xs text-gray-600">
-                        Diajukan oleh: {it.user.first_name} {it.user.last_name} ({it.user.username})
+
+                    <div className="mb-3">
+                      <div className="text-sm font-medium text-gray-700 mb-1">Reason:</div>
+                      <div className="text-gray-600">{item.reason}</div>
+                    </div>
+
+                    {item.proposed_check_in_local && (
+                      <div className="mb-3">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Proposed Check-in:</div>
+                        <div className="text-gray-600">
+                          {new Date(item.proposed_check_in_local).toLocaleString('id-ID')}
+                        </div>
                       </div>
                     )}
-                    <div className="text-xs text-gray-600">Diajukan: {new Date(it.created_at).toLocaleString()}</div>
-                    {it.proposed_check_in_local && <div>Usulan In: {it.proposed_check_in_local}</div>}
-                    {it.proposed_check_out_local && <div>Usulan Out: {it.proposed_check_out_local}</div>}
-                    {it.attachment && (
-                      <div className="mt-2">
-                        <span className="text-xs text-gray-600">Surat Pendukung: </span>
-                        <a 
-                          href={getMediaUrl(it.attachment)} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-blue-600 hover:underline text-xs font-medium"
-                          title={`Download ${getFilename(it.attachment)}`}
+
+                    {item.proposed_check_out_local && (
+                      <div className="mb-3">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Proposed Check-out:</div>
+                        <div className="text-gray-600">
+                          {new Date(item.proposed_check_out_local).toLocaleString('id-ID')}
+                        </div>
+                      </div>
+                    )}
+
+                    {item.attachment && (
+                      <div className="mb-3">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Attachment:</div>
+                        <a
+                          href={getMediaUrl(item.attachment)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 underline"
                         >
-                          📎 {getFilename(it.attachment)}
+                          {getFilename(item.attachment)}
                         </a>
                       </div>
                     )}
-                    <div className="mt-2">Alasan: {it.reason}</div>
-                    <div className="mt-3 flex gap-2">
-                      <Button 
-                        onClick={() => act(it.id, 'approve')} 
-                        disabled={it.status !== 'pending' || submittingId === it.id || (it.type === 'missing_check_in' && !it.proposed_check_in_local) || (it.type === 'missing_check_out' && !it.proposed_check_out_local)}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        Approve
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        onClick={() => act(it.id, 'reject')} 
-                        disabled={it.status !== 'pending' || submittingId === it.id}
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        Reject
-                      </Button>
-                    </div>
+
+                    <PermissionGuard requiredLevel={1} showWarning={true}>
+                      <div className="flex space-x-2">
+                        <ApprovalButton
+                          onApprove={() => act(item.id, 'approve')}
+                          disabled={submittingId === item.id}
+                          loading={submittingId === item.id}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          {submittingId === item.id ? 'Processing...' : 'Approve'}
+                        </ApprovalButton>
+                        <ApprovalButton
+                          onApprove={() => act(item.id, 'reject')}
+                          disabled={submittingId === item.id}
+                          loading={submittingId === item.id}
+                          className="border-red-300 text-red-700 hover:bg-red-50"
+                        >
+                          {submittingId === item.id ? 'Processing...' : 'Reject'}
+                        </ApprovalButton>
+                      </div>
+                    </PermissionGuard>
                   </div>
                 ))}
               </div>

@@ -24,9 +24,9 @@ class Position(models.Model):
     )
     approval_level = models.PositiveSmallIntegerField(
         default=1,
-        choices=[(1, 'Division Level'), (2, 'Organization Level')],
+        choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level')],
         verbose_name="Approval Level",
-        help_text="1 = Division-level approval, 2 = Organization-level (final) approval"
+        help_text="0 = No approval permission, 1 = Division-level approval, 2 = Organization-level (final) approval"
     )
 
     class Meta:
@@ -598,6 +598,11 @@ class MonthlySummaryRequest(models.Model):
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    return False  # Level 0: No approval permission
+                
                 # Check if supervisor has org-wide approval permission
                 if (supervisor_employee.position and 
                     supervisor_employee.position.can_approve_overtime_org_wide):
@@ -619,6 +624,11 @@ class MonthlySummaryRequest(models.Model):
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    return False  # Level 0: No approval permission
+                
                 # Only org-wide supervisors can give final approval
                 if (supervisor_employee.position and 
                     supervisor_employee.position.can_approve_overtime_org_wide):
@@ -648,6 +658,25 @@ class GroupPermission(models.Model):
         ('settings', 'System Settings'),
         ('reports', 'Reports & Analytics'),
         ('admin', 'Admin Functions'),
+        # Django built-in permissions
+        ('session', 'Session Management'),
+        ('logentry', 'Log Entry Management'),
+        ('contenttype', 'Content Type Management'),
+        ('permission', 'Permission Management'),
+        ('group', 'Group Management'),
+        ('user', 'User Management'),
+        ('holiday', 'Holiday Management'),
+        ('worksettings', 'Work Settings Management'),
+        ('monthlysummaryrequest', 'Monthly Summary Request Management'),
+        ('overtimerequest', 'Overtime Request Management'),
+        ('overtimeexporthistory', 'Overtime Export History Management'),
+        ('attendancecorrection', 'Attendance Correction Management'),
+        ('grouppermission', 'Group Permission Management'),
+        ('grouppermissiontemplate', 'Group Permission Template Management'),
+        ('generatedreport', 'Generated Report Management'),
+        ('reportaccesslog', 'Report Access Log Management'),
+        ('reportschedule', 'Report Schedule Management'),
+        ('reporttemplate', 'Report Template Management'),
     ]
     
     PERMISSION_ACTIONS = [
@@ -668,7 +697,7 @@ class GroupPermission(models.Model):
         verbose_name="Group"
     )
     permission_type = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=PERMISSION_TYPES,
         verbose_name="Permission Type"
     )

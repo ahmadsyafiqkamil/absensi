@@ -1013,17 +1013,45 @@ class GroupUpdateSerializer(serializers.ModelSerializer):
 
 class GroupDetailSerializer(serializers.ModelSerializer):
     """
-    Serializer untuk detail Group dengan informasi user
+    Serializer untuk detail Group dengan informasi user dan permissions
     """
     user_count = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    user_set = serializers.SerializerMethodField()
     
     class Meta:
         model = Group
-        fields = ["id", "name", "user_count"]
-        read_only_fields = ["id", "user_count"]
+        fields = ["id", "name", "user_count", "permissions", "user_set"]
+        read_only_fields = ["id", "user_count", "permissions", "user_set"]
     
     def get_user_count(self, obj):
         return obj.user_set.count()
+    
+    def get_permissions(self, obj):
+        """Get custom permissions for this group"""
+        from .models import GroupPermission
+        permissions = GroupPermission.objects.filter(group=obj, is_active=True)
+        return [{
+            'id': perm.id,
+            'permission_type': perm.permission_type,
+            'permission_action': perm.permission_action,
+            'is_active': perm.is_active,
+            'created_at': perm.created_at,
+            'updated_at': perm.updated_at,
+        } for perm in permissions]
+    
+    def get_user_set(self, obj):
+        """Get users in this group"""
+        return [{
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name or '',
+            'last_name': user.last_name or '',
+            'is_active': user.is_active,
+            'date_joined': user.date_joined,
+            'last_login': user.last_login
+        } for user in obj.user_set.all()]
 
 
 # ============================================================================

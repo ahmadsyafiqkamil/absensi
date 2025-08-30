@@ -30,6 +30,7 @@ export async function GET(
     }
 
     const data = await response.json();
+    console.log('DEBUG: Frontend API Route - Backend response:', data);
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching group detail:', error);
@@ -47,6 +48,8 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
+    console.log('DEBUG: Frontend API Route - Received body:', body);
+    console.log('DEBUG: Frontend API Route - body.permissions:', body.permissions);
 
     // If updating permissions, use the bulk update endpoint
     if (body.permissions) {
@@ -56,13 +59,13 @@ export async function PUT(
           'Content-Type': 'application/json',
           // Forward cookies for authentication
           Cookie: request.headers.get('cookie') || '',
+          // Forward CSRF token
+          'X-CSRFToken': request.headers.get('x-csrftoken') || '',
         },
-        body: JSON.stringify({
-          groups: [{
-            id: parseInt(id),
-            permissions: body.permissions.map((permId: number) => ({ id: permId }))
-          }]
-        }),
+        body: JSON.stringify([{
+          group_id: parseInt(id),
+          permissions: body.permissions
+        }]),
       });
 
       if (!response.ok) {
@@ -84,6 +87,8 @@ export async function PUT(
         'Content-Type': 'application/json',
         // Forward cookies for authentication
         Cookie: request.headers.get('cookie') || '',
+        // Forward CSRF token
+        'X-CSRFToken': request.headers.get('x-csrftoken') || '',
       },
       body: JSON.stringify(body),
     });
