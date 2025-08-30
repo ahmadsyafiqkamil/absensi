@@ -1068,6 +1068,14 @@ def attendance_check_in(request):
                 'detail': f'Check-in terlalu awal. Jam absen dibuka mulai {ws.earliest_check_in_time.strftime("%H:%M")}'
             }, status=400)
 
+    # Validate latest check-out time
+    if ws.latest_check_out_enabled:
+        latest_check_out_local = datetime.combine(date_local, ws.latest_check_out_time, tz)
+        if local_now > latest_check_out_local:
+            return JsonResponse({
+                'detail': f'Check-out terlalu terlambat. Jam checkout ditutup pada {ws.latest_check_out_time.strftime("%H:%M")}'
+            }, status=400)
+
     att.check_in_at_utc = now
     att.check_in_lat = lat
     att.check_in_lng = lng

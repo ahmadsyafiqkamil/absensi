@@ -145,6 +145,18 @@ class WorkSettings(models.Model):
         help_text="Whether to enforce earliest check-in time restriction"
     )
 
+    # Early check-out restriction settings
+    latest_check_out_time = models.TimeField(
+        default=time(22, 0),  # Default: 22:00
+        verbose_name="Latest Check-out Time",
+        help_text="Latest time employees can check out (e.g., 22:00)"
+    )
+    latest_check_out_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Enable Latest Check-out Restriction",
+        help_text="Whether to enforce latest check-out time restriction"
+    )
+
     class Meta:
         verbose_name = "Work Settings"
         verbose_name_plural = "Work Settings"

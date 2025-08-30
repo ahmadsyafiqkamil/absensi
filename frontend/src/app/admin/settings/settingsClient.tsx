@@ -28,6 +28,8 @@ type WorkSettings = {
   overtime_threshold_minutes: number
   earliest_check_in_enabled?: boolean
   earliest_check_in_time?: string
+  latest_check_out_enabled?: boolean
+  latest_check_out_time?: string
 }
 
 type Holiday = { id: number; date: string; note?: string }
@@ -66,7 +68,9 @@ export default function SettingsClient() {
         const settingsWithDefaults = {
           ...s,
           earliest_check_in_enabled: s.earliest_check_in_enabled ?? false,
-          earliest_check_in_time: s.earliest_check_in_time ?? '06:00'
+          earliest_check_in_time: s.earliest_check_in_time ?? '06:00',
+          latest_check_out_enabled: s.latest_check_out_enabled ?? false,
+          latest_check_out_time: s.latest_check_out_time ?? '22:00'
         }
         setSettings(settingsWithDefaults)
         setHolidays(h?.results ?? [])
@@ -352,6 +356,44 @@ export default function SettingsClient() {
               <div className="mt-4 p-3 bg-orange-50 rounded-lg">
                 <div className="text-sm text-orange-800">
                   <strong>Info:</strong> Pembatasan jam absensi aktif. Employee hanya bisa absen mulai jam {settings.earliest_check_in_time || '06:00'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Check-out Restrictions */}
+          <div className="border-t pt-4">
+            <div className="text-lg font-semibold mb-4 text-red-600">Pembatasan Akhir Jam Check-out</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="latest_check_out_enabled"
+                  checked={settings.latest_check_out_enabled || false}
+                  onChange={(e) => setSettings({ ...settings, latest_check_out_enabled: e.target.checked })}
+                  className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                />
+                <Label htmlFor="latest_check_out_enabled" className="text-sm font-medium">
+                  Aktifkan pembatasan jam check-out
+                </Label>
+              </div>
+              <div className="grid gap-2">
+                <Label>Jam paling akhir untuk check-out</Label>
+                <Input
+                  type="time"
+                  value={settings.latest_check_out_time || '22:00'}
+                  onChange={(e) => setSettings({ ...settings, latest_check_out_time: e.target.value })}
+                  disabled={!settings.latest_check_out_enabled}
+                />
+                <div className="text-xs text-gray-500">
+                  Employee tidak bisa check-out setelah jam ini
+                </div>
+              </div>
+            </div>
+            {settings.latest_check_out_enabled && (
+              <div className="mt-4 p-3 bg-red-50 rounded-lg">
+                <div className="text-sm text-red-800">
+                  <strong>Info:</strong> Pembatasan jam check-out aktif. Employee hanya bisa check-out sampai jam {settings.latest_check_out_time || '22:00'}
                 </div>
               </div>
             )}
