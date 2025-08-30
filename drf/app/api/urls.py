@@ -24,6 +24,7 @@ urlpatterns = [
     path('attendance/check-out', views.attendance_check_out, name='attendance-check-out'),
     path('attendance/report', views.attendance_report, name='attendance-report'),
     path('attendance/report/pdf', views.attendance_report_pdf, name='attendance-report-pdf'),
+    path('attendance/corrections', views.attendance_corrections, name='attendance-corrections'),
 ]
 
 # Legacy router (kept for backward compatibility)

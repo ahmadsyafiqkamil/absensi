@@ -224,7 +224,8 @@ export default function PegawaiAttendanceReportPage() {
       if (needsCorrection(record)) {
         return (
           <div className="flex flex-col gap-1">
-            <Link href={`/pegawai/corrections?date=${record.date_local}`}>
+            {/* <Link href={`/pegawai/corrections?date=${record.date_local}`}> */}
+            <Link href={`/pegawai/corrections`}> 
               <Button 
                 size="sm" 
                 variant="outline" 
