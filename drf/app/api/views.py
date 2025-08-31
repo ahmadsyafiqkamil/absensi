@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.views.decorators.http import require_GET
 import datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -87,8 +87,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from io import BytesIO
-import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 from django.db import IntegrityError
 from django.db import transaction
 from django.middleware.csrf import get_token
@@ -162,6 +161,59 @@ def me(request):
         "groups": list(user.groups.values_list('name', flat=True)),
     }
     return JsonResponse(data)
+
+
+@extend_schema(
+    responses={200: dict},
+    auth=[{"BearerAuth": []}],
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def employee_me(request):
+    """Get current user's employee profile with position and approval level."""
+    user = request.user
+    try:
+        employee = user.employee
+        if not employee:
+            return JsonResponse({"detail": "employee_record_not_found"}, status=404)
+        
+        data = {
+            "id": employee.id,
+            "user_id": employee.user_id,
+            "fullname": employee.fullname,
+            "division_id": employee.division_id,
+            "position_id": employee.position_id,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_superuser": user.is_superuser,
+                "groups": list(user.groups.values_list('name', flat=True)),
+            }
+        }
+        
+        # Add position details if available
+        if employee.position:
+            data["position"] = {
+                "id": employee.position.id,
+                "name": employee.position.name,
+                "approval_level": employee.position.approval_level,
+                "can_approve_overtime_org_wide": employee.position.can_approve_overtime_org_wide,
+            }
+        
+        # Add division details if available
+        if employee.division:
+            data["division"] = {
+                "id": employee.division.id,
+                "name": employee.division.name,
+            }
+            
+        return JsonResponse(data)
+        
+    except Exception as e:
+        return JsonResponse({"detail": "error_fetching_profile", "error": str(e)}, status=500)
 
 
 @extend_schema(
@@ -5622,6 +5674,44 @@ def attendance_corrections(request):
                     'correction_reasons': correction_reasons
                 })
 
+        # Get manual correction requests that don't have corresponding attendance records
+        manual_corrections = AttendanceCorrection.objects.filter(
+            user=user
+        ).filter(date_filter).exclude(
+            date_local__in=[record.date_local for record in attendance_records]
+        )
+
+        for manual_correction in manual_corrections:
+            # Add manual correction records
+            correction_records.append({
+                'id': f"manual_{manual_correction.id}",
+                'date_local': manual_correction.date_local,
+                'check_in_at_utc': None,
+                'check_out_at_utc': None,
+                'check_in_lat': None,
+                'check_in_lng': None,
+                'check_out_lat': None,
+                'check_out_lng': None,
+                'check_in_ip': None,
+                'check_out_ip': None,
+                'minutes_late': 0,
+                'total_work_minutes': 0,
+                'is_holiday': False,
+                'within_geofence': False,
+                'note': None,
+                'employee_note': None,
+                'created_at': manual_correction.created_at.isoformat(),
+                'updated_at': manual_correction.updated_at.isoformat(),
+                'correction_status': manual_correction.status,
+                'correction_reasons': ['manual_request'],
+                'is_manual': True
+            })
+            
+            # Update summary counts
+            if manual_correction.status == 'pending':
+                pending_corrections += 1
+            total_records += 1
+
         # Apply status filter if specified
         if status_filter != 'all':
             if status_filter == 'not_submitted':
@@ -5648,6 +5738,169 @@ def attendance_corrections(request):
 
     except Exception as e:
         print(f"Error in attendance_corrections: {str(e)}")
+        return Response(
+            {'detail': 'Internal server error'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([JSONParser, MultiPartParser, FormParser])
+def attendance_correction_request(request):
+    """
+    Submit a new attendance correction request
+    """
+    try:
+        # Get employee for the authenticated user
+        try:
+            employee = Employee.objects.get(user=request.user)
+        except Employee.DoesNotExist:
+            return Response(
+                {'detail': 'Employee not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Validate required fields
+        date_local = request.data.get('date_local')
+        correction_type = request.data.get('type')
+        reason = request.data.get('reason')
+
+        if not all([date_local, correction_type, reason]):
+            return Response(
+                {'detail': 'Missing required fields: date_local, type, reason'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate date format
+        try:
+            date_obj = datetime.datetime.strptime(date_local, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'detail': 'Invalid date format. Use YYYY-MM-DD'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if date is not in the future
+        if date_obj > dj_timezone.now().date():
+            return Response(
+                {'detail': 'Cannot submit correction for future dates'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if correction request already exists for this date
+        existing_correction = AttendanceCorrection.objects.filter(
+            user=request.user,
+            date_local=date_obj
+        ).first()
+
+        if existing_correction:
+            if existing_correction.status == 'pending':
+                return Response(
+                    {'detail': 'Correction request already pending for this date'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif existing_correction.status == 'approved':
+                return Response(
+                    {'detail': 'Correction already approved for this date'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Map frontend type to model type (support both old and new formats)
+        type_mapping = {
+            'check_in': AttendanceCorrection.CorrectionType.MISSING_CHECK_IN,
+            'check_out': AttendanceCorrection.CorrectionType.MISSING_CHECK_OUT,
+            'both': AttendanceCorrection.CorrectionType.EDIT,
+            'missing_check_in': AttendanceCorrection.CorrectionType.MISSING_CHECK_IN,
+            'missing_check_out': AttendanceCorrection.CorrectionType.MISSING_CHECK_OUT,
+            'edit': AttendanceCorrection.CorrectionType.EDIT
+        }
+
+        if correction_type not in type_mapping:
+            return Response(
+                {'detail': 'Invalid correction type'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create correction request
+        correction_data = {
+            'user': request.user,
+            'date_local': date_obj,
+            'type': type_mapping[correction_type],
+            'reason': reason,
+            'status': AttendanceCorrection.CorrectionStatus.PENDING
+        }
+
+        # Handle proposed times if provided
+        proposed_check_in = request.data.get('proposed_check_in_local')
+        proposed_check_out = request.data.get('proposed_check_out_local')
+        
+        if proposed_check_in:
+            try:
+                # Parse datetime string to datetime object
+                if isinstance(proposed_check_in, str):
+                    # Handle different datetime formats
+                    if 'T' in proposed_check_in:
+                        # ISO format: "2025-08-25T08:00:00"
+                        dt = datetime.datetime.fromisoformat(proposed_check_in.replace('Z', '+00:00'))
+                    else:
+                        # Simple format: "2025-08-25 08:00:00"
+                        dt = datetime.datetime.strptime(proposed_check_in, '%Y-%m-%d %H:%M:%S')
+                    correction_data['proposed_check_in_local'] = dt
+            except ValueError:
+                return Response(
+                    {'detail': 'Invalid proposed_check_in_local format'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if proposed_check_out:
+            try:
+                # Parse datetime string to datetime object
+                if isinstance(proposed_check_out, str):
+                    # Handle different datetime formats
+                    if 'T' in proposed_check_out:
+                        # ISO format: "2025-08-25T08:00:00"
+                        dt = datetime.datetime.fromisoformat(proposed_check_out.replace('Z', '+00:00'))
+                    else:
+                        # Simple format: "2025-08-25 08:00:00"
+                        dt = datetime.datetime.strptime(proposed_check_out, '%Y-%m-%d %H:%M:%S')
+                    correction_data['proposed_check_out_local'] = dt
+            except ValueError:
+                return Response(
+                    {'detail': 'Invalid proposed_check_out_local format'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Handle attachment if provided
+        attachment = request.FILES.get('attachment')
+        if attachment:
+            # Validate file type and size
+            allowed_types = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png']
+            if attachment.content_type not in allowed_types:
+                return Response(
+                    {'detail': 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG are allowed'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if attachment.size > 10 * 1024 * 1024:  # 10MB limit
+                return Response(
+                    {'detail': 'File size too large. Maximum size is 10MB'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            correction_data['attachment'] = attachment
+
+        # Create the correction request
+        correction = AttendanceCorrection.objects.create(**correction_data)
+
+        return Response({
+            'detail': 'Correction request submitted successfully',
+            'correction_id': correction.id,
+            'status': correction.status
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print(f"Error in attendance_correction_request: {str(e)}")
         return Response(
             {'detail': 'Internal server error'}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

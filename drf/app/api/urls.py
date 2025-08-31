@@ -18,6 +18,7 @@ urlpatterns = [
     path('auth/verify', TokenVerifyView.as_view(), name='token_verify'),
     path('auth/me', views.me, name='auth-me'),
     path('auth/logout', views.logout, name='auth-logout'),
+    path('employees/me', views.employee_me, name='employee-me'),
     # Attendance (legacy/common)
     path('attendance/precheck', views.attendance_precheck, name='attendance-precheck'),
     path('attendance/check-in', views.attendance_check_in, name='attendance-check-in'),
@@ -25,6 +26,7 @@ urlpatterns = [
     path('attendance/report', views.attendance_report, name='attendance-report'),
     path('attendance/report/pdf', views.attendance_report_pdf, name='attendance-report-pdf'),
     path('attendance/corrections', views.attendance_corrections, name='attendance-corrections'),
+    path('attendance/corrections/request', views.attendance_correction_request, name='attendance-correction-request'),
 ]
 
 # Legacy router (kept for backward compatibility)

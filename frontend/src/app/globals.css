@@ -56,6 +56,113 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Dialog Component Styling - Simplified */
+[data-slot="dialog-content"] {
+  background-color: white !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  border-radius: 0.5rem !important;
+}
+
+[data-slot="dialog-overlay"] {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Dialog content classes */
+.dialog-content {
+  background-color: white !important;
+}
+
+.dialog-header {
+  background-color: white !important;
+  border-bottom: 1px solid #f3f4f6 !important;
+}
+
+.dialog-footer {
+  background-color: white !important;
+  border-top: 1px solid #f3f4f6 !important;
+}
+
+/* Form elements styling */
+.dialog-content input,
+.dialog-content textarea {
+  background-color: white !important;
+  border-color: #d1d5db !important;
+}
+
+/* CRITICAL: Ensure Select components work properly */
+.dialog-content [data-radix-select-trigger] {
+  background-color: white !important;
+  border-color: #d1d5db !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* Ensure Select dropdown appears above everything */
+[data-radix-select-content] {
+  z-index: 99999 !important;
+  position: relative !important;
+  background-color: white !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 0.5rem !important;
+}
+
+[data-radix-select-portal] {
+  z-index: 99999 !important;
+}
+
+[data-radix-popper-content-wrapper] {
+  z-index: 99999 !important;
+}
+
+/* Force solid background for Select content */
+[data-radix-select-content] * {
+  background-color: white !important;
+}
+
+/* Ensure Select items have proper styling */
+[data-radix-select-item] {
+  background-color: white !important;
+  color: #374151 !important;
+}
+
+[data-radix-select-item]:hover {
+  background-color: #f3f4f6 !important;
+}
+
+[data-radix-select-item][data-state="checked"] {
+  background-color: #dbeafe !important;
+  color: #1e40af !important;
+}
+
+/* Remove any conflicting background overrides for Select */
+.dialog-content [data-radix-select-content],
+.dialog-content [data-radix-select-portal],
+.dialog-content [data-radix-popper-content-wrapper] {
+  background-color: transparent !important;
+}
+
+/* CRITICAL: Override any transparent backgrounds for Select */
+.dialog-content [data-radix-select-content] {
+  background-color: white !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 0.5rem !important;
+}
+
+/* Ensure Select viewport has solid background */
+.dialog-content [data-radix-select-viewport] {
+  background-color: white !important;
+  border-radius: 0.5rem !important;
+}
+
+/* Force white background for all Select elements */
+.dialog-content [data-radix-select-content] * {
+  background-color: white !important;
+}
+
 /* Fallback styles for login page */
 .min-h-screen {
   min-height: 100vh;
@@ -106,63 +213,30 @@ body {
   font-weight: 700;
 }
 
-.text-gray-900 {
-  color: #111827;
+.text-red-600 {
+  color: #dc2626;
 }
 
 .text-gray-600 {
   color: #4b5563;
 }
 
-.text-gray-700 {
-  color: #374151;
-}
-
-.space-y-4 > * + * {
-  margin-top: 1rem;
-}
-
-.space-y-2 > * + * {
+.mt-2 {
   margin-top: 0.5rem;
 }
 
-.text-sm {
-  font-size: 0.875rem;
-  line-height: 1.25rem;
+.mt-4 {
+  margin-top: 1rem;
 }
 
-.font-medium {
-  font-weight: 500;
+.inline-block {
+  display: inline-block;
 }
 
-.bg-blue-600 {
-  background-color: #2563eb;
+.text-blue-600 {
+  color: #2563eb;
 }
 
-.hover\:bg-blue-700:hover {
-  background-color: #1d4ed8;
-}
-
-.text-white {
-  color: #ffffff;
-}
-
-.bg-red-50 {
-  background-color: #fef2f2;
-}
-
-.p-3 {
-  padding: 0.75rem;
-}
-
-.rounded-md {
-  border-radius: 0.375rem;
-}
-
-.border {
-  border-width: 1px;
-}
-
-.border-red-200 {
-  border-color: #fecaca;
+.hover\:underline:hover {
+  text-decoration: underline;
 }
