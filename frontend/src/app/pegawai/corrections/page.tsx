@@ -750,7 +750,7 @@ export default function PegawaiCorrectionsPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Month (YYYY-MM)
-                  <span className="text-gray-400 ml-1">(overrides date range)</span>
+                  {/* <span className="text-gray-400 ml-1">(overrides date range)</span> */}
                 </label>
                 <input
                   type="month"

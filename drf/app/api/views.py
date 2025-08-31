@@ -1,7 +1,6 @@
 from django.http import JsonResponse
 from django.contrib.auth.models import User
 from django.views.decorators.http import require_GET
-import datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.decorators import api_view, permission_classes, authentication_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
@@ -1112,6 +1111,33 @@ def attendance_check_in(request):
         # evaluate_lateness expects a datetime; we pass now (server) which will be normalized
         res = evaluate_lateness_as_dict(now)
         minutes_late = int(res.get('minutes_late') or 0)
+        
+        # Double-check calculation for accuracy
+        try:
+            workdays = ws.workdays or []
+            weekday = local_now.weekday()
+            is_workday = weekday in workdays
+            
+            if is_workday and not is_holiday:
+                # Manual calculation for verification
+                if weekday == 4:  # Friday
+                    start_time = ws.friday_start_time
+                    grace_minutes = ws.friday_grace_minutes or 0
+                else:
+                    start_time = ws.start_time
+                    grace_minutes = ws.grace_minutes or 0
+                
+                base_start = datetime.combine(date_local, start_time, tz)
+                grace_delta = local_now - base_start
+                grace_minutes_from_start = grace_delta.total_seconds() / 60
+                
+                if grace_minutes_from_start > grace_minutes:
+                    manual_minutes_late = int(grace_minutes_from_start - grace_minutes)
+                    # Use manual calculation if it differs significantly
+                    if abs(manual_minutes_late - minutes_late) > 1:
+                        minutes_late = manual_minutes_late
+        except Exception:
+            pass  # Keep original calculation if manual calculation fails
     
     # Validate earliest check-in time
     if ws.earliest_check_in_enabled:
@@ -5554,9 +5580,9 @@ def attendance_corrections(request):
                 year, month_num = month.split('-')
                 start_of_month = datetime.date(int(year), int(month_num), 1)
                 if int(month_num) == 12:
-                    end_of_month = datetime.date(int(year) + 1, 1, 1) - datetime.timedelta(days=1)
+                    end_of_month = datetime.date(int(year) + 1, 1, 1) - timedelta(days=1)
                 else:
-                    end_of_month = datetime.date(int(year), int(month_num) + 1, 1) - datetime.timedelta(days=1)
+                    end_of_month = datetime.date(int(year), int(month_num) + 1, 1) - timedelta(days=1)
                 
                 date_filter = Q(date_local__gte=start_of_month) & Q(date_local__lte=end_of_month)
             except (ValueError, TypeError):
@@ -5579,9 +5605,9 @@ def attendance_corrections(request):
             today = dj_timezone.now().date()
             start_of_month = today.replace(day=1)
             if today.month == 12:
-                end_of_month = today.replace(year=today.year + 1, month=1, day=1) - datetime.timedelta(days=1)
+                end_of_month = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
             else:
-                end_of_month = today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1)
+                end_of_month = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
             date_filter = Q(date_local__gte=start_of_month) & Q(date_local__lte=end_of_month)
 
         # Get attendance records for the employee
@@ -5671,7 +5697,12 @@ def attendance_corrections(request):
                     'created_at': record.created_at.isoformat(),
                     'updated_at': record.updated_at.isoformat(),
                     'correction_status': correction_status,
-                    'correction_reasons': correction_reasons
+                    'correction_reasons': correction_reasons,
+                    # Add proposed correction times if correction request exists
+                    'proposed_check_in_local': correction.proposed_check_in_local.isoformat() if correction and correction.proposed_check_in_local else None,
+                    'proposed_check_out_local': correction.proposed_check_out_local.isoformat() if correction and correction.proposed_check_out_local else None,
+                    'correction_type': correction.type if correction else None,
+                    'correction_reason': correction.reason if correction else None
                 })
 
         # Get manual correction requests that don't have corresponding attendance records
@@ -5682,7 +5713,7 @@ def attendance_corrections(request):
         )
 
         for manual_correction in manual_corrections:
-            # Add manual correction records
+            # Add manual correction records with proposed times
             correction_records.append({
                 'id': f"manual_{manual_correction.id}",
                 'date_local': manual_correction.date_local,
@@ -5704,7 +5735,12 @@ def attendance_corrections(request):
                 'updated_at': manual_correction.updated_at.isoformat(),
                 'correction_status': manual_correction.status,
                 'correction_reasons': ['manual_request'],
-                'is_manual': True
+                'is_manual': True,
+                # Add proposed correction times
+                'proposed_check_in_local': manual_correction.proposed_check_in_local.isoformat() if manual_correction.proposed_check_in_local else None,
+                'proposed_check_out_local': manual_correction.proposed_check_out_local.isoformat() if manual_correction.proposed_check_out_local else None,
+                'correction_type': manual_correction.type,
+                'correction_reason': manual_correction.reason
             })
             
             # Update summary counts
@@ -5774,7 +5810,7 @@ def attendance_correction_request(request):
 
         # Validate date format
         try:
-            date_obj = datetime.datetime.strptime(date_local, '%Y-%m-%d').date()
+            date_obj = datetime.strptime(date_local, '%Y-%m-%d').date()
         except ValueError:
             return Response(
                 {'detail': 'Invalid date format. Use YYYY-MM-DD'}, 
@@ -5831,43 +5867,49 @@ def attendance_correction_request(request):
             'status': AttendanceCorrection.CorrectionStatus.PENDING
         }
 
-        # Handle proposed times if provided
-        proposed_check_in = request.data.get('proposed_check_in_local')
-        proposed_check_out = request.data.get('proposed_check_out_local')
+        # Handle proposed times if provided (support both old and new field names)
+        proposed_check_in = request.data.get('proposed_check_in_local') or request.data.get('proposed_check_in_time')
+        proposed_check_out = request.data.get('proposed_check_out_local') or request.data.get('proposed_check_out_time')
         
         if proposed_check_in:
             try:
-                # Parse datetime string to datetime object
+                # Parse time string to datetime object
                 if isinstance(proposed_check_in, str):
-                    # Handle different datetime formats
                     if 'T' in proposed_check_in:
                         # ISO format: "2025-08-25T08:00:00"
-                        dt = datetime.datetime.fromisoformat(proposed_check_in.replace('Z', '+00:00'))
+                        dt = datetime.fromisoformat(proposed_check_in.replace('Z', '+00:00'))
+                    elif ':' in proposed_check_in and len(proposed_check_in.split(':')) == 2:
+                        # Time format: "08:00" - combine with date_local
+                        time_obj = datetime.strptime(proposed_check_in, '%H:%M').time()
+                        dt = datetime.combine(date_obj, time_obj)
                     else:
                         # Simple format: "2025-08-25 08:00:00"
-                        dt = datetime.datetime.strptime(proposed_check_in, '%Y-%m-%d %H:%M:%S')
+                        dt = datetime.strptime(proposed_check_in, '%Y-%m-%d %H:%M:%S')
                     correction_data['proposed_check_in_local'] = dt
             except ValueError:
                 return Response(
-                    {'detail': 'Invalid proposed_check_in_local format'}, 
+                    {'detail': 'Invalid proposed_check_in_time format'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
         if proposed_check_out:
             try:
-                # Parse datetime string to datetime object
+                # Parse time string to datetime object
                 if isinstance(proposed_check_out, str):
-                    # Handle different datetime formats
                     if 'T' in proposed_check_out:
                         # ISO format: "2025-08-25T08:00:00"
-                        dt = datetime.datetime.fromisoformat(proposed_check_out.replace('Z', '+00:00'))
+                        dt = datetime.fromisoformat(proposed_check_out.replace('Z', '+00:00'))
+                    elif ':' in proposed_check_out and len(proposed_check_out.split(':')) == 2:
+                        # Time format: "08:00" - combine with date_local
+                        time_obj = datetime.strptime(proposed_check_out, '%H:%M').time()
+                        dt = datetime.combine(date_obj, time_obj)
                     else:
                         # Simple format: "2025-08-25 08:00:00"
-                        dt = datetime.datetime.strptime(proposed_check_out, '%Y-%m-%d %H:%M:%S')
+                        dt = datetime.strptime(proposed_check_out, '%H:%M:%S')
                     correction_data['proposed_check_out_local'] = dt
             except ValueError:
                 return Response(
-                    {'detail': 'Invalid proposed_check_out_local format'}, 
+                    {'detail': 'Invalid proposed_check_out_time format'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
