@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     if (employeeId) params.append('employee_id', employeeId)
     
     const queryString = params.toString()
-    const url = `/api/supervisor/team-attendance${queryString ? `?${queryString}` : ''}`
+    const url = `/supervisor/team-attendance${queryString ? `?${queryString}` : ''}`
     
     const response = await backendFetch(url, {
       method: 'GET',
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-    })
+    }, 'LEGACY')
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))

@@ -11,6 +11,7 @@ import { formatWorkHoursEN } from '@/lib/utils';
 interface Employee {
   id: number;
   nip: string;
+  fullname: string;
   user: {
     id: number;
     username: string;
@@ -267,14 +268,58 @@ export default function SupervisorAttendanceDetailPage() {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              {attendanceData.employee.user.first_name} {attendanceData.employee.user.last_name}
+              {attendanceData.employee.fullname || `${attendanceData.employee.user.first_name} ${attendanceData.employee.user.last_name}`}
             </CardTitle>
             <CardDescription>
-              NIP: {attendanceData.employee.nip} | 
-              Division: {attendanceData.employee.division?.name || 'Not Assigned'} | 
-              Position: {attendanceData.employee.position?.name || 'Not Assigned'}
+              <div className="space-y-1">
+                <div className="font-medium text-gray-700">
+                  {attendanceData.employee.fullname || `${attendanceData.employee.user.first_name} ${attendanceData.employee.user.last_name}`}
+                </div>
+                <div className="text-sm text-gray-600">
+                  NIP: {attendanceData.employee.nip} | 
+                  Division: {attendanceData.employee.division?.name || 'Not Assigned'} | 
+                  Position: {attendanceData.employee.position?.name || 'Not Assigned'}
+                </div>
+              </div>
             </CardDescription>
           </CardHeader>
+        </Card>
+
+        {/* Employee Information Details */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Employee Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <p className="text-gray-900 font-medium">
+                  {attendanceData.employee.fullname || `${attendanceData.employee.user.first_name} ${attendanceData.employee.user.last_name}`}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
+                <p className="text-gray-900">{attendanceData.employee.nip}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <p className="text-gray-900">{attendanceData.employee.user.username}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <p className="text-gray-900">{attendanceData.employee.user.email}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                <p className="text-gray-900">{attendanceData.employee.division?.name || 'Not Assigned'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                <p className="text-gray-900">{attendanceData.employee.position?.name || 'Not Assigned'}</p>
+              </div>
+            </div>
+          </CardContent>
         </Card>
 
         {/* Filters */}
