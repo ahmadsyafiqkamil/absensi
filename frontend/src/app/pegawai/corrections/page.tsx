@@ -1022,8 +1022,8 @@ export default function PegawaiCorrectionsPage() {
 
       {/* Correction Request Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-white border border-gray-200 shadow-xl dialog-content">
-          <DialogHeader className="bg-white dialog-header pb-4">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] bg-white border border-gray-200 shadow-xl dialog-content overflow-hidden">
+          <DialogHeader className="bg-white dialog-header pb-4 border-b border-gray-100">
             <DialogTitle className="text-xl font-semibold text-gray-900">
               Ajukan Perbaikan Absensi
             </DialogTitle>
@@ -1037,7 +1037,7 @@ export default function PegawaiCorrectionsPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="grid gap-6 py-4 bg-white">
+          <div className="grid gap-6 py-4 bg-white overflow-y-auto max-h-[calc(90vh-200px)] px-1">
             {/* Correction Type */}
             <div className="grid gap-2">
               <Label htmlFor="correction-type" className="text-sm font-medium">
@@ -1143,7 +1143,7 @@ export default function PegawaiCorrectionsPage() {
                   </div>
         </div>
 
-          <DialogFooter className="gap-3 bg-white pt-4 border-t border-gray-100 dialog-footer">
+          <DialogFooter className="gap-3 bg-white pt-4 border-t border-gray-100 dialog-footer sticky bottom-0 bg-white">
             <Button 
               variant="outline" 
               onClick={closeModal} 
@@ -1177,8 +1177,8 @@ export default function PegawaiCorrectionsPage() {
 
       {/* Manual Correction Request Modal */}
       <Dialog open={isManualModalOpen} onOpenChange={setIsManualModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-white border border-gray-200 shadow-xl dialog-content">
-          <DialogHeader className="bg-white dialog-header pb-4">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] bg-white border border-gray-200 shadow-xl dialog-content overflow-hidden">
+          <DialogHeader className="bg-white dialog-header pb-4 border-b border-gray-100">
             <DialogTitle className="text-xl font-semibold text-gray-900">
               Ajukan Perbaikan Absensi Manual
             </DialogTitle>
@@ -1187,7 +1187,7 @@ export default function PegawaiCorrectionsPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="grid gap-6 py-4 bg-white">
+          <div className="grid gap-6 py-4 bg-white overflow-y-auto max-h-[calc(90vh-200px)] px-1">
             {/* Date Selection */}
             <div className="grid gap-2 bg-white">
               <Label htmlFor="manual-date" className="text-sm font-medium text-gray-900">
@@ -1352,7 +1352,7 @@ export default function PegawaiCorrectionsPage() {
                     </div>
                 </div>
 
-          <DialogFooter className="gap-3 bg-white pt-4 border-t border-gray-100 dialog-footer">
+          <DialogFooter className="gap-3 bg-white pt-4 border-t border-gray-100 dialog-footer sticky bottom-0 bg-white">
             <Button 
               variant="outline" 
               onClick={closeManualModal} 

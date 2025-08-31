@@ -72,16 +72,31 @@ body {
 /* Dialog content classes */
 .dialog-content {
   background-color: white !important;
+  max-height: 90vh !important;
+  overflow: hidden !important;
 }
 
 .dialog-header {
   background-color: white !important;
   border-bottom: 1px solid #f3f4f6 !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
 }
 
 .dialog-footer {
   background-color: white !important;
   border-top: 1px solid #f3f4f6 !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 10 !important;
+}
+
+/* Ensure dialog content area is scrollable */
+.dialog-content > div:not(.dialog-header):not(.dialog-footer) {
+  overflow-y: auto !important;
+  max-height: calc(90vh - 200px) !important;
+  padding-right: 4px !important;
 }
 
 /* Form elements styling */
