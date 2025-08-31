@@ -137,15 +137,20 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
       const checkIn = row.getValue("proposed_check_in_local") as string
       if (!checkIn) return <span className="text-muted-foreground">-</span>
       
-      const date = new Date(checkIn)
-      return (
-        <div className="text-sm">
-          {date.toLocaleTimeString('id-ID', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}
-        </div>
-      )
+      try {
+        const date = new Date(checkIn)
+        return (
+          <div className="text-sm">
+            {date.toLocaleTimeString('id-ID', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              timeZone: 'Asia/Dubai'
+            })}
+          </div>
+        )
+      } catch {
+        return <span className="text-muted-foreground">-</span>
+      }
     },
   },
   {
@@ -155,15 +160,20 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
       const checkOut = row.getValue("proposed_check_out_local") as string
       if (!checkOut) return <span className="text-muted-foreground">-</span>
       
-      const date = new Date(checkOut)
-      return (
-        <div className="text-sm">
-          {date.toLocaleTimeString('id-ID', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}
-        </div>
-      )
+      try {
+        const date = new Date(checkOut)
+        return (
+          <div className="text-sm">
+            {date.toLocaleTimeString('id-ID', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              timeZone: 'Asia/Dubai'
+            })}
+          </div>
+        )
+      } catch {
+        return <span className="text-muted-foreground">-</span>
+      }
     },
   },
   {
@@ -190,11 +200,12 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
       const date = new Date(row.getValue("created_at"))
       return (
         <div className="text-sm text-muted-foreground">
-          {date.toLocaleDateString('id-ID')}
+          {date.toLocaleDateString('id-ID', { timeZone: 'Asia/Dubai' })}
           <br />
           {date.toLocaleTimeString('id-ID', { 
             hour: '2-digit', 
-            minute: '2-digit' 
+            minute: '2-digit',
+            timeZone: 'Asia/Dubai'
           })}
         </div>
       )

@@ -777,11 +777,10 @@ class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
         from datetime import date, timedelta
         today = date.today()
         
-        # Allow up to 7 days in the past and 1 day in the future
+        # Allow any date in the past and up to 1 day in the future
         if value > today + timedelta(days=1):
             raise serializers.ValidationError("Tanggal tidak boleh lebih dari 1 hari ke depan")
-        if value < today - timedelta(days=7):
-            raise serializers.ValidationError("Tanggal tidak boleh lebih dari 7 hari ke belakang")
+        # Removed 7-day restriction - now allows any past date
             
         return value
     

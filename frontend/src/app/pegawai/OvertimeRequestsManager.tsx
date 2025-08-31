@@ -622,11 +622,11 @@ export default function OvertimeRequestsManager() {
       {/* Action Button */}
       <div className="flex justify-end items-center mb-4">
         <Dialog.Root open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <Dialog.Trigger asChild>
+          {/* <Dialog.Trigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700">
               Ajukan Lembur
             </Button>
-          </Dialog.Trigger>
+          </Dialog.Trigger> */}
           <Dialog.Portal>
             <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
             <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl p-6 w-full max-w-md z-50 max-h-[90vh] overflow-y-auto">

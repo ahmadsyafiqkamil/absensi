@@ -32,6 +32,7 @@ export default function ApprovalsPage() {
       const data = await resp.json().catch(() => ({}))
       const list = Array.isArray(data) ? data : (data.results || [])
       setItems(list)
+      console.log('LOAD_DATA', { list })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal memuat data')
     } finally {

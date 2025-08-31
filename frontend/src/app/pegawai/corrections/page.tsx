@@ -86,7 +86,9 @@ export default function PegawaiCorrectionsPage() {
   const [correctionForm, setCorrectionForm] = useState({
     type: 'check_in' as 'check_in' | 'check_out' | 'both',
     reason: '',
-    attachment: null as File | null
+    attachment: null as File | null,
+    proposed_check_in_time: '',
+    proposed_check_out_time: ''
   });
   const [manualCorrectionForm, setManualCorrectionForm] = useState({
     date_local: '',
@@ -173,10 +175,34 @@ export default function PegawaiCorrectionsPage() {
       correctionType = 'check_out';
     }
     
+    // Extract time from existing record if available
+    let proposedCheckInTime = '';
+    let proposedCheckOutTime = '';
+    
+    if (record.check_in_at_utc) {
+      try {
+        const checkInDate = new Date(record.check_in_at_utc);
+        proposedCheckInTime = checkInDate.toTimeString().slice(0, 5);
+      } catch (e) {
+        proposedCheckInTime = '';
+      }
+    }
+    
+    if (record.check_out_at_utc) {
+      try {
+        const checkOutDate = new Date(record.check_out_at_utc);
+        proposedCheckOutTime = checkOutDate.toTimeString().slice(0, 5);
+      } catch (e) {
+        proposedCheckOutTime = '';
+      }
+    }
+    
     setCorrectionForm({
       type: correctionType,
       reason: '',
-      attachment: null
+      attachment: null,
+      proposed_check_in_time: proposedCheckInTime,
+      proposed_check_out_time: proposedCheckOutTime
     });
     setIsModalOpen(true);
   };
@@ -201,7 +227,9 @@ export default function PegawaiCorrectionsPage() {
     setCorrectionForm({
       type: 'check_in',
       reason: '',
-      attachment: null
+      attachment: null,
+      proposed_check_in_time: '',
+      proposed_check_out_time: ''
     });
   };
 
@@ -248,6 +276,12 @@ export default function PegawaiCorrectionsPage() {
       formData.append('reason', correctionForm.reason);
       if (correctionForm.attachment) {
         formData.append('attachment', correctionForm.attachment);
+      }
+      if (correctionForm.proposed_check_in_time) {
+        formData.append('proposed_check_in_time', correctionForm.proposed_check_in_time);
+      }
+      if (correctionForm.proposed_check_out_time) {
+        formData.append('proposed_check_out_time', correctionForm.proposed_check_out_time);
       }
 
       const response = await authFetch('/api/attendance/corrections/request', {
@@ -1039,8 +1073,8 @@ export default function PegawaiCorrectionsPage() {
           
           <div className="grid gap-6 py-4 bg-white overflow-y-auto max-h-[calc(90vh-200px)] px-1">
             {/* Correction Type */}
-            <div className="grid gap-2">
-              <Label htmlFor="correction-type" className="text-sm font-medium">
+            <div className="grid gap-2 bg-white">
+              <Label htmlFor="correction-type" className="text-sm font-medium text-gray-900">
                 Jenis Perbaikan <span className="text-red-500">*</span>
               </Label>
               <Select 
@@ -1067,9 +1101,49 @@ export default function PegawaiCorrectionsPage() {
               </Select>
             </div>
 
+            {/* Proposed Check-in Time */}
+            {(correctionForm.type === 'check_in' || correctionForm.type === 'both') && (
+              <div className="grid gap-2 bg-white">
+                <Label htmlFor="proposed-check-in-time" className="text-sm font-medium text-gray-900">
+                  Jam Perbaikan Check-in <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="proposed-check-in-time"
+                  type="time"
+                  value={correctionForm.proposed_check_in_time}
+                  onChange={(e) => setCorrectionForm(prev => ({ ...prev, proposed_check_in_time: e.target.value }))}
+                  className="w-full bg-white border-gray-300"
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  Masukkan jam check-in yang seharusnya
+                </p>
+              </div>
+            )}
+
+            {/* Proposed Check-out Time */}
+            {(correctionForm.type === 'check_out' || correctionForm.type === 'both') && (
+              <div className="grid gap-2 bg-white">
+                <Label htmlFor="proposed-check-out-time" className="text-sm font-medium text-gray-900">
+                  Jam Perbaikan Check-out <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="proposed-check-out-time"
+                  type="time"
+                  value={correctionForm.proposed_check_out_time}
+                  onChange={(e) => setCorrectionForm(prev => ({ ...prev, proposed_check_out_time: e.target.value }))}
+                  className="w-full bg-white border-gray-300"
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  Masukkan jam check-out yang seharusnya
+                </p>
+              </div>
+            )}
+
             {/* Reason */}
-                  <div className="grid gap-2">
-              <Label htmlFor="reason" className="text-sm font-medium">
+            <div className="grid gap-2 bg-white">
+              <Label htmlFor="reason" className="text-sm font-medium text-gray-900">
                 Alasan Perbaikan <span className="text-red-500">*</span>
               </Label>
               <Textarea
@@ -1078,17 +1152,17 @@ export default function PegawaiCorrectionsPage() {
                 value={correctionForm.reason}
                 onChange={(e) => setCorrectionForm(prev => ({ ...prev, reason: e.target.value }))}
                 rows={4}
-                className="resize-none"
+                className="resize-none bg-white border-gray-300"
                 required
               />
               <p className="text-xs text-gray-500">
                 Minimal 10 karakter untuk alasan yang jelas
               </p>
-                  </div>
+            </div>
 
             {/* Attachment */}
-                  <div className="grid gap-2">
-              <Label htmlFor="attachment" className="text-sm font-medium">
+            <div className="grid gap-2 bg-white">
+              <Label htmlFor="attachment" className="text-sm font-medium text-gray-900">
                 Lampiran Pendukung
               </Label>
               <div className="mt-1">
@@ -1154,7 +1228,14 @@ export default function PegawaiCorrectionsPage() {
             </Button>
             <Button 
               onClick={submitCorrection} 
-              disabled={submitting || !correctionForm.reason.trim() || correctionForm.reason.trim().length < 10}
+              disabled={
+                submitting || 
+                !correctionForm.reason.trim() || 
+                correctionForm.reason.trim().length < 10 ||
+                (correctionForm.type === 'check_in' && !correctionForm.proposed_check_in_time) ||
+                (correctionForm.type === 'check_out' && !correctionForm.proposed_check_out_time) ||
+                (correctionForm.type === 'both' && (!correctionForm.proposed_check_in_time || !correctionForm.proposed_check_out_time))
+              }
               className="min-w-[160px] bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
             >
               {submitting ? (
