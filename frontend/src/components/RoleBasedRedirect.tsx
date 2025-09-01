@@ -2,12 +2,15 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getApprovalCapabilities } from '@/lib/approval-utils';
+import type { Position } from '@/lib/types';
 
 interface RoleBasedRedirectProps {
   user: {
     username: string;
     groups: string[];
     is_superuser: boolean;
+    position?: Position | null;
   } | null;
 }
 
@@ -19,12 +22,16 @@ export default function RoleBasedRedirect({ user }: RoleBasedRedirectProps) {
 
     const groups = user.groups || [];
     const isAdmin = groups.includes('admin') || user.is_superuser;
-    const isSupervisor = groups.includes('supervisor');
+    
+    // Check position-based approval level instead of group membership
+    const position = user.position || null;
+    const approvalCapabilities = getApprovalCapabilities(position);
+    const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level;
 
     // Redirect based on role
     if (isAdmin) {
       router.push('/admin');
-    } else if (isSupervisor) {
+    } else if (hasApprovalPermission) {
       router.push('/supervisor');
     } else {
       router.push('/pegawai');

@@ -159,6 +159,22 @@ def me(request):
         "is_superuser": user.is_superuser,
         "groups": list(user.groups.values_list('name', flat=True)),
     }
+    
+    # Add position data for position-based approval system
+    try:
+        employee = user.employee
+        if employee and employee.position:
+            data["position"] = {
+                "id": employee.position.id,
+                "name": employee.position.name,
+                "approval_level": employee.position.approval_level,
+                "can_approve_overtime_org_wide": employee.position.can_approve_overtime_org_wide,
+            }
+        else:
+            data["position"] = None
+    except:
+        data["position"] = None
+    
     return JsonResponse(data)
 
 
@@ -799,9 +815,14 @@ def supervisor_team_attendance(request):
     """Get attendance data for supervisor's team members."""
     user = request.user
     
-    # Check if user is supervisor or admin
-    if not (user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()):
-        return JsonResponse({"detail": "forbidden"}, status=403)
+    # Check if user is admin or has supervisor capabilities (position approval level >= 1)
+    if user.is_superuser or user.groups.filter(name='admin').exists():
+        pass  # Admin can see all data
+    else:
+        from .utils import ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        if approval_level < 1:
+            return JsonResponse({"detail": "forbidden"}, status=403)
     
     # Get supervisor's division
     try:
@@ -916,9 +937,14 @@ def supervisor_attendance_detail(request, employee_id):
     """Get detailed attendance data for a specific team member."""
     user = request.user
     
-    # Check if user is supervisor or admin
-    if not (user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()):
-        return JsonResponse({"detail": "forbidden"}, status=403)
+    # Check if user is admin or has supervisor capabilities (position approval level >= 1)
+    if user.is_superuser or user.groups.filter(name='admin').exists():
+        pass  # Admin can see all data
+    else:
+        from .utils import ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        if approval_level < 1:
+            return JsonResponse({"detail": "forbidden"}, status=403)
     
     # Get supervisor's division
     try:
@@ -2170,16 +2196,18 @@ def approve_overtime(request, attendance_id):
         # Admin can approve any overtime
         if user.is_superuser or user.groups.filter(name='admin').exists():
             pass
-        # Supervisor can approve overtime for their division
-        elif user.groups.filter(name='supervisor').exists():
-            try:
-                supervisor_division = user.employee.division
-                if attendance.employee.division != supervisor_division:
-                    return Response({"detail": "You can only approve overtime for your division"}, status=403)
-            except Exception:
-                return Response({"detail": "Division not configured"}, status=400)
+        # Use position-based approval checking
         else:
-            return Response({"detail": "Permission denied"}, status=403)
+            from .utils import ApprovalChecker
+            
+            # Check if user can approve organization-wide
+            if ApprovalChecker.can_approve_organization_overtime(user, attendance.employee):
+                pass  # Can approve
+            # Check if user can approve division-level
+            elif ApprovalChecker.can_approve_division_overtime(user, attendance.employee):
+                pass  # Can approve
+            else:
+                return Response({"detail": "You don't have permission to approve overtime for this employee"}, status=403)
         
         # Check if overtime is already approved
         if attendance.overtime_approved:
@@ -2228,22 +2256,27 @@ def overtime_report(request):
     if user.is_superuser or user.groups.filter(name='admin').exists():
         # Admin can see all overtime
         qs = Attendance.objects.filter(overtime_minutes__gt=0)
-    elif user.groups.filter(name='supervisor').exists():
-        # Supervisor can see overtime for their division
-        try:
-            supervisor_division = user.employee.division
-            qs = Attendance.objects.filter(
-                overtime_minutes__gt=0,
-                employee__division=supervisor_division
-            )
-        except Exception:
-            return Response({"detail": "Division not configured"}, status=400)
     else:
-        # Employee can only see their own overtime
-        qs = Attendance.objects.filter(
-            user=user,
-            overtime_minutes__gt=0
-        )
+        # Use position-based approval checking
+        from .utils import ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        
+        if approval_level >= 1:
+            # Has supervisor capabilities - can see overtime for their division
+            try:
+                supervisor_division = user.employee.division
+                qs = Attendance.objects.filter(
+                    overtime_minutes__gt=0,
+                    employee__division=supervisor_division
+                )
+            except Exception:
+                return Response({"detail": "Division not configured"}, status=400)
+        else:
+            # Employee can only see their own overtime
+            qs = Attendance.objects.filter(
+                user=user,
+                overtime_minutes__gt=0
+            )
     
     # Apply filters
     if start_date:
@@ -2486,31 +2519,33 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
             )
         
-        # Supervisor can see overtime requests from their division or org-wide
-        elif user.groups.filter(name='supervisor').exists():
-            try:
-                supervisor_employee = user.employee
-                
-                # Check if supervisor has org-wide approval permission
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.can_approve_overtime_org_wide):
-                    # Org-wide supervisors can see all requests
-                    return OvertimeRequest.objects.all().select_related(
-                        'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
-                    )
-                else:
-                    # Division supervisors can only see requests from their division
-                    return OvertimeRequest.objects.filter(
-                        employee__division=supervisor_employee.division
-                    ).select_related('user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by')
-            except:
-                return OvertimeRequest.objects.none()
-        
-        # Employee can only see their own overtime requests
-        elif user.groups.filter(name='pegawai').exists():
-            return OvertimeRequest.objects.filter(user=user).select_related(
-                'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
-            )
+        # Use position-based approval checking for supervisor capabilities
+        else:
+            from .utils import ApprovalChecker
+            approval_level = ApprovalChecker.get_user_approval_level(user)
+            
+            if approval_level >= 1:
+                try:
+                    supervisor_employee = user.employee
+                    
+                    # Check if supervisor has org-wide approval permission
+                    if ApprovalChecker.can_approve_overtime_org_wide(user):
+                        # Org-wide supervisors can see all requests
+                        return OvertimeRequest.objects.all().select_related(
+                            'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
+                        )
+                    else:
+                        # Division supervisors can only see requests from their division
+                        return OvertimeRequest.objects.filter(
+                            employee__division=supervisor_employee.division
+                        ).select_related('user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by')
+                except:
+                    return OvertimeRequest.objects.none()
+            else:
+                # No supervisor capabilities - can only see own requests
+                return OvertimeRequest.objects.filter(user=user).select_related(
+                    'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
+                )
         
         return OvertimeRequest.objects.none()
     
@@ -2525,12 +2560,15 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Role-based serializers for other actions
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return OvertimeRequestAdminSerializer
-        elif user.groups.filter(name='supervisor').exists():
-            return OvertimeRequestSupervisorSerializer
-        elif user.groups.filter(name='pegawai').exists():
-            return OvertimeRequestEmployeeSerializer
         
-        return OvertimeRequestEmployeeSerializer
+        # Use position-based approval checking for supervisor capabilities
+        from .utils import ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        
+        if approval_level >= 1:
+            return OvertimeRequestSupervisorSerializer
+        else:
+            return OvertimeRequestEmployeeSerializer
     
     def perform_create(self, serializer):
         """Auto-set user and employee when creating overtime request"""
@@ -2584,23 +2622,13 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Check if user is admin (can bypass 2-level approval)
         is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
         
-        # Check if user is org-wide supervisor
-        is_org_wide_supervisor = False
-        # Check if user has no approval permission (level 0)
-        has_no_approval = False
+        # Use position-based approval checking
+        from .utils import ApprovalChecker
         
-        if user.groups.filter(name='supervisor').exists():
-            try:
-                supervisor_employee = user.employee
-                # Check approval level first
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.approval_level == 0):
-                    has_no_approval = True
-                else:
-                    is_org_wide_supervisor = (supervisor_employee.position and 
-                                            supervisor_employee.position.can_approve_overtime_org_wide)
-            except:
-                pass
+        # Check if user is org-wide supervisor
+        is_org_wide_supervisor = ApprovalChecker.can_approve_organization_overtime(user, overtime_request.employee)
+        # Check if user has no approval permission (level 0)
+        has_no_approval = ApprovalChecker.get_user_approval_level(user) == 0
         
         # Reject if user has no approval permission
         if has_no_approval:
@@ -2689,23 +2717,13 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Check if user is admin (can bypass 2-level approval)
         is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
         
-        # Check if user is org-wide supervisor
-        is_org_wide_supervisor = False
-        # Check if user has no approval permission (level 0)
-        has_no_approval = False
+        # Use position-based approval checking
+        from .utils import ApprovalChecker
         
-        if user.groups.filter(name='supervisor').exists():
-            try:
-                supervisor_employee = user.employee
-                # Check approval level first
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.approval_level == 0):
-                    has_no_approval = True
-                else:
-                    is_org_wide_supervisor = (supervisor_employee.position and 
-                                            supervisor_employee.position.can_approve_overtime_org_wide)
-            except:
-                pass
+        # Check if user is org-wide supervisor
+        is_org_wide_supervisor = ApprovalChecker.can_approve_organization_overtime(user, overtime_request.employee)
+        # Check if user has no approval permission (level 0)
+        has_no_approval = ApprovalChecker.get_user_approval_level(user) == 0
         
         # Reject if user has no approval permission
         if has_no_approval:
@@ -4147,8 +4165,11 @@ def supervisor_approvals_summary(request):
     """Get summary of pending approvals for supervisor dashboard card"""
     user = request.user
     
-    # Check if user is supervisor
-    if not user.groups.filter(name='supervisor').exists():
+    # Check if user has supervisor capabilities (position approval level >= 1)
+    from .utils import ApprovalChecker
+    approval_level = ApprovalChecker.get_user_approval_level(user)
+    
+    if approval_level < 1:
         return Response(
             {"detail": "Hanya supervisor yang dapat mengakses endpoint ini"}, 
             status=status.HTTP_403_FORBIDDEN
@@ -4225,31 +4246,33 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 'user', 'employee', 'level1_approved_by', 'final_approved_by'
             )
         
-        # Supervisor can see requests from their division or org-wide
-        elif user.groups.filter(name='supervisor').exists():
-            try:
-                supervisor_employee = user.employee
-                
-                # Check if supervisor has org-wide approval permission
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.can_approve_overtime_org_wide):
-                    # Org-wide supervisors can see all requests
-                    return MonthlySummaryRequest.objects.all().select_related(
-                        'user', 'employee', 'level1_approved_by', 'final_approved_by'
-                    )
-                else:
-                    # Division supervisors can only see requests from their division
-                    return MonthlySummaryRequest.objects.filter(
-                        employee__division=supervisor_employee.division
-                    ).select_related('user', 'employee', 'level1_approved_by', 'final_approved_by')
-            except:
-                return MonthlySummaryRequest.objects.none()
-        
-        # Employee can only see their own requests
-        elif user.groups.filter(name='pegawai').exists():
-            return MonthlySummaryRequest.objects.filter(user=user).select_related(
-                'user', 'employee', 'level1_approved_by', 'final_approved_by'
-            )
+        # Use position-based approval checking for supervisor capabilities
+        else:
+            from .utils import ApprovalChecker
+            approval_level = ApprovalChecker.get_user_approval_level(user)
+            
+            if approval_level >= 1:
+                try:
+                    supervisor_employee = user.employee
+                    
+                    # Check if supervisor has org-wide approval permission
+                    if ApprovalChecker.can_approve_overtime_org_wide(user):
+                        # Org-wide supervisors can see all requests
+                        return MonthlySummaryRequest.objects.all().select_related(
+                            'user', 'employee', 'level1_approved_by', 'final_approved_by'
+                        )
+                    else:
+                        # Division supervisors can only see requests from their division
+                        return MonthlySummaryRequest.objects.filter(
+                            employee__division=supervisor_employee.division
+                        ).select_related('user', 'employee', 'level1_approved_by', 'final_approved_by')
+                except:
+                    return MonthlySummaryRequest.objects.none()
+            else:
+                # No supervisor capabilities - can only see own requests
+                return MonthlySummaryRequest.objects.filter(user=user).select_related(
+                    'user', 'employee', 'level1_approved_by', 'final_approved_by'
+                )
         
         return MonthlySummaryRequest.objects.none()
     
@@ -4264,12 +4287,15 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         # Role-based serializers for other actions
         if user.is_superuser or user.groups.filter(name='admin').exists():
             return MonthlySummaryRequestAdminSerializer
-        elif user.groups.filter(name='supervisor').exists():
-            return MonthlySummaryRequestSupervisorSerializer
-        elif user.groups.filter(name='pegawai').exists():
-            return MonthlySummaryRequestEmployeeSerializer
         
-        return MonthlySummaryRequestEmployeeSerializer
+        # Use position-based approval checking for supervisor capabilities
+        from .utils import ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        
+        if approval_level >= 1:
+            return MonthlySummaryRequestSupervisorSerializer
+        else:
+            return MonthlySummaryRequestEmployeeSerializer
     
     def perform_create(self, serializer):
         """Auto-set user and employee when creating request"""
@@ -4307,23 +4333,13 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         # Check if user is admin (can bypass 2-level approval)
         is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
         
-        # Check if user is org-wide supervisor
-        is_org_wide_supervisor = False
-        # Check if user has no approval permission (level 0)
-        has_no_approval = False
+        # Use position-based approval checking
+        from .utils import ApprovalChecker
         
-        if user.groups.filter(name='supervisor').exists():
-            try:
-                supervisor_employee = user.employee
-                # Check approval level first
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.approval_level == 0):
-                    has_no_approval = True
-                else:
-                    is_org_wide_supervisor = (supervisor_employee.position and 
-                                            supervisor_employee.position.can_approve_overtime_org_wide)
-            except:
-                pass
+        # Check if user is org-wide supervisor
+        is_org_wide_supervisor = ApprovalChecker.can_approve_organization_overtime(user, summary_request.employee)
+        # Check if user has no approval permission (level 0)
+        has_no_approval = ApprovalChecker.get_user_approval_level(user) == 0
         
         # Reject if user has no approval permission
         if has_no_approval:

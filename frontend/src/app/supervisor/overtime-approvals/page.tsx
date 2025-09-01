@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Header from '@/components/Header'
 import OvertimeApprovalsClient from './OvertimeApprovalsClient'
+import { getApprovalCapabilities } from '@/lib/approval-utils'
 
 export default async function SupervisorOvertimeApprovalsPage() {
   const cookieStore = await cookies()
@@ -25,8 +26,13 @@ export default async function SupervisorOvertimeApprovalsPage() {
   }
 
   const me = await resp.json().catch(() => ({} as any))
-  const isSupervisor = Array.isArray(me.groups) && me.groups.includes('supervisor')
-  if (!isSupervisor) {
+  
+  // Check position-based approval level instead of group membership
+  const position = me?.position || null
+  const approvalCapabilities = getApprovalCapabilities(position)
+  const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level
+  
+  if (!hasApprovalPermission) {
     redirect('/supervisor')
   }
 

@@ -125,6 +125,163 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
 
 
 # ============================================================================
+# APPROVAL UTILITIES
+# ============================================================================
+
+class ApprovalChecker:
+    """
+    Utility class untuk check approval permissions berdasarkan position approval level
+    """
+    
+    @staticmethod
+    def get_user_approval_level(user):
+        """
+        Get approval level dari user berdasarkan position
+        
+        Args:
+            user: User object
+            
+        Returns:
+            int: Approval level (0=No Approval, 1=Division Level, 2=Organization Level)
+        """
+        if user.is_superuser:
+            return 2  # Superuser has organization level approval
+        
+        try:
+            employee = user.employee
+            if employee and employee.position:
+                return employee.position.approval_level
+        except:
+            pass
+        
+        return 0  # Default: no approval permission
+    
+    @staticmethod
+    def can_approve_division_level(user):
+        """
+        Check if user can approve at division level (level 1)
+        
+        Args:
+            user: User object
+            
+        Returns:
+            bool: True if user can approve division level
+        """
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        return approval_level >= 1
+    
+    @staticmethod
+    def can_approve_organization_level(user):
+        """
+        Check if user can approve at organization level (level 2)
+        
+        Args:
+            user: User object
+            
+        Returns:
+            bool: True if user can approve organization level
+        """
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        return approval_level >= 2
+    
+    @staticmethod
+    def can_approve_overtime_org_wide(user):
+        """
+        Check if user can approve overtime organization-wide
+        
+        Args:
+            user: User object
+            
+        Returns:
+            bool: True if user can approve overtime org-wide
+        """
+        if user.is_superuser:
+            return True
+        
+        try:
+            employee = user.employee
+            if employee and employee.position:
+                return employee.position.can_approve_overtime_org_wide
+        except:
+            pass
+        
+        return False
+    
+    @staticmethod
+    def can_approve_division_overtime(user, target_employee):
+        """
+        Check if user can approve overtime for specific employee at division level
+        
+        Args:
+            user: User object (approver)
+            target_employee: Employee object (target)
+            
+        Returns:
+            bool: True if user can approve
+        """
+        # Check if user has division level approval
+        if not ApprovalChecker.can_approve_division_level(user):
+            return False
+        
+        # Check if user has no approval permission (level 0)
+        if ApprovalChecker.get_user_approval_level(user) == 0:
+            return False
+        
+        # Check if same division
+        try:
+            approver_employee = user.employee
+            if approver_employee and approver_employee.division:
+                return approver_employee.division == target_employee.division
+        except:
+            pass
+        
+        return False
+    
+    @staticmethod
+    def can_approve_organization_overtime(user, target_employee):
+        """
+        Check if user can approve overtime for specific employee at organization level
+        
+        Args:
+            user: User object (approver)
+            target_employee: Employee object (target)
+            
+        Returns:
+            bool: True if user can approve
+        """
+        # Check if user has organization level approval
+        if not ApprovalChecker.can_approve_organization_level(user):
+            return False
+        
+        # Check if user can approve org-wide
+        return ApprovalChecker.can_approve_overtime_org_wide(user)
+    
+    @staticmethod
+    def get_approval_capabilities(user):
+        """
+        Get comprehensive approval capabilities for a user
+        
+        Args:
+            user: User object
+            
+        Returns:
+            dict: Dictionary with approval capabilities
+        """
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        
+        return {
+            'approval_level': approval_level,
+            'can_approve_division': approval_level >= 1,
+            'can_approve_organization': approval_level >= 2,
+            'can_approve_overtime_org_wide': ApprovalChecker.can_approve_overtime_org_wide(user),
+            'has_no_approval': approval_level == 0,
+            'is_superuser': user.is_superuser,
+            'position_name': user.employee.position.name if user.employee and user.employee.position else None,
+            'division_name': user.employee.division.name if user.employee and user.employee.division else None,
+        }
+
+
+# ============================================================================
 # PERMISSION UTILITIES
 # ============================================================================
 
