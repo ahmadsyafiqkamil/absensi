@@ -49,6 +49,7 @@ interface DataTableProps<TData, TValue> {
   onReject?: (id: number) => void
   onRefresh?: () => void
   loading?: boolean
+  meta?: any
 }
 
 export function DataTable<TData, TValue>({
@@ -57,7 +58,8 @@ export function DataTable<TData, TValue>({
   onApprove,
   onReject,
   onRefresh,
-  loading = false
+  loading = false,
+  meta
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -78,6 +80,7 @@ export function DataTable<TData, TValue>({
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: "includesString",
+    meta,
     state: {
       sorting,
       columnFilters,

@@ -677,6 +677,10 @@ class OvertimeRequestAdminSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    level1_rejected_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    final_rejected_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = OvertimeRequest
@@ -688,6 +692,14 @@ class OvertimeRequestAdminSerializer(serializers.ModelSerializer):
             "overtime_hours",
             "work_description",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
             "rejection_reason",
@@ -704,6 +716,10 @@ class OvertimeRequestSupervisorSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    level1_rejected_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    final_rejected_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = OvertimeRequest
@@ -715,6 +731,14 @@ class OvertimeRequestSupervisorSerializer(serializers.ModelSerializer):
             "overtime_hours",
             "work_description",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
             "rejection_reason",
@@ -731,6 +755,10 @@ class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    level1_rejected_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    final_rejected_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = OvertimeRequest
@@ -742,8 +770,17 @@ class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
             "overtime_hours",
             "work_description",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
+            "rejection_reason",
             "overtime_amount",
             "created_at",
             "updated_at",
@@ -752,8 +789,17 @@ class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
             "employee",
             "user",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
+            "rejection_reason",
             "overtime_amount",
             "created_at",
             "updated_at",

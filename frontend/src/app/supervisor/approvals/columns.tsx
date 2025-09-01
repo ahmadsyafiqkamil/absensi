@@ -4,6 +4,18 @@ import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Clock, CheckCircle, XCircle, FileText, Edit, UserCheck, UserX } from "lucide-react"
 
+interface WorkSettings {
+  id: number;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  lateness_threshold_minutes: number;
+  workdays: number[];
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
+}
+
 export type AttendanceCorrection = {
   id: number
   date_local: string
@@ -20,6 +32,51 @@ export type AttendanceCorrection = {
     last_name: string
   }
   actions?: React.ReactNode
+}
+
+// Function to format time using work settings timezone
+function formatTime(timeString: string | null, workSettings?: WorkSettings | null) {
+  if (!timeString) return '-';
+  try {
+    const date = new Date(timeString);
+    const timezone = workSettings?.timezone || 'Asia/Dubai';
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: timezone
+    });
+  } catch {
+    return '-';
+  }
+}
+
+// Function to format date using work settings timezone
+function formatDate(dateString: string, workSettings?: WorkSettings | null) {
+  try {
+    const date = new Date(dateString);
+    const timezone = workSettings?.timezone || 'Asia/Dubai';
+    return date.toLocaleDateString('id-ID', { timeZone: timezone });
+  } catch {
+    return dateString;
+  }
+}
+
+// Function to format date and time using work settings timezone
+function formatDateTime(dateString: string, workSettings?: WorkSettings | null) {
+  try {
+    const date = new Date(dateString);
+    const timezone = workSettings?.timezone || 'Asia/Dubai';
+    return {
+      date: date.toLocaleDateString('id-ID', { timeZone: timezone }),
+      time: date.toLocaleTimeString('id-ID', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZone: timezone
+      })
+    };
+  } catch {
+    return { date: dateString, time: '-' };
+  }
 }
 
 // Function to get status badge
@@ -133,47 +190,33 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
   {
     accessorKey: "proposed_check_in_local",
     header: "Proposed Check-in",
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
       const checkIn = row.getValue("proposed_check_in_local") as string
+      const workSettings = (table.options.meta as any)?.workSettings;
+      
       if (!checkIn) return <span className="text-muted-foreground">-</span>
       
-      try {
-        const date = new Date(checkIn)
-        return (
-          <div className="text-sm">
-            {date.toLocaleTimeString('id-ID', { 
-              hour: '2-digit', 
-              minute: '2-digit',
-              timeZone: 'Asia/Dubai'
-            })}
-          </div>
-        )
-      } catch {
-        return <span className="text-muted-foreground">-</span>
-      }
+      return (
+        <div className="text-sm">
+          {formatTime(checkIn, workSettings)}
+        </div>
+      )
     },
   },
   {
     accessorKey: "proposed_check_out_local",
     header: "Proposed Check-out",
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
       const checkOut = row.getValue("proposed_check_out_local") as string
+      const workSettings = (table.options.meta as any)?.workSettings;
+      
       if (!checkOut) return <span className="text-muted-foreground">-</span>
       
-      try {
-        const date = new Date(checkOut)
-        return (
-          <div className="text-sm">
-            {date.toLocaleTimeString('id-ID', { 
-              hour: '2-digit', 
-              minute: '2-digit',
-              timeZone: 'Asia/Dubai'
-            })}
-          </div>
-        )
-      } catch {
-        return <span className="text-muted-foreground">-</span>
-      }
+      return (
+        <div className="text-sm">
+          {formatTime(checkOut, workSettings)}
+        </div>
+      )
     },
   },
   {
@@ -196,17 +239,16 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
   {
     accessorKey: "created_at",
     header: "Submitted",
-    cell: ({ row }) => {
-      const date = new Date(row.getValue("created_at"))
+    cell: ({ row, table }) => {
+      const dateString = row.getValue("created_at") as string
+      const workSettings = (table.options.meta as any)?.workSettings;
+      const { date, time } = formatDateTime(dateString, workSettings);
+      
       return (
         <div className="text-sm text-muted-foreground">
-          {date.toLocaleDateString('id-ID', { timeZone: 'Asia/Dubai' })}
+          {date}
           <br />
-          {date.toLocaleTimeString('id-ID', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: 'Asia/Dubai'
-          })}
+          {time}
         </div>
       )
     },

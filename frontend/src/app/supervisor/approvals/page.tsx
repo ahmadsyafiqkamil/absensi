@@ -9,6 +9,18 @@ import { DataTable } from './data-table'
 import { columns, type AttendanceCorrection } from './columns'
 import { ApprovalActions } from './approval-actions'
 
+interface WorkSettings {
+  id: number;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  lateness_threshold_minutes: number;
+  workdays: number[];
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
+}
+
 export default function ApprovalsPage() {
   const { approvalLevel, canApprove, isLevel0, loading: approvalLevelLoading } = useSupervisorApprovalLevel()
   const [me, setMe] = useState<{ username: string; groups: string[] } | null>(null)
@@ -16,12 +28,30 @@ export default function ApprovalsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
+  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
+
+  // Fetch work settings
+  const fetchWorkSettings = async () => {
+    try {
+      const response = await fetch('/api/employee/settings/work');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkSettings(data);
+      }
+    } catch (error) {
+      console.error('Error fetching work settings:', error);
+    }
+  };
 
   useEffect(() => {
     ;(async () => {
       const r = await fetch('/api/auth/me')
       if (r.ok) setMe(await r.json())
     })()
+  }, [])
+
+  useEffect(() => {
+    fetchWorkSettings();
   }, [])
 
   async function load() {
@@ -149,13 +179,22 @@ export default function ApprovalsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Attendance Corrections Management</CardTitle>
-            <CardDescription>
-              {isLevel0 
-                ? 'You can view pending corrections but cannot approve them due to Level 0 permission'
-                : 'Review and approve attendance correction requests from your team members'
-              }
-            </CardDescription>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle>Attendance Corrections Management</CardTitle>
+                <CardDescription>
+                  {isLevel0 
+                    ? 'You can view pending corrections but cannot approve them due to Level 0 permission'
+                    : 'Review and approve attendance correction requests from your team members'
+                  }
+                </CardDescription>
+              </div>
+              {workSettings?.timezone && (
+                <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                  Timezone: {workSettings.timezone}
+                </div>
+              )}
+            </div>
             {/* Debug info */}
             <div className="text-xs text-gray-500 mt-2">
               <div>Last updated: {new Date().toLocaleTimeString('id-ID')}</div>
@@ -175,6 +214,7 @@ export default function ApprovalsPage() {
               data={tableData}
               onRefresh={load}
               loading={loading}
+              meta={{ workSettings }}
             />
           </CardContent>
         </Card>

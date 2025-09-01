@@ -337,6 +337,21 @@ class OvertimeRequest(models.Model):
         verbose_name="Level 1 Approved At"
     )
     
+    # Level 1 rejection (division supervisor)
+    level1_rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='level1_rejected_overtime_requests',
+        verbose_name="Level 1 Rejected By"
+    )
+    level1_rejected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Level 1 Rejected At"
+    )
+    
     # Final approval (organization-wide supervisor)
     final_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -350,6 +365,21 @@ class OvertimeRequest(models.Model):
         null=True,
         blank=True,
         verbose_name="Final Approved At"
+    )
+    
+    # Final rejection (organization-wide supervisor)
+    final_rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='final_rejected_overtime_requests',
+        verbose_name="Final Rejected By"
+    )
+    final_rejected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Final Rejected At"
     )
     
     # Legacy fields (untuk backward compatibility)

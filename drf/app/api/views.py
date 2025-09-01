@@ -2682,8 +2682,37 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[IsOvertimeRequestApprover])
     def reject(self, request, pk=None):
-        """Reject overtime request"""
+        """Reject overtime request with 2-level rejection system"""
         overtime_request = self.get_object()
+        user = request.user
+        
+        # Check if user is admin (can bypass 2-level approval)
+        is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
+        
+        # Check if user is org-wide supervisor
+        is_org_wide_supervisor = False
+        # Check if user has no approval permission (level 0)
+        has_no_approval = False
+        
+        if user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_employee = user.employee
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    has_no_approval = True
+                else:
+                    is_org_wide_supervisor = (supervisor_employee.position and 
+                                            supervisor_employee.position.can_approve_overtime_org_wide)
+            except:
+                pass
+        
+        # Reject if user has no approval permission
+        if has_no_approval:
+            return Response(
+                {"detail": "Anda tidak memiliki permission untuk melakukan rejection"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Can reject pending or level1_approved requests
         if overtime_request.status not in ['pending', 'level1_approved']:
@@ -2701,20 +2730,63 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         
         overtime_request.status = 'rejected'
         overtime_request.rejection_reason = rejection_reason
-        # Clear all approval fields
-        overtime_request.level1_approved_by = None
-        overtime_request.level1_approved_at = None
-        overtime_request.final_approved_by = None
-        overtime_request.final_approved_at = None
-        overtime_request.approved_by = None  # Legacy field
-        overtime_request.approved_at = None  # Legacy field
-        overtime_request.save()
         
-        serializer = self.get_serializer(overtime_request)
-        return Response({
-            "detail": "Pengajuan lembur berhasil ditolak",
-            "data": serializer.data
-        })
+        # Admin can reject any status and it goes to final rejection
+        if is_admin:
+            overtime_request.final_rejected_by = user
+            overtime_request.final_rejected_at = dj_timezone.now()
+            # Clear all approval fields
+            overtime_request.level1_approved_by = None
+            overtime_request.level1_approved_at = None
+            overtime_request.final_approved_by = None
+            overtime_request.final_approved_at = None
+            overtime_request.approved_by = None  # Legacy field
+            overtime_request.approved_at = None  # Legacy field
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response({
+                "detail": "Pengajuan lembur berhasil ditolak (Final Rejection)",
+                "data": serializer.data
+            })
+        
+        # Org-wide supervisor (final rejection)
+        elif is_org_wide_supervisor:
+            overtime_request.final_rejected_by = user
+            overtime_request.final_rejected_at = dj_timezone.now()
+            # Clear all approval fields
+            overtime_request.level1_approved_by = None
+            overtime_request.level1_approved_at = None
+            overtime_request.final_approved_by = None
+            overtime_request.final_approved_at = None
+            overtime_request.approved_by = None  # Legacy field
+            overtime_request.approved_at = None  # Legacy field
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response({
+                "detail": "Pengajuan lembur berhasil ditolak (Final Rejection)",
+                "data": serializer.data
+            })
+        
+        # Division supervisor (level 1 rejection)
+        else:
+            overtime_request.level1_rejected_by = user
+            overtime_request.level1_rejected_at = dj_timezone.now()
+            # Clear all approval fields
+            overtime_request.level1_approved_by = None
+            overtime_request.level1_approved_at = None
+            overtime_request.final_approved_by = None
+            overtime_request.final_approved_at = None
+            overtime_request.approved_by = None  # Legacy field
+            overtime_request.approved_at = None  # Legacy field
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response({
+                "detail": "Pengajuan lembur berhasil ditolak (Level 1 Rejection)",
+                "data": serializer.data
+            })
     
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -3923,6 +3995,7 @@ def supervisor_approvals_summary(request):
         'is_org_wide_supervisor': is_org_wide_supervisor,
         'supervisor_division': supervisor_employee.division.name if supervisor_employee.division else None,
         'can_approve_overtime_org_wide': is_org_wide_supervisor,
+        'is_admin': user.is_superuser or user.groups.filter(name='admin').exists(),
     })
 
 
