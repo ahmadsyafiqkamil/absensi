@@ -331,7 +331,7 @@ export default function OvertimeRequestsManager() {
       
       // Show success message
       setError(''); // Clear any previous errors
-      setSuccessMessage(`Dokumen berhasil di-download: ${filename}`);
+      setSuccessMessage(`Dokumen DOCX berhasil di-download: ${filename}`);
       
       // Clear success message after 3 seconds
       setTimeout(() => {
@@ -340,6 +340,61 @@ export default function OvertimeRequestsManager() {
     } catch (err) {
       console.error('Download error:', err);
       setError(err instanceof Error ? err.message : 'Failed to download document');
+    } finally {
+      setDownloadingId(null); // Clear downloading state
+    }
+  };
+
+  const handleExportPdf = async (requestId: number) => {
+    try {
+      setError(''); // Clear previous errors
+      setDownloadingId(requestId); // Set downloading state
+      
+      const response = await fetch(`/api/overtime-requests/${requestId}/export-pdf`, {
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Accept': 'application/pdf',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to export PDF: ${response.status} ${response.statusText}`);
+      }
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `Surat_Perintah_Lembur_${requestId}.pdf`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Show success message
+      setError(''); // Clear any previous errors
+      setSuccessMessage(`Dokumen PDF berhasil di-export: ${filename}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Export PDF error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to export PDF');
     } finally {
       setDownloadingId(null); // Clear downloading state
     }
@@ -423,22 +478,40 @@ export default function OvertimeRequestsManager() {
         return (
           <div className="flex flex-col space-y-1">
             {request.status === 'approved' && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs px-2 py-1 bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
-                onClick={() => handleDownload(request.id)}
-                disabled={downloadingId === request.id}
-              >
-                {downloadingId === request.id ? (
-                  <>
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700 mr-1"></div>
-                    Downloading...
-                  </>
-                ) : (
-                  '📄 Download Dokumen'
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1 bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                  onClick={() => handleDownload(request.id)}
+                  disabled={downloadingId === request.id}
+                >
+                  {downloadingId === request.id ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700 mr-1"></div>
+                      Downloading...
+                    </>
+                  ) : (
+                    '📄 Download DOCX'
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1 bg-red-50 text-red-700 border-red-300 hover:bg-red-100"
+                  onClick={() => handleExportPdf(request.id)}
+                  disabled={downloadingId === request.id}
+                >
+                  {downloadingId === request.id ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700 mr-1"></div>
+                      Exporting...
+                    </>
+                  ) : (
+                    '📑 Export PDF'
+                  )}
+                </Button>
+              </div>
             )}
             {request.status === 'rejected' && (
               <div className="text-xs text-red-600">

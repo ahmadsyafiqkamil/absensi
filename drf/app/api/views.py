@@ -3508,6 +3508,170 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    def generate_overtime_docx(self, overtime_request):
+        """Generate DOCX document for individual overtime request"""
+        try:
+            # Import required libraries
+            from docx import Document
+            from docx.shared import Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.shared import OxmlElement, qn
+            from io import BytesIO
+            from django.utils import timezone
+            from django.conf import settings
+            import os
+            import locale
+            import tempfile
+            
+            # Set locale for Indonesian formatting
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'id_ID')
+                except:
+                    pass
+            
+            # Get template path dynamically
+            template_path, template_name = self.get_template_path()
+            
+            # Check if template exists
+            if not template_path:
+                raise Exception("Template overtime tidak ditemukan. Silakan upload template di admin settings.")
+            
+            # Load template document
+            doc = Document(template_path)
+            
+            # Function to replace text in paragraphs
+            def replace_text_in_paragraphs(paragraphs, old_text, new_text):
+                for paragraph in paragraphs:
+                    for run in paragraph.runs:
+                        if old_text in run.text:
+                            run.text = run.text.replace(old_text, new_text)
+            
+            # Function to replace text in tables
+            def replace_text_in_tables(tables, old_text, new_text):
+                for table in tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    if old_text in run.text:
+                                        run.text = run.text.replace(old_text, new_text)
+            
+            # Get current date and time
+            current_date = timezone.now()
+            current_year = current_date.strftime('%Y')
+            current_month = current_date.strftime('%B')
+            current_day = current_date.strftime('%d')
+            
+            # Format overtime date
+            overtime_date = overtime_request.date_requested
+            overtime_date_formatted = overtime_date.strftime('%d %B %Y')
+            
+            # Get employee information
+            employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
+            employee_nip = overtime_request.employee.nip or '-'
+            employee_position = overtime_request.employee.position.name if overtime_request.employee.position else '-'
+            employee_division = overtime_request.employee.division.name if overtime_request.employee.division else '-'
+            
+            # Format NIP variations
+            nip_9_digit = employee_nip[:9] if employee_nip and len(employee_nip) >= 9 else employee_nip
+            nip_18_digit = employee_nip if employee_nip and len(employee_nip) >= 18 else (employee_nip + '0' * (18 - len(employee_nip))) if employee_nip else '-'
+            
+            # Get approval information with better fallback
+            def get_approver_name(user):
+                """Get approver name from employee.fullname with fallback to username"""
+                if not user:
+                    return '-'
+                # Try to get name from employee.fullname first
+                if hasattr(user, 'employee') and user.employee and user.employee.fullname:
+                    return user.employee.fullname
+                # Fallback to user.get_full_name()
+                full_name = user.get_full_name()
+                if full_name and full_name.strip():
+                    return full_name
+                # Final fallback to username
+                return user.username.title()  # Capitalize username as fallback
+            
+            def get_approver_nip(user):
+                """Get approver NIP with fallback"""
+                if not user:
+                    return '-'
+                if hasattr(user, 'employee') and user.employee and user.employee.nip:
+                    return user.employee.nip
+                return '-'
+            
+            # Get approver information
+            level1_approver_name = get_approver_name(overtime_request.level1_approved_by)
+            level1_approver_nip = get_approver_nip(overtime_request.level1_approved_by)
+            final_approver_name = get_approver_name(overtime_request.final_approved_by)
+            final_approver_nip = get_approver_nip(overtime_request.final_approved_by)
+            
+            # Legacy fields for backward compatibility
+            legacy_approver_name = get_approver_name(overtime_request.approved_by)
+            legacy_approver_nip = get_approver_nip(overtime_request.approved_by)
+            
+            # Calculate overtime amount
+            overtime_amount = overtime_request.overtime_amount or 0
+            
+            # Prepare replacements dictionary
+            replacements = {
+                # Employee info
+                '{{NAMA_PEGAWAI}}': employee_name,
+                '{{NIP}}': employee_nip,
+                '{{DIVISI}}': employee_division,
+                '{{POSISI}}': employee_position,
+                '{{TANGGAL}}': overtime_date_formatted,
+                '{{JAM_LEMBUR}}': str(overtime_request.overtime_hours),
+                '{{DESKRIPSI_PEKERJAAN}}': overtime_request.work_description,
+                '{{JUMLAH_LEMBUR}}': f"Rp {overtime_amount:,.2f}".replace(',', '.'),
+                '{{TANGGAL_PENGAJUAN}}': overtime_request.created_at.strftime('%d %B %Y'),
+                '{{STATUS}}': dict(overtime_request.STATUS_CHOICES).get(overtime_request.status, overtime_request.status),
+                
+                # Level 1 Approver
+                '{{NAMA_PENYETUJU_1}}': level1_approver_name,
+                '{{NIP_PENYETUJU_1}}': level1_approver_nip,
+                '{{TANGGAL_PERSETUJUAN_1}}': overtime_request.level1_approved_at.strftime('%d %B %Y') if overtime_request.level1_approved_at else '-',
+                
+                # Final Approver
+                '{{NAMA_PENYETUJU_AKHIR}}': final_approver_name,
+                '{{NIP_PENYETUJU_AKHIR}}': final_approver_nip,
+                '{{TANGGAL_PERSETUJUAN_AKHIR}}': overtime_request.final_approved_at.strftime('%d %B %Y') if overtime_request.final_approved_at else '-',
+                
+                # Legacy fields for backward compatibility
+                '{{NAMA_PENYETUJU}}': final_approver_name,
+                '{{NIP_PENYETUJU}}': final_approver_nip,
+                '{{TANGGAL_PERSETUJUAN}}': overtime_request.final_approved_at.strftime('%d %B %Y') if overtime_request.final_approved_at else '-',
+                
+                # Document metadata
+                '{{TAHUN}}': current_year,
+                '{{BULAN}}': current_month,
+                '{{TANGGAL_HARI_INI}}': current_day,
+                '{{NOMOR_SURAT}}': f"SPL-{overtime_request.id:04d}/2025",
+                '{{TANGGAL_SURAT}}': current_date.strftime('%d %B %Y'),
+                
+                # Company info (placeholder - adjust as needed)
+                '{{NAMA_PERUSAHAAN}}': 'KJRI Dubai',
+                '{{ALAMAT_PERUSAHAAN}}': 'Dubai, United Arab Emirates',
+                '{{LOKASI}}': 'Dubai',
+            }
+            
+            # Replace all placeholders in document
+            for placeholder, value in replacements.items():
+                replace_text_in_paragraphs(doc.paragraphs, placeholder, value)
+                replace_text_in_tables(doc.tables, placeholder, value)
+            
+            # Save to temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
+            doc.save(temp_file.name)
+            temp_file.close()
+            
+            return temp_file
+            
+        except Exception as e:
+            raise Exception(f"Gagal generate DOCX: {str(e)}")
+
     @action(detail=False, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
     def export_monthly_docx(self, request):
         """Export monthly overtime data to DOCX using template with dynamic table"""
@@ -3601,6 +3765,47 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {"detail": f"Gagal generate export: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'])
+    def export_pdf(self, request, pk=None):
+        """Export individual overtime request to PDF by converting DOCX"""
+        overtime_request = self.get_object()
+        
+        # Only allow export for approved overtime requests
+        if overtime_request.status != 'approved':
+            return Response(
+                {"detail": "Overtime request must be approved to export PDF."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Generate DOCX first (reusing existing logic)
+            temp_docx = self.generate_overtime_docx(overtime_request)
+            
+            # Convert DOCX to PDF
+            pdf_file = self.convert_docx_to_pdf(temp_docx.name)
+            
+            # Prepare response
+            from django.http import FileResponse
+            response = FileResponse(
+                open(pdf_file, 'rb'), 
+                content_type='application/pdf',
+                as_attachment=True, 
+                filename=f"Surat_Perintah_Lembur_{overtime_request.employee.fullname}_{overtime_request.date_requested}.pdf"
+            )
+            
+            # Clean up temporary files
+            import os
+            os.unlink(temp_docx.name)
+            os.unlink(pdf_file)
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal export PDF: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -5262,6 +5467,260 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 
         except Exception as e:
             raise Exception(f"Error saat konversi DOCX ke PDF: {str(e)}")
+
+    def _convert_docx_to_pdf_reportlab(self, docx_file_path):
+        """Convert DOCX to PDF using reportlab with advanced template matching"""
+        try:
+            from docx import Document
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch, cm
+            from reportlab.lib import colors
+            from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
+            import tempfile
+            import os
+            
+            # Read DOCX content
+            doc = Document(docx_file_path)
+            
+            # Create temporary PDF file
+            pdf_temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            pdf_temp.close()
+            
+            # Create PDF using reportlab
+            pdf_doc = SimpleDocTemplate(
+                pdf_temp.name, 
+                pagesize=A4,
+                leftMargin=2*cm,
+                rightMargin=2*cm,
+                topMargin=2*cm,
+                bottomMargin=2*cm
+            )
+            
+            # Create custom styles that match DOCX template
+            styles = getSampleStyleSheet()
+            
+            # Custom styles for better template matching
+            custom_styles = {
+                'Title': ParagraphStyle(
+                    'CustomTitle',
+                    parent=styles['Title'],
+                    fontSize=18,
+                    spaceAfter=20,
+                    alignment=TA_CENTER,
+                    fontName='Helvetica-Bold',
+                    textColor=colors.black
+                ),
+                'Heading1': ParagraphStyle(
+                    'CustomHeading1',
+                    parent=styles['Heading1'],
+                    fontSize=16,
+                    spaceAfter=15,
+                    spaceBefore=20,
+                    alignment=TA_LEFT,
+                    fontName='Helvetica-Bold',
+                    textColor=colors.darkblue
+                ),
+                'Heading2': ParagraphStyle(
+                    'CustomHeading2',
+                    parent=styles['Heading2'],
+                    fontSize=14,
+                    spaceAfter=12,
+                    spaceBefore=15,
+                    alignment=TA_LEFT,
+                    fontName='Helvetica-Bold',
+                    textColor=colors.darkblue
+                ),
+                'Normal': ParagraphStyle(
+                    'CustomNormal',
+                    parent=styles['Normal'],
+                    fontSize=11,
+                    spaceAfter=8,
+                    alignment=TA_JUSTIFY,
+                    fontName='Helvetica',
+                    textColor=colors.black,
+                    leftIndent=0
+                ),
+                'Signature': ParagraphStyle(
+                    'CustomSignature',
+                    parent=styles['Normal'],
+                    fontSize=11,
+                    spaceAfter=20,
+                    spaceBefore=30,
+                    alignment=TA_RIGHT,
+                    fontName='Helvetica',
+                    textColor=colors.black
+                )
+            }
+            
+            story = []
+            
+            # Process paragraphs with advanced formatting
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    # Determine style based on paragraph properties
+                    style = self._determine_paragraph_style(paragraph, custom_styles)
+                    
+                    # Handle special formatting
+                    formatted_text = self._format_paragraph_text(paragraph)
+                    
+                    p = Paragraph(formatted_text, style)
+                    story.append(p)
+                    
+                    # Add spacing based on paragraph type
+                    if paragraph.style.name.startswith('Heading'):
+                        story.append(Spacer(1, 15))
+                    else:
+                        story.append(Spacer(1, 8))
+            
+            # Process tables with enhanced styling
+            for table in doc.tables:
+                table_data = []
+                table_style = []
+                
+                for i, row in enumerate(table.rows):
+                    row_data = []
+                    for j, cell in enumerate(row.cells):
+                        # Clean cell text and handle formatting
+                        cell_text = self._clean_cell_text(cell.text)
+                        row_data.append(cell_text)
+                    
+                    table_data.append(row_data)
+                
+                if table_data:
+                    # Create enhanced table styling
+                    pdf_table = Table(table_data, repeatRows=1)
+                    table_style = self._create_table_style(table_data, len(table_data), len(table_data[0]))
+                    pdf_table.setStyle(table_style)
+                    
+                    story.append(Spacer(1, 15))
+                    story.append(pdf_table)
+                    story.append(Spacer(1, 20))
+            
+            # Build PDF
+            pdf_doc.build(story)
+            
+            return pdf_temp.name
+            
+        except Exception as e:
+            raise Exception(f"Gagal konversi menggunakan reportlab: {str(e)}")
+    
+    def _determine_paragraph_style(self, paragraph, custom_styles):
+        """Determine the appropriate style for a paragraph based on DOCX properties"""
+        try:
+            # Check for title-like paragraphs
+            if paragraph.style.name.startswith('Title') or 'title' in paragraph.text.lower():
+                return custom_styles['Title']
+            
+            # Check for heading-like paragraphs
+            if paragraph.style.name.startswith('Heading'):
+                if '1' in paragraph.style.name:
+                    return custom_styles['Heading1']
+                else:
+                    return custom_styles['Heading2']
+            
+            # Check for signature-like paragraphs
+            if any(keyword in paragraph.text.lower() for keyword in ['ttd', 'signature', 'dibuat', 'disetujui']):
+                return custom_styles['Signature']
+            
+            # Default to normal style
+            return custom_styles['Normal']
+            
+        except:
+            return custom_styles['Normal']
+    
+    def _format_paragraph_text(self, paragraph):
+        """Format paragraph text with special characters and formatting"""
+        try:
+            text = paragraph.text
+            
+            # Handle common Indonesian document formatting
+            text = text.replace(':', ' : ')
+            text = text.replace(';', ' ; ')
+            
+            # Handle bullet points and numbering
+            if text.strip().startswith(('•', '-', '*', '1.', '2.', '3.')):
+                text = '&nbsp;&nbsp;&nbsp;&nbsp;' + text
+            
+            return text
+            
+        except:
+            return paragraph.text
+    
+    def _clean_cell_text(self, cell_text):
+        """Clean and format cell text for table display"""
+        try:
+            # Remove extra whitespace
+            cleaned = ' '.join(cell_text.split())
+            
+            # Handle empty cells
+            if not cleaned:
+                return '-'
+            
+            # Truncate very long text
+            if len(cleaned) > 50:
+                cleaned = cleaned[:47] + '...'
+            
+            return cleaned
+            
+        except:
+            return cell_text if cell_text else '-'
+    
+    def _create_table_style(self, table_data, rows, cols):
+        """Create enhanced table styling that matches DOCX template"""
+        try:
+            from reportlab.lib import colors
+            
+            # Base table style
+            style = [
+                # Header row styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TOPPADDING', (0, 0), (-1, 0), 12),
+                
+                # Data rows styling
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+                ('TOPPADDING', (0, 1), (-1, -1), 8),
+                
+                # Grid styling
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+                
+                # Column width adjustments
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]
+            
+            # Add specific column alignments for common overtime request fields
+            if cols >= 4:  # Assuming standard overtime request table
+                # Date column - center aligned
+                style.append(('ALIGN', (0, 1), (0, -1), 'CENTER'))
+                # Hours column - center aligned
+                style.append(('ALIGN', (1, 1), (1, -1), 'CENTER'))
+                # Amount column - right aligned
+                style.append(('ALIGN', (3, 1), (3, -1), 'RIGHT'))
+            
+            return TableStyle(style)
+            
+        except Exception as e:
+            # Fallback to basic styling
+            return TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ])
 
 
 # Group ViewSets
