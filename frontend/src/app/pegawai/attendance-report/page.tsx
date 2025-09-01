@@ -17,6 +17,18 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
+interface WorkSettings {
+  id: number;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  lateness_threshold_minutes: number;
+  workdays: number[];
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
+}
+
 interface AttendanceRecord {
   id: number;
   date_local: string;
@@ -61,11 +73,29 @@ export default function PegawaiAttendanceReportPage() {
   const [attendanceData, setAttendanceData] = useState<AttendanceReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null);
   const [filters, setFilters] = useState({
     start_date: '',
     end_date: '',
     month: ''
   });
+
+  // Fetch work settings
+  const fetchWorkSettings = async () => {
+    try {
+      const response = await fetch('/api/employee/settings/work');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkSettings(data);
+      }
+    } catch (error) {
+      console.error('Error fetching work settings:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchWorkSettings();
+  }, []);
 
   useEffect(() => {
     fetchAttendanceReport();
@@ -107,10 +137,11 @@ export default function PegawaiAttendanceReportPage() {
     if (!timeString) return '-';
     try {
       const date = new Date(timeString);
+      const timezone = workSettings?.timezone || 'Asia/Dubai';
       return date.toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit',
-        timeZone: 'Asia/Dubai'
+        timeZone: timezone
       });
     } catch {
       return '-';
@@ -134,13 +165,14 @@ export default function PegawaiAttendanceReportPage() {
   const formatDateTime = (dateString: string) => {
     try {
       const date = new Date(dateString);
+      const timezone = workSettings?.timezone || 'Asia/Dubai';
       return date.toLocaleString('id-ID', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        timeZone: 'Asia/Dubai'
+        timeZone: timezone
       });
     } catch {
       return dateString;
@@ -458,7 +490,14 @@ export default function PegawaiAttendanceReportPage() {
 
         {/* Summary Statistics */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Attendance Summary</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Attendance Summary</h2>
+            {workSettings?.timezone && (
+              <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                Timezone: {workSettings.timezone}
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4">
@@ -510,7 +549,14 @@ export default function PegawaiAttendanceReportPage() {
 
         {/* Attendance Records (TanStack Table) */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Attendance Records</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Attendance Records</h2>
+            {workSettings?.timezone && (
+              <div className="text-xs text-gray-500">
+                Times shown in {workSettings.timezone} timezone
+              </div>
+            )}
+          </div>
           {attendanceData.attendance_records.length > 0 ? (
             <TanstackTable data={attendanceData.attendance_records} columns={columns} />
           ) : (

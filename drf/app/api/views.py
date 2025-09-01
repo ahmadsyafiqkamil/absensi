@@ -1419,14 +1419,12 @@ def attendance_report_pdf(request):
     # Validate date formats
     if start_date:
         try:
-            from datetime import datetime
             start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         except ValueError:
             return JsonResponse({"detail": "Invalid start_date format. Use YYYY-MM-DD"}, status=400)
     
     if end_date:
         try:
-            from datetime import datetime
             end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         except ValueError:
             return JsonResponse({"detail": "Invalid end_date format. Use YYYY-MM-DD"}, status=400)
@@ -1631,7 +1629,7 @@ def attendance_report_pdf(request):
     
     # Footer
     elements.append(Spacer(1, 30))
-    footer = Paragraph(f"<i>Dibuat pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+    footer = Paragraph(f"<i>Dibuat pada: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
     elements.append(footer)
     
     # Build PDF
@@ -1640,7 +1638,7 @@ def attendance_report_pdf(request):
     
     # Create response
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="attendance-report-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="attendance-report-{datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
     
     return response
 
@@ -1893,7 +1891,7 @@ def supervisor_team_attendance_pdf(request):
         
         # Footer
         elements.append(Spacer(1, 30))
-        footer = Paragraph(f"<i>Dibuat pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+        footer = Paragraph(f"<i>Dibuat pada: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
         elements.append(footer)
         
         # Build PDF
@@ -1902,7 +1900,7 @@ def supervisor_team_attendance_pdf(request):
         
         # Create response with proper headers
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
@@ -2105,89 +2103,112 @@ def supervisor_team_attendance_pdf_alt(request):
             elements.append(employee_table)
             elements.append(Spacer(1, 20))
         
-        # Footer
-        elements.append(Spacer(1, 30))
-        footer = Paragraph(f"<i>Dibuat pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
-        elements.append(footer)
-        
         # Build PDF
         doc.build(elements)
         buffer.seek(0)
         
-        # Create response with proper headers
+        # Create response
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
-        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response['Pragma'] = 'no-cache'
-        response['Expires'] = '0'
+        response['Content-Disposition'] = f'attachment; filename="attendance_report_{start_date or "all"}_{end_date or "all"}.pdf"'
         
         return response
         
     except Exception as e:
-        # Log the error for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error generating PDF: {str(e)}")
-        
-        # Return error response
         return HttpResponse(f"Error generating PDF: {str(e)}", status=500)
 
 
-# ============================================================================
-# OVERTIME FUNCTIONS
-# ============================================================================
-
-@api_view(['POST'])
-@permission_classes([IsAdminOrSupervisorOvertimeApproval])
-def approve_overtime(request, attendance_id):
-    """Approve overtime for specific attendance record"""
+@extend_schema(
+    tags=['Settings'],
+    summary='Get work settings for employee',
+    description='Get work settings that employees need for overtime calculation',
+    responses={200: dict},
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def employee_work_settings(request):
+    """Get work settings that employees need for overtime calculation"""
     try:
+        # Get work settings
+        work_settings, _ = WorkSettings.objects.get_or_create()
+        
+        # Return only the fields needed for overtime calculation
+        settings_data = {
+            'start_time': work_settings.start_time,
+            'end_time': work_settings.end_time,
+            'friday_start_time': work_settings.friday_start_time,
+            'friday_end_time': work_settings.friday_end_time,
+            'workdays': work_settings.workdays,
+            'overtime_rate_workday': work_settings.overtime_rate_workday,
+            'overtime_rate_holiday': work_settings.overtime_rate_holiday,
+            'overtime_threshold_minutes': work_settings.overtime_threshold_minutes,
+        }
+        
+        return Response(settings_data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+# ===== OVERTIME APPROVAL FUNCTIONS =====
+
+@extend_schema(
+    tags=['Overtime'],
+    summary='Approve overtime for attendance',
+    description='Approve overtime for a specific attendance record',
+    responses={200: dict, 400: dict, 403: dict, 404: dict},
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def approve_overtime(request, attendance_id):
+    """Approve overtime for a specific attendance record"""
+    try:
+        # Get the attendance record
         attendance = Attendance.objects.get(id=attendance_id)
+        
+        # Check if user has permission to approve overtime
+        user = request.user
+        
+        # Admin can approve any overtime
+        if user.is_superuser or user.groups.filter(name='admin').exists():
+            pass
+        # Supervisor can approve overtime for their division
+        elif user.groups.filter(name='supervisor').exists():
+            try:
+                supervisor_division = user.employee.division
+                if attendance.employee.division != supervisor_division:
+                    return Response({"detail": "You can only approve overtime for your division"}, status=403)
+            except Exception:
+                return Response({"detail": "Division not configured"}, status=400)
+        else:
+            return Response({"detail": "Permission denied"}, status=403)
+        
+        # Check if overtime is already approved
+        if attendance.overtime_approved:
+            return Response({"detail": "Overtime is already approved"}, status=400)
+        
+        # Approve the overtime
+        attendance.overtime_approved = True
+        attendance.overtime_approved_by = user
+        attendance.overtime_approved_at = dj_timezone.now()
+        attendance.save()
+        
+        return Response({
+            "detail": "Overtime approved successfully",
+            "attendance_id": attendance.id,
+            "approved_by": user.username,
+            "approved_at": attendance.overtime_approved_at.isoformat()
+        })
+        
     except Attendance.DoesNotExist:
-        return Response({"detail": "Attendance not found"}, status=404)
-    
-    # Check if there's overtime to approve
-    if attendance.overtime_minutes <= 0:
-        return Response({"detail": "No overtime to approve"}, status=400)
-    
-    # Check if already approved
-    if attendance.overtime_approved:
-        return Response({"detail": "Overtime already approved"}, status=400)
-    
-    # Division-based authorization for supervisors
-    user = request.user
-    if user.groups.filter(name='supervisor').exists():
-        try:
-            supervisor_division = user.employee.division
-            employee_division = attendance.employee.division
-            if supervisor_division != employee_division:
-                return Response({"detail": "Can only approve overtime for your division"}, status=403)
-        except Exception:
-            return Response({"detail": "Division not configured"}, status=400)
-    
-    # Approve overtime
-    attendance.overtime_approved = True
-    attendance.overtime_approved_by = user
-    attendance.overtime_approved_at = dj_timezone.now()
-    attendance.save()
-    
-    return Response({
-        "detail": "Overtime approved successfully",
-        "attendance_id": attendance.id,
-        "date": str(attendance.date_local),
-        "employee": attendance.user.get_full_name() or attendance.user.username,
-        "overtime_minutes": attendance.overtime_minutes,
-        "overtime_amount": float(attendance.overtime_amount),
-        "approved_by": user.username,
-        "approved_at": attendance.overtime_approved_at.isoformat()
-    })
+        return Response({"detail": "Attendance record not found"}, status=404)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=500)
 
 
 @extend_schema(
     tags=['Overtime'],
     summary='Get overtime report',
     description='Get overtime report with filtering options',
-    responses={200: dict},
+    responses={200: dict, 400: dict},
 )
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -2200,8 +2221,8 @@ def overtime_report(request):
     end_date = request.GET.get('end_date')
     month = request.GET.get('month')
     employee_id = request.GET.get('employee_id')
-    approved_only = request.GET.get('approved_only', 'false').lower() == 'true'
-    pending_only = request.GET.get('pending_only', 'false').lower() == 'true'
+    approved_only = request.GET.get('approved_only', '').lower() == 'true'
+    pending_only = request.GET.get('pending_only', '').lower() == 'true'
     
     # Build base queryset
     if user.is_superuser or user.groups.filter(name='admin').exists():
@@ -2304,37 +2325,6 @@ def overtime_report(request):
             "pending_only": pending_only
         }
     })
-
-
-@extend_schema(
-    tags=['Settings'],
-    summary='Get work settings for employee',
-    description='Get work settings that employees need for overtime calculation',
-    responses={200: dict},
-)
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def employee_work_settings(request):
-    """Get work settings that employees need for overtime calculation"""
-    try:
-        # Get work settings
-        work_settings, _ = WorkSettings.objects.get_or_create()
-        
-        # Return only the fields needed for overtime calculation
-        settings_data = {
-            'start_time': work_settings.start_time,
-            'end_time': work_settings.end_time,
-            'friday_start_time': work_settings.friday_start_time,
-            'friday_end_time': work_settings.friday_end_time,
-            'workdays': work_settings.workdays,
-            'overtime_rate_workday': work_settings.overtime_rate_workday,
-            'overtime_rate_holiday': work_settings.overtime_rate_holiday,
-            'overtime_threshold_minutes': work_settings.overtime_threshold_minutes,
-        }
-        
-        return Response(settings_data)
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
 
 
 # ===== OVERTIME REQUEST MANAGEMENT =====
@@ -5592,8 +5582,8 @@ def attendance_corrections(request):
                 )
         elif start_date and end_date:
             try:
-                start = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
-                end = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
+                start = datetime.strptime(start_date, '%Y-%m-%d').date()
+                end = datetime.strptime(end_date, '%Y-%m-%d').date()
                 date_filter = Q(date_local__gte=start) & Q(date_local__lte=end)
             except ValueError:
                 return Response(
@@ -5610,9 +5600,9 @@ def attendance_corrections(request):
                 end_of_month = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
             date_filter = Q(date_local__gte=start_of_month) & Q(date_local__lte=end_of_month)
 
-        # Get attendance records for the employee
+        # Get attendance records for the user (not employee, since employee field might be null)
         attendance_records = Attendance.objects.filter(
-            employee=employee
+            user=user
         ).filter(date_filter).order_by('-date_local')
 
         # Get work settings for geofence validation
