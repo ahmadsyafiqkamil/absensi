@@ -537,5 +537,200 @@ class IsOvertimeRequestApprover(permissions.BasePermission):
         # Check if user can approve division-level
         if ApprovalChecker.can_approve_division_overtime(user, obj.employee):
             return True
-        
+
         return False
+
+
+# ============================================================================
+# MULTI-ROLE PERMISSION CLASSES
+# ============================================================================
+
+class MultiRolePermission(permissions.BasePermission):
+    """
+    Base permission class untuk multi-role system
+    """
+
+    def __init__(self, allowed_roles=None, require_all=False):
+        """
+        Initialize permission with allowed roles
+
+        Args:
+            allowed_roles: List of role names or single role name
+            require_all: If True, user must have ALL specified roles; if False, user needs ANY of the roles
+        """
+        self.allowed_roles = allowed_roles if isinstance(allowed_roles, list) else [allowed_roles] if allowed_roles else []
+        self.require_all = require_all
+
+    def has_permission(self, request, view):
+        """Check if user has required roles"""
+        if not request.user.is_authenticated:
+            return False
+
+        from .utils import MultiRoleManager
+
+        if self.require_all:
+            return MultiRoleManager.has_all_roles(request.user, self.allowed_roles)
+        else:
+            return MultiRoleManager.has_any_role(request.user, self.allowed_roles)
+
+    def has_object_permission(self, request, view, obj):
+        """Check object-level permissions - same as has_permission for multi-role"""
+        return self.has_permission(request, view)
+
+
+class IsMultiRoleAdmin(MultiRolePermission):
+    """
+    Permission class for admin role using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['admin'])
+
+
+class IsMultiRoleSupervisor(MultiRolePermission):
+    """
+    Permission class for supervisor role using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['supervisor'])
+
+
+class IsMultiRoleEmployee(MultiRolePermission):
+    """
+    Permission class for employee role using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['pegawai'])
+
+
+class IsMultiRoleAdminOrSupervisor(MultiRolePermission):
+    """
+    Permission class for admin or supervisor roles using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['admin', 'supervisor'])
+
+
+class IsMultiRoleAdminOrSupervisorOrEmployee(MultiRolePermission):
+    """
+    Permission class for any authenticated user using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['admin', 'supervisor', 'pegawai'])
+
+
+class IsMultiRoleAdminReadOnly(MultiRolePermission):
+    """
+    Permission class for admin role with read-only access using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['admin'])
+
+    def has_permission(self, request, view):
+        """Allow read access for admin, deny write access"""
+        if not super().has_permission(request, view):
+            return False
+
+        # Allow GET, HEAD, OPTIONS
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        return False
+
+
+class IsMultiRoleSupervisorReadOnly(MultiRolePermission):
+    """
+    Permission class for supervisor role with read-only access using multi-role system
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['supervisor'])
+
+    def has_permission(self, request, view):
+        """Allow read access for supervisor, deny write access"""
+        if not super().has_permission(request, view):
+            return False
+
+        # Allow GET, HEAD, OPTIONS
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        return False
+
+
+class IsMultiRoleOwnerOrAdmin(MultiRolePermission):
+    """
+    Permission class untuk akses data milik sendiri atau admin
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['admin'])
+
+    def has_object_permission(self, request, view, obj):
+        """Check if user owns the object or is admin"""
+        # Admin can access all objects
+        if super().has_permission(request, view):
+            return True
+
+        # Check if user owns the object
+        if hasattr(obj, 'user'):
+            return obj.user == request.user
+        elif hasattr(obj, 'employee'):
+            return obj.employee.user == request.user
+
+        return False
+
+
+class IsMultiRoleDivisionMemberOrAdmin(MultiRolePermission):
+    """
+    Permission class untuk akses data divisi sendiri atau admin/supervisor
+    """
+    def __init__(self):
+        super().__init__(allowed_roles=['admin', 'supervisor'])
+
+    def has_object_permission(self, request, view, obj):
+        """Check if user is in same division or has admin/supervisor role"""
+        # Admin/Supervisor can access all objects
+        if super().has_permission(request, view):
+            return True
+
+        # Check if user is in same division
+        try:
+            user_employee = request.user.employee
+            if hasattr(obj, 'employee'):
+                return obj.employee.division == user_employee.division
+            elif hasattr(obj, 'user') and hasattr(obj.user, 'employee'):
+                return obj.user.employee.division == user_employee.division
+        except:
+            pass
+
+        return False
+
+
+class DynamicRolePermission(permissions.BasePermission):
+    """
+    Dynamic permission class that checks roles from view attributes
+    """
+
+    def has_permission(self, request, view):
+        """Check permissions based on view attributes"""
+        if not request.user.is_authenticated:
+            return False
+
+        from .utils import MultiRoleManager
+
+        # Get allowed roles from view
+        allowed_roles = getattr(view, 'allowed_roles', None)
+        require_all = getattr(view, 'require_all_roles', False)
+
+        if not allowed_roles:
+            return True  # No role restriction
+
+        if isinstance(allowed_roles, str):
+            allowed_roles = [allowed_roles]
+
+        if require_all:
+            return MultiRoleManager.has_all_roles(request.user, allowed_roles)
+        else:
+            return MultiRoleManager.has_any_role(request.user, allowed_roles)
+
+    def has_object_permission(self, request, view, obj):
+        """Same as has_permission for dynamic role checking"""
+        return self.has_permission(request, view)

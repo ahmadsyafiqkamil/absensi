@@ -51,6 +51,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'api.utils.MultiRoleMiddleware',  # Multi-role middleware
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -113,6 +114,12 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    'api.utils.MultiRoleAuthenticationBackend',  # Multi-role authentication backend
+    'django.contrib.auth.backends.ModelBackend',  # Default Django backend
+]
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Absensi API',

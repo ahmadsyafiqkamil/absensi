@@ -10,7 +10,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import serializers
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, EmployeeRole
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -57,6 +57,11 @@ from .serializers import (
     GroupPermissionTemplateUpdateSerializer,
     GroupWithPermissionsSerializer,
     BulkPermissionUpdateSerializer,
+    # EmployeeRole serializers
+    EmployeeRoleSerializer,
+    EmployeeRoleCreateSerializer,
+    EmployeeRoleUpdateSerializer,
+    EmployeeWithRolesSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -149,6 +154,8 @@ def check_user(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me(request):
+    from .utils import MultiRoleManager
+
     user = request.user
     data = {
         "id": user.id,
@@ -157,9 +164,30 @@ def me(request):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "is_superuser": user.is_superuser,
-        "groups": list(user.groups.values_list('name', flat=True)),
+        "groups": list(user.groups.values_list('name', flat=True)),  # Legacy groups
     }
-    
+
+    # Add multi-role information
+    try:
+        # Get active roles using MultiRoleManager
+        active_roles = MultiRoleManager.get_user_active_roles(user)
+        primary_role = MultiRoleManager.get_user_primary_role(user)
+        role_names = MultiRoleManager.get_user_role_names(user)
+
+        data["multi_roles"] = {
+            "active_roles": [role.name for role in active_roles],
+            "primary_role": primary_role.name if primary_role else None,
+            "role_names": role_names,
+            "has_multiple_roles": len(active_roles) > 1
+        }
+    except Exception as e:
+        data["multi_roles"] = {
+            "active_roles": [],
+            "primary_role": None,
+            "role_names": [],
+            "has_multiple_roles": False
+        }
+
     # Add position data for position-based approval system
     try:
         employee = user.employee
@@ -174,7 +202,7 @@ def me(request):
             data["position"] = None
     except:
         data["position"] = None
-    
+
     return JsonResponse(data)
 
 
@@ -6482,6 +6510,411 @@ def attendance_correction_request(request):
     except Exception as e:
         print(f"Error in attendance_correction_request: {str(e)}")
         return Response(
-            {'detail': 'Internal server error'}, 
+            {'detail': 'Internal server error'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ============================================================================
+# EMPLOYEE ROLE MANAGEMENT
+# ============================================================================
+
+class EmployeeRoleViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen EmployeeRole dengan role-based access control
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        queryset = EmployeeRole.objects.select_related(
+            'employee', 'group', 'assigned_by'
+        ).prefetch_related(
+            'employee__division', 'employee__position'
+        )
+
+        # Filter by employee if specified
+        employee_id = self.request.query_params.get('employee_id')
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        # Filter by group if specified
+        group_id = self.request.query_params.get('group_id')
+        if group_id:
+            queryset = queryset.filter(group_id=group_id)
+
+        # Filter by active status
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+
+        return queryset.order_by('-assigned_at')
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return EmployeeRoleCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return EmployeeRoleUpdateSerializer
+        return EmployeeRoleSerializer
+
+    def perform_create(self, serializer):
+        # assigned_by is set in serializer
+        serializer.save()
+
+    @action(detail=True, methods=['post'])
+    def set_primary(self, request, pk=None):
+        """
+        Set this role as the primary role for the employee
+        """
+        try:
+            employee_role = self.get_object()
+
+            # Set all other roles for this employee as non-primary
+            EmployeeRole.objects.filter(
+                employee=employee_role.employee
+            ).exclude(pk=employee_role.pk).update(is_primary=False)
+
+            # Set this role as primary
+            employee_role.is_primary = True
+            employee_role.save()
+
+            serializer = self.get_serializer(employee_role)
+            return Response(serializer.data)
+
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        """
+        Toggle active status of employee role
+        """
+        try:
+            employee_role = self.get_object()
+            employee_role.is_active = not employee_role.is_active
+            employee_role.save()
+
+            serializer = self.get_serializer(employee_role)
+            return Response(serializer.data)
+
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def by_employee(self, request):
+        """
+        Get roles for a specific employee
+        """
+        employee_id = request.query_params.get('employee_id')
+        if not employee_id:
+            return Response(
+                {'detail': 'employee_id parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        queryset = self.get_queryset().filter(employee_id=employee_id)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+class EmployeeWithRolesViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet untuk mendapatkan employee dengan roles mereka
+    """
+    permission_classes = [IsAdminOrSupervisor]
+    serializer_class = EmployeeWithRolesSerializer
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        queryset = Employee.objects.select_related(
+            'user', 'division', 'position'
+        ).prefetch_related(
+            'employee_roles__group'
+        )
+
+        # Filter by division if user is supervisor (not admin)
+        if not self.request.user.groups.filter(name='admin').exists():
+            supervisor_employee = Employee.objects.filter(user=self.request.user).first()
+            if supervisor_employee and supervisor_employee.division:
+                queryset = queryset.filter(division=supervisor_employee.division)
+
+        return queryset.order_by('fullname')
+
+
+# ============================================================================
+# MULTI-ROLE MANAGEMENT VIEWS
+# ============================================================================
+
+class MultiRoleManagementViewSet(viewsets.ViewSet):
+    """
+    ViewSet untuk manajemen multi-role system
+    """
+    permission_classes = [IsAdmin]
+
+    @action(detail=False, methods=['get'])
+    def user_roles(self, request):
+        """Get all roles for current user"""
+        from .utils import MultiRoleManager
+
+        user = request.user
+        roles = MultiRoleManager.get_user_active_roles(user)
+        primary_role = MultiRoleManager.get_user_primary_role(user)
+        role_names = MultiRoleManager.get_user_role_names(user)
+        permissions = MultiRoleManager.get_user_permissions(user)
+
+        return Response({
+            'roles': EmployeeRoleSerializer(roles, many=True).data,
+            'primary_role': EmployeeRoleSerializer(primary_role).data if primary_role else None,
+            'role_names': role_names,
+            'permissions': permissions,
+            'has_admin': MultiRoleManager.has_role(user, 'admin'),
+            'has_supervisor': MultiRoleManager.has_role(user, 'supervisor'),
+            'has_employee': MultiRoleManager.has_role(user, 'pegawai')
+        })
+
+    @action(detail=False, methods=['post'])
+    def assign_role(self, request):
+        """Assign role to employee"""
+        from .utils import MultiRoleManager
+
+        employee_id = request.data.get('employee_id')
+        group_name = request.data.get('group_name')
+        is_primary = request.data.get('is_primary', False)
+
+        if not employee_id or not group_name:
+            return Response(
+                {'detail': 'employee_id and group_name are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .models import Employee
+            from django.contrib.auth.models import Group
+
+            employee = Employee.objects.get(id=employee_id)
+            group = Group.objects.get(name=group_name)
+
+            role, created = MultiRoleManager.assign_role(
+                employee=employee,
+                group=group,
+                assigned_by=request.user,
+                is_primary=is_primary
+            )
+
+            return Response({
+                'detail': f'Role {group_name} {"assigned" if created else "already assigned"} to employee',
+                'role': EmployeeRoleSerializer(role).data,
+                'created': created
+            })
+
+        except Employee.DoesNotExist:
+            return Response(
+                {'detail': 'Employee not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Group.DoesNotExist:
+            return Response(
+                {'detail': 'Group not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'])
+    def remove_role(self, request):
+        """Remove role from employee"""
+        from .utils import MultiRoleManager
+
+        employee_id = request.data.get('employee_id')
+        group_name = request.data.get('group_name')
+
+        if not employee_id or not group_name:
+            return Response(
+                {'detail': 'employee_id and group_name are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .models import Employee
+            from django.contrib.auth.models import Group
+
+            employee = Employee.objects.get(id=employee_id)
+            group = Group.objects.get(name=group_name)
+
+            removed = MultiRoleManager.remove_role(employee, group)
+
+            if removed:
+                return Response({
+                    'detail': f'Role {group_name} removed from employee'
+                })
+            else:
+                return Response(
+                    {'detail': 'Role not found or already removed'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        except Employee.DoesNotExist:
+            return Response(
+                {'detail': 'Employee not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Group.DoesNotExist:
+            return Response(
+                {'detail': 'Group not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'])
+    def set_primary_role(self, request):
+        """Set primary role for employee"""
+        from .utils import MultiRoleManager
+
+        employee_id = request.data.get('employee_id')
+        group_name = request.data.get('group_name')
+
+        if not employee_id or not group_name:
+            return Response(
+                {'detail': 'employee_id and group_name are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .models import Employee
+            from django.contrib.auth.models import Group
+
+            employee = Employee.objects.get(id=employee_id)
+            group = Group.objects.get(name=group_name)
+
+            success = MultiRoleManager.set_primary_role(employee, group)
+
+            if success:
+                return Response({
+                    'detail': f'Role {group_name} set as primary for employee'
+                })
+            else:
+                return Response(
+                    {'detail': 'Role not found or inactive'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        except Employee.DoesNotExist:
+            return Response(
+                {'detail': 'Employee not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Group.DoesNotExist:
+            return Response(
+                {'detail': 'Group not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def available_groups(self, request):
+        """Get all available groups/roles"""
+        from django.contrib.auth.models import Group
+
+        groups = Group.objects.all().order_by('name')
+        data = [{'id': group.id, 'name': group.name} for group in groups]
+
+        return Response({'groups': data})
+
+    @action(detail=False, methods=['get'])
+    def role_statistics(self, request):
+        """Get role assignment statistics"""
+        from django.contrib.auth.models import Group
+        from .models import EmployeeRole
+
+        stats = {}
+        total_employees = EmployeeRole.objects.values('employee').distinct().count()
+
+        for group in Group.objects.all():
+            role_count = EmployeeRole.objects.filter(
+                group=group,
+                is_active=True
+            ).count()
+
+            primary_count = EmployeeRole.objects.filter(
+                group=group,
+                is_active=True,
+                is_primary=True
+            ).count()
+
+            stats[group.name] = {
+                'total_assignments': role_count,
+                'primary_assignments': primary_count,
+                'percentage': round((role_count / total_employees * 100), 2) if total_employees > 0 else 0
+            }
+
+        return Response({
+            'total_employees': total_employees,
+            'role_statistics': stats
+        })
+
+    @action(detail=False, methods=['post'])
+    def bulk_assign_roles(self, request):
+        """Bulk assign roles to multiple employees"""
+        from .utils import MultiRoleManager
+
+        assignments = request.data.get('assignments', [])
+        results = []
+
+        for assignment in assignments:
+            employee_id = assignment.get('employee_id')
+            group_name = assignment.get('group_name')
+            is_primary = assignment.get('is_primary', False)
+
+            try:
+                from .models import Employee
+                from django.contrib.auth.models import Group
+
+                employee = Employee.objects.get(id=employee_id)
+                group = Group.objects.get(name=group_name)
+
+                role, created = MultiRoleManager.assign_role(
+                    employee=employee,
+                    group=group,
+                    assigned_by=request.user,
+                    is_primary=is_primary
+                )
+
+                results.append({
+                    'employee_id': employee_id,
+                    'group_name': group_name,
+                    'success': True,
+                    'created': created,
+                    'message': f'Role {group_name} {"assigned" if created else "already assigned"}'
+                })
+
+            except Exception as e:
+                results.append({
+                    'employee_id': employee_id,
+                    'group_name': group_name,
+                    'success': False,
+                    'error': str(e)
+                })
+
+        return Response({'results': results})

@@ -10,11 +10,23 @@ type EmployeeRow = {
   fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
-  position?: { id: number; name: string } | null;
+  position?: {
+    id: number;
+    name: string;
+    can_approve_overtime_org_wide: boolean;
+    approval_level: number;
+  } | null;
   gaji_pokok?: number | null;
   tmt_kerja?: string | null;
   tempat_lahir?: string | null;
   tanggal_lahir?: string | null;
+  // Multi-role information
+  roles?: {
+    active_roles: string[];
+    primary_role: string | null;
+    role_names: string[];
+    has_multiple_roles: boolean;
+  };
 }
 
 type PaginatedEmployees = {
@@ -28,7 +40,7 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-  const url = new URL(`${backend}/api/employees/`)
+  const url = new URL(`${backend}/api/admin/employees-with-roles/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
   const res = await fetch(url.toString(), {
@@ -36,7 +48,24 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
     cache: 'no-store',
   })
   if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-  return res.json()
+
+  const data = await res.json()
+
+  // Transform data to match frontend expectations
+  const transformedResults = data.results.map((employee: any) => ({
+    ...employee,
+    roles: {
+      active_roles: employee.roles.map((role: any) => role.group_name),
+      primary_role: employee.primary_role?.group_name || null,
+      role_names: employee.roles.map((role: any) => role.group_name),
+      has_multiple_roles: employee.roles.length > 1
+    }
+  }))
+
+  return {
+    ...data,
+    results: transformedResults
+  }
 }
 
 export default async function AdminEmployeesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

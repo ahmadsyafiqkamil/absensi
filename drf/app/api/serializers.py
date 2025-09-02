@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, EmployeeRole
 
 
 # ============================================================================
@@ -1304,3 +1304,97 @@ class PermissionSummarySerializer(serializers.Serializer):
     active_permissions = serializers.IntegerField()
     permission_types = serializers.ListField(child=serializers.CharField())
     permission_actions = serializers.ListField(child=serializers.CharField())
+
+
+class EmployeeRoleSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk EmployeeRole - Basic read/write operations
+    """
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    employee_name = serializers.CharField(source='employee.fullname', read_only=True)
+    assigned_by_name = serializers.CharField(source='assigned_by.username', read_only=True)
+
+    class Meta:
+        model = EmployeeRole
+        fields = [
+            'id', 'employee', 'employee_name', 'group', 'group_name',
+            'is_primary', 'is_active', 'assigned_by', 'assigned_by_name',
+            'assigned_at'
+        ]
+        read_only_fields = ['id', 'assigned_at', 'assigned_by_name']
+
+    def validate(self, data):
+        """
+        Validate that an employee doesn't get duplicate roles and ensure primary role logic
+        """
+        employee = data.get('employee')
+        group = data.get('group')
+        is_primary = data.get('is_primary', False)
+
+        # Check for duplicate role assignment
+        existing_role = EmployeeRole.objects.filter(
+            employee=employee,
+            group=group
+        ).exclude(pk=getattr(self.instance, 'pk', None))
+
+        if existing_role.exists():
+            raise serializers.ValidationError("Employee already has this role assigned.")
+
+        return data
+
+
+class EmployeeRoleCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat EmployeeRole baru
+    """
+    class Meta:
+        model = EmployeeRole
+        fields = ['employee', 'group', 'is_primary', 'is_active']
+
+    def create(self, validated_data):
+        # Set assigned_by to current user
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['assigned_by'] = request.user
+
+        return super().create(validated_data)
+
+
+class EmployeeRoleUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update EmployeeRole
+    """
+    class Meta:
+        model = EmployeeRole
+        fields = ['is_primary', 'is_active']
+
+
+class EmployeeWithRolesSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk Employee yang include roles nya
+    """
+    user = UserBasicSerializer(read_only=True)
+    division = DivisionSerializer(read_only=True)
+    position = PositionSerializer(read_only=True)
+    roles = serializers.SerializerMethodField()
+    primary_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Employee
+        fields = [
+            'id', 'user', 'nip', 'fullname', 'division', 'position',
+            'gaji_pokok', 'tmt_kerja', 'tempat_lahir', 'tanggal_lahir',
+            'roles', 'primary_role'
+        ]
+
+    def get_roles(self, obj):
+        """Get all active roles for this employee"""
+        roles = obj.employee_roles.filter(is_active=True)
+        return EmployeeRoleSerializer(roles, many=True).data
+
+    def get_primary_role(self, obj):
+        """Get the primary role for this employee"""
+        primary_role = obj.employee_roles.filter(is_active=True, is_primary=True).first()
+        if primary_role:
+            return EmployeeRoleSerializer(primary_role).data
+        return None

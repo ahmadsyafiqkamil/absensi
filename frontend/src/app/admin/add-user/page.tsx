@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import Header from '@/components/Header';
+import { RoleMultiSelect, type RoleOption } from "@/components/ui/role-multiselect";
 
 interface Division {
   id: number;
@@ -19,17 +20,42 @@ interface Position {
   name: string;
 }
 
+// Role options for multi-select
+const roleOptions: RoleOption[] = [
+  // Primary Roles
+  { value: "admin", label: "Administrator", group: "Primary", isPrimary: true },
+  { value: "supervisor", label: "Supervisor", group: "Primary", isPrimary: true },
+  { value: "pegawai", label: "Pegawai", group: "Primary", isPrimary: true },
+
+  // Diplomatic & Consular Roles
+  { value: "konsuler", label: "Konsuler", group: "Diplomatic" },
+  { value: "protokol", label: "Protokol", group: "Diplomatic" },
+  { value: "ekonomi", label: "Ekonomi", group: "Diplomatic" },
+  { value: "sosial_budaya", label: "Sosial Budaya", group: "Diplomatic" },
+
+  // Operational Support Roles
+  { value: "finance", label: "Pengelola Keuangan", group: "Support" },
+  { value: "hr", label: "Human Resources", group: "Support" },
+  { value: "manager", label: "Manager", group: "Support" },
+  { value: "it_support", label: "IT Support", group: "Support" },
+  { value: "security", label: "Security", group: "Support" },
+];
+
 export default function AddUserPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  
+
+  // Multi-role state
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [primaryRole, setPrimaryRole] = useState<string>("");
+
   const [formData, setFormData] = useState({
     username: "",
     email: "",
     password: "",
-    group: "pegawai", // default to pegawai
+    group: "pegawai", // default to pegawai (will be updated by primary role)
     nip: "",
     division_id: "none",
     position_id: "none",
@@ -73,6 +99,27 @@ export default function AddUserPage() {
     fetchDivisions();
     fetchPositions();
   }, []);
+
+  // Update formData.group when primaryRole changes
+  useEffect(() => {
+    if (primaryRole) {
+      setFormData(prev => ({
+        ...prev,
+        group: primaryRole
+      }));
+      // Auto-add primary role to selected roles
+      if (!selectedRoles.includes(primaryRole)) {
+        setSelectedRoles(prev => [...prev, primaryRole]);
+      }
+    }
+  }, [primaryRole]);
+
+  // Update selectedRoles when primaryRole changes
+  useEffect(() => {
+    if (primaryRole && !selectedRoles.includes(primaryRole)) {
+      setSelectedRoles(prev => [...prev, primaryRole]);
+    }
+  }, [primaryRole, selectedRoles]);
 
   const fetchDivisions = async () => {
     try {
@@ -121,6 +168,19 @@ export default function AddUserPage() {
     setError("");
     setSuccess("");
 
+    // Validate primary role selection
+    if (!primaryRole) {
+      setError("Please select a Primary Role");
+      setIsLoading(false);
+      return;
+    }
+
+    if (selectedRoles.length === 0) {
+      setError("Please select at least one role");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       // First, provision the user
       const userResponse = await fetch('/api/admin/users/provision', {
@@ -141,9 +201,11 @@ export default function AddUserPage() {
 
       const userData = await userResponse.json();
 
+      let employeeData = null;
+
       // Then, create employee record if NIP is provided
       if (formData.nip) {
-        const employeeResponse = await fetch('/api/admin/employees', {
+        const employeeResponse = await fetch('/api/admin/employees/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -163,9 +225,83 @@ export default function AddUserPage() {
           const errorData = await employeeResponse.json().catch(() => null);
           throw new Error(extractErrorMessage(errorData) || 'Failed to create employee record');
         }
+
+        employeeData = await employeeResponse.json();
       }
 
-      setSuccess("User created successfully!");
+      // Assign multiple roles to the user/employee
+      if (selectedRoles.length > 0) {
+        // Get all groups first to map role names to IDs
+        const groupsResponse = await fetch('/api/admin/groups');
+        const groupsData = groupsResponse.ok ? await groupsResponse.json() : [];
+        const groupMap = Array.isArray(groupsData) ? groupsData : (groupsData.results || []);
+
+        // Create a map of role name to group ID
+        const roleNameToId: { [key: string]: number } = {};
+        groupMap.forEach((group: any) => {
+          roleNameToId[group.name] = group.id;
+        });
+
+        // For user roles (always assign to user)
+        for (const roleName of selectedRoles) {
+          try {
+            const groupId = roleNameToId[roleName];
+            if (!groupId) {
+              console.warn(`Group ID not found for role: ${roleName}`);
+              continue;
+            }
+
+            const roleResponse = await fetch('/api/admin/employee-roles/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user: userData.id,
+                group: groupId,
+                is_primary: roleName === primaryRole,
+              })
+            });
+
+            if (!roleResponse.ok) {
+              const errorData = await roleResponse.json().catch(() => null);
+              console.warn(`Failed to assign role ${roleName} to user:`, errorData);
+            }
+          } catch (error) {
+            console.warn(`Error assigning role ${roleName} to user:`, error);
+          }
+        }
+
+        // For employee roles (if employee was created)
+        if (employeeData && formData.nip) {
+          for (const roleName of selectedRoles) {
+            try {
+              const groupId = roleNameToId[roleName];
+              if (!groupId) {
+                console.warn(`Group ID not found for role: ${roleName}`);
+                continue;
+              }
+
+              const roleResponse = await fetch('/api/admin/employee-roles/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  employee: employeeData.id,
+                  group: groupId,
+                  is_primary: roleName === primaryRole,
+                })
+              });
+
+              if (!roleResponse.ok) {
+                const errorData = await roleResponse.json().catch(() => null);
+                console.warn(`Failed to assign role ${roleName} to employee:`, errorData);
+              }
+            } catch (error) {
+              console.warn(`Error assigning role ${roleName} to employee:`, error);
+            }
+          }
+        }
+      }
+
+      setSuccess("User created successfully with " + selectedRoles.length + " role(s) assigned!");
       setFormData({
         username: "",
         email: "",
@@ -181,6 +317,10 @@ export default function AddUserPage() {
         fullname: "",
       });
 
+      // Reset multi-role state
+      setSelectedRoles([]);
+      setPrimaryRole("");
+
       // Redirect to admin dashboard after 2 seconds
       setTimeout(() => {
         router.push('/admin');
@@ -195,9 +335,9 @@ export default function AddUserPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header 
-        title="Add Employee" 
-        subtitle="Create a new employee with an associated user account"
+      <Header
+        title="Add Employee with Multi-Role"
+        subtitle="Create a new employee with flexible role assignments and permissions"
         username="Admin"
         role="admin"
       />
@@ -206,8 +346,8 @@ export default function AddUserPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Employee Information</CardTitle>
-            <CardDescription>Fill in account and employee details</CardDescription>
+            <CardTitle>Employee Information with Multi-Role</CardTitle>
+            <CardDescription>Fill in account details, employee info, and assign multiple roles with permissions</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -256,18 +396,17 @@ export default function AddUserPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="group">Role *</Label>
-                    <Select value={formData.group} onValueChange={(value) => handleSelectChange('group', value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pegawai">Pegawai</SelectItem>
-                        <SelectItem value="supervisor">Supervisor</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  {/* Multi-Role Selection */}
+                  <div className="space-y-2 col-span-2">
+                    <Label>Roles & Permissions *</Label>
+                    <RoleMultiSelect
+                      options={roleOptions}
+                      selectedRoles={selectedRoles}
+                      primaryRole={primaryRole}
+                      onRolesChange={setSelectedRoles}
+                      onPrimaryRoleChange={setPrimaryRole}
+                      placeholder="Select additional roles..."
+                    />
                   </div>
                 </div>
               </div>

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Label } from "@/components/ui/label";
+import RoleManagement from "@/components/RoleManagement";
 
 export type EmployeeRow = {
   id: number;
@@ -23,11 +24,23 @@ export type EmployeeRow = {
   fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
-  position?: { id: number; name: string } | null;
+  position?: {
+    id: number;
+    name: string;
+    can_approve_overtime_org_wide: boolean;
+    approval_level: number;
+  } | null;
   gaji_pokok?: number | null;
   tmt_kerja?: string | null;
   tempat_lahir?: string | null;
   tanggal_lahir?: string | null;
+  // Multi-role information
+  roles?: {
+    active_roles: string[];
+    primary_role: string | null;
+    role_names: string[];
+    has_multiple_roles: boolean;
+  };
 };
 
 const columns: ColumnDef<EmployeeRow>[] = [
@@ -95,17 +108,55 @@ const columns: ColumnDef<EmployeeRow>[] = [
     cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>())}</span>,
   },
   {
+    header: "Roles",
+    accessorFn: (row) => row.roles?.role_names?.join(', ') ?? "-",
+    id: "roles",
+    cell: ({ row }) => {
+      const roles = row.original.roles;
+      if (!roles) return <span className="text-gray-500 text-sm">-</span>;
+
+      return (
+        <div className="flex flex-col gap-1">
+          {roles.primary_role && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              🎯 {roles.primary_role}
+            </span>
+          )}
+          {roles.role_names.filter(role => role !== roles.primary_role).length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {roles.role_names.filter(role => role !== roles.primary_role).map(role => (
+                <span key={role} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                  {role}
+                </span>
+              ))}
+            </div>
+          )}
+          {roles.has_multiple_roles && (
+            <span className="text-xs text-purple-600 font-medium">🔄 Multi-role</span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
     header: "Actions",
     id: "actions",
     cell: ({ row, table }) => {
       const id = row.original.id
       return (
-        <div className="flex gap-2">
-          <Button data-id={id} variant="outline" size="sm" className="px-2 py-1 h-auto text-xs"
-            onClick={() => (table.options.meta as any)?.onOpenEdit?.(id)}
-          >
-            Edit
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button data-id={id} variant="outline" size="sm" className="px-2 py-1 h-auto text-xs"
+              onClick={() => (table.options.meta as any)?.onOpenEdit?.(id)}
+            >
+              Edit
+            </Button>
+            <Button data-id={id} variant="outline" size="sm" className="px-2 py-1 h-auto text-xs"
+              onClick={() => (table.options.meta as any)?.onOpenRoles?.(id)}
+            >
+              🎭 Roles
+            </Button>
+          </div>
           <Button data-id={id} variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50 px-2 py-1 h-auto text-xs"
             onClick={() => (table.options.meta as any)?.onDelete?.(id)}
           >
@@ -122,6 +173,11 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
   const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  // Role management state
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [selectedEmployeeForRoles, setSelectedEmployeeForRoles] = useState<EmployeeRow | null>(null);
+
   const handleDelete = useCallback(async (id: number) => {
     if (!confirm('Delete this employee?')) return;
     const resp = await fetch(`/api/admin/employees/${id}`, { method: 'DELETE' })
@@ -136,6 +192,24 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
+
+  // Role management handlers
+  const handleOpenRoles = useCallback(async (id: number) => {
+    const employee = data.find(emp => emp.id === id);
+    if (employee) {
+      setSelectedEmployeeForRoles(employee);
+      setRoleDialogOpen(true);
+    }
+  }, [data]);
+
+  const handleCloseRoles = useCallback(() => {
+    setRoleDialogOpen(false);
+    setSelectedEmployeeForRoles(null);
+  }, []);
+
+  const handleRolesSaved = useCallback(() => {
+    router.refresh(); // Refresh page to show updated data
+  }, [router]);
   const [formData, setFormData] = useState({
     nip: '',
     fullname: '',
@@ -221,7 +295,11 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    meta: { onDelete: handleDelete, onOpenEdit: handleOpenEdit },
+    meta: {
+      onDelete: handleDelete,
+      onOpenEdit: handleOpenEdit,
+      onOpenRoles: handleOpenRoles
+    },
   });
 
   return (
@@ -271,6 +349,11 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
           placeholder="Filter Tanggal Lahir"
           value={(table.getColumn('tanggal_lahir')?.getFilterValue() as string) ?? ''}
           onChange={(e) => table.getColumn('tanggal_lahir')?.setFilterValue(e.target.value)}
+        />
+        <Input
+          placeholder="Filter Roles"
+          value={(table.getColumn('roles')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('roles')?.setFilterValue(e.target.value)}
         />
       </div>
       <table className="min-w-full divide-y divide-gray-200">
@@ -373,6 +456,25 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {/* Role Management Dialog */}
+      {selectedEmployeeForRoles && (
+        <RoleManagement
+          employeeId={selectedEmployeeForRoles.id}
+          employeeName={selectedEmployeeForRoles.fullname || selectedEmployeeForRoles.user.username}
+          currentRoles={
+            selectedEmployeeForRoles.roles?.active_roles.map(roleName => ({
+              id: 0, // Will be populated in component
+              group: { id: 0, name: roleName },
+              is_primary: roleName === selectedEmployeeForRoles.roles?.primary_role,
+              is_active: true
+            })) || []
+          }
+          isOpen={roleDialogOpen}
+          onClose={handleCloseRoles}
+          onSave={handleRolesSaved}
+        />
+      )}
     </div>
   );
 }

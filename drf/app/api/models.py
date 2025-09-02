@@ -837,3 +837,69 @@ class GroupPermissionTemplate(models.Model):
                     permission_action=perm_action,
                     is_active=True
                 )
+
+
+class EmployeeRole(models.Model):
+    """
+    Model untuk mapping employee dengan multiple roles (groups).
+    Memungkinkan satu employee memiliki multiple roles sekaligus.
+    """
+    employee = models.ForeignKey(
+        'Employee',
+        on_delete=models.CASCADE,
+        related_name='employee_roles',
+        verbose_name="Employee"
+    )
+    group = models.ForeignKey(
+        'auth.Group',
+        on_delete=models.CASCADE,
+        related_name='employee_roles',
+        verbose_name="Role/Group"
+    )
+    is_primary = models.BooleanField(
+        default=False,
+        help_text='Mark this as the primary role for the employee',
+        verbose_name='Primary Role'
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether this role assignment is active',
+        verbose_name='Is Active'
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_roles',
+        verbose_name='Assigned By'
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Employee Role'
+        verbose_name_plural = 'Employee Roles'
+        ordering = ['-is_primary', 'group__name']
+        unique_together = ('employee', 'group')
+
+    def __str__(self):
+        return f"{self.employee} - {self.group.name}"
+
+    def save(self, *args, **kwargs):
+        # Ensure only one primary role per employee
+        if self.is_primary:
+            # First, set all other roles for this employee as non-primary
+            EmployeeRole.objects.filter(
+                employee=self.employee,
+                is_active=True
+            ).exclude(pk=self.pk).update(is_primary=False)
+
+        # If this is the first role for the employee, make it primary
+        elif not EmployeeRole.objects.filter(
+            employee=self.employee,
+            is_active=True,
+            is_primary=True
+        ).exclude(pk=self.pk).exists():
+            self.is_primary = True
+
+        super().save(*args, **kwargs)
