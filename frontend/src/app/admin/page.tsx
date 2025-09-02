@@ -16,7 +16,7 @@ export default async function AdminPage() {
   
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
@@ -33,7 +33,7 @@ export default async function AdminPage() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">Admin privileges required.</p>
@@ -46,7 +46,7 @@ export default async function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Admin Dashboard" 
         subtitle="Manage system, users, and data"

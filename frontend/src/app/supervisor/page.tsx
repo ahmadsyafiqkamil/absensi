@@ -18,7 +18,7 @@ export default async function SupervisorPage() {
   
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
@@ -37,7 +37,7 @@ export default async function SupervisorPage() {
 
   if (!hasApprovalPermission) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">Supervisor privileges required (approval level 1 or higher).</p>
@@ -53,7 +53,7 @@ export default async function SupervisorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Supervisor Dashboard" 
         subtitle="Manage your team and monitor performance"
