@@ -839,22 +839,87 @@ class GroupPermissionTemplate(models.Model):
                 )
 
 
+class Role(models.Model):
+    """
+    Unified Role model that replaces both RoleConfiguration and EmployeeRole functionality.
+    Defines role templates and handles employee assignments in one place.
+    """
+    APPROVAL_LEVEL_CHOICES = [
+        (0, 'No Approval'),
+        (1, 'Division Level'),
+        (2, 'Organization Level'),
+    ]
+
+    # Role definition fields
+    name = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text="Unique role identifier (e.g., 'admin', 'supervisor', 'pegawai')",
+        verbose_name="Role Name"
+    )
+    display_name = models.CharField(
+        max_length=100,
+        help_text="Display name for UI (e.g., 'Administrator', 'Supervisor')",
+        verbose_name="Display Name"
+    )
+    description = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Description of role responsibilities",
+        verbose_name="Description"
+    )
+
+    # Approval and permission fields
+    approval_level = models.PositiveSmallIntegerField(
+        default=0,
+        choices=APPROVAL_LEVEL_CHOICES,
+        help_text="Approval level for overtime and other requests",
+        verbose_name="Approval Level"
+    )
+
+    # Role metadata
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this role is active and can be assigned",
+        verbose_name="Is Active"
+    )
+    sort_order = models.PositiveIntegerField(
+        default=0,
+        help_text="Sort order for UI display",
+        verbose_name="Sort Order"
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Role'
+        verbose_name_plural = 'Roles'
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return f"{self.display_name} ({self.name})"
+
+
 class EmployeeRole(models.Model):
     """
-    Model untuk mapping employee dengan multiple roles (groups).
-    Memungkinkan satu employee memiliki multiple roles sekaligus.
+    Assignment of roles to employees with primary role support.
+    Simplified version of the original EmployeeRole model.
     """
     employee = models.ForeignKey(
         'Employee',
         on_delete=models.CASCADE,
-        related_name='employee_roles',
+        related_name='roles',
         verbose_name="Employee"
     )
-    group = models.ForeignKey(
-        'auth.Group',
+    role = models.ForeignKey(
+        'Role',
         on_delete=models.CASCADE,
-        related_name='employee_roles',
-        verbose_name="Role/Group"
+        related_name='employee_assignments',
+        verbose_name="Role",
+        null=True,
+        blank=True
     )
     is_primary = models.BooleanField(
         default=False,
@@ -871,30 +936,30 @@ class EmployeeRole(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='assigned_roles',
+        related_name='role_assignments',
         verbose_name='Assigned By'
     )
     assigned_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = 'Employee Role'
-        verbose_name_plural = 'Employee Roles'
-        ordering = ['-is_primary', 'group__name']
-        unique_together = ('employee', 'group')
+        verbose_name = 'Employee Role Assignment'
+        verbose_name_plural = 'Employee Role Assignments'
+        ordering = ['-is_primary', 'role__name']
+        unique_together = ('employee', 'role')
 
     def __str__(self):
-        return f"{self.employee} - {self.group.name}"
+        return f"{self.employee} - {self.role.display_name}"
 
     def save(self, *args, **kwargs):
         # Ensure only one primary role per employee
         if self.is_primary:
-            # First, set all other roles for this employee as non-primary
             EmployeeRole.objects.filter(
                 employee=self.employee,
                 is_active=True
             ).exclude(pk=self.pk).update(is_primary=False)
 
-        # If this is the first role for the employee, make it primary
+        # If this is the first active role for the employee, make it primary
         elif not EmployeeRole.objects.filter(
             employee=self.employee,
             is_active=True,
@@ -904,78 +969,10 @@ class EmployeeRole(models.Model):
 
         super().save(*args, **kwargs)
 
+    @property
+    def approval_level(self):
+        """Convenience property to get approval level from role"""
+        return self.role.approval_level
 
-class RoleConfiguration(models.Model):
-    """
-    Model untuk konfigurasi role secara dinamis.
-    Menggantikan hardcoded roles dengan konfigurasi yang dapat diubah.
-    """
-    ROLE_TYPES = [
-        ('primary', 'Primary Role'),
-        ('additional', 'Additional Role'),
-        ('legacy', 'Legacy Role'),
-    ]
-    
-    name = models.CharField(
-        max_length=50,
-        unique=True,
-        verbose_name="Role Name",
-        help_text="Nama role (e.g., admin, supervisor, pegawai)"
-    )
-    display_name = models.CharField(
-        max_length=100,
-        verbose_name="Display Name",
-        help_text="Nama yang ditampilkan di UI (e.g., Administrator, Supervisor)"
-    )
-    role_type = models.CharField(
-        max_length=20,
-        choices=ROLE_TYPES,
-        default='additional',
-        verbose_name="Role Type",
-        help_text="Tipe role: primary (wajib), additional (opsional), legacy (backward compatibility)"
-    )
-    approval_level = models.PositiveSmallIntegerField(
-        default=0,
-        choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level (KJRI)')],
-        verbose_name="Approval Level",
-        help_text="0 = Tidak ada akses approval, 1 = Approval se-divisi, 2 = Approval se-KJRI (organization-wide)"
-    )
-    group = models.CharField(
-        max_length=50,
-        null=True,
-        blank=True,
-        verbose_name="UI Group",
-        help_text="Grup untuk pengelompokan di UI (e.g., Primary, Diplomatic, Support)"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        verbose_name="Description",
-        help_text="Deskripsi role dan fungsinya"
-    )
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name="Is Active",
-        help_text="Apakah role ini aktif dan dapat digunakan"
-    )
-    sort_order = models.PositiveIntegerField(
-        default=0,
-        verbose_name="Sort Order",
-        help_text="Urutan tampilan di UI"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        verbose_name = 'Role Configuration'
-        verbose_name_plural = 'Role Configurations'
-        ordering = ['sort_order', 'name']
-
-    def __str__(self):
-        return f"{self.display_name} ({self.name})"
-
-    def save(self, *args, **kwargs):
-        # Auto-create Django Group if it doesn't exist
-        from django.contrib.auth.models import Group
-        Group.objects.get_or_create(name=self.name)
-        super().save(*args, **kwargs)
+# RoleConfiguration model removed - functionality moved to unified Role model

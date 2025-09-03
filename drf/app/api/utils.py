@@ -136,7 +136,7 @@ class ApprovalChecker:
     @staticmethod
     def get_user_approval_level(user):
         """
-        Get approval level dari user berdasarkan position dan roles
+        Get approval level dari user berdasarkan roles yang dimiliki
 
         Args:
             user: User object
@@ -150,30 +150,20 @@ class ApprovalChecker:
         try:
             employee = user.employee
             if employee:
-                # Get dynamic role approval mapping from RoleConfiguration
-                from .models import RoleConfiguration
-                role_configs = RoleConfiguration.objects.filter(is_active=True)
-                role_approval_mapping = {
-                    config.name.lower(): config.approval_level 
-                    for config in role_configs
-                }
-
                 # Check primary role first
-                primary_role = employee.employee_roles.filter(is_active=True, is_primary=True).first()
-                if primary_role and primary_role.group.name.lower() in role_approval_mapping:
-                    return role_approval_mapping[primary_role.group.name.lower()]
+                primary_role_assignment = employee.roles.filter(is_active=True, is_primary=True).first()
+                if primary_role_assignment:
+                    return primary_role_assignment.role.approval_level
 
                 # Check all active roles for highest approval level
                 max_approval_level = 0
-                for employee_role in employee.employee_roles.filter(is_active=True):
-                    role_name = employee_role.group.name.lower()
-                    if role_name in role_approval_mapping:
-                        max_approval_level = max(max_approval_level, role_approval_mapping[role_name])
+                for role_assignment in employee.roles.filter(is_active=True):
+                    max_approval_level = max(max_approval_level, role_assignment.role.approval_level)
 
                 if max_approval_level > 0:
                     return max_approval_level
 
-                # Fallback to position-based approval
+                # Fallback to position-based approval (for backward compatibility)
                 if employee.position:
                     return employee.position.approval_level
         except:
@@ -195,10 +185,11 @@ class ApprovalChecker:
         try:
             employee = user.employee
             if employee:
-                return employee.employee_roles.filter(is_active=True)
+                return employee.roles.filter(is_active=True)
         except:
             pass
 
+        from .models import EmployeeRole
         return EmployeeRole.objects.none()
 
     @staticmethod
@@ -215,7 +206,7 @@ class ApprovalChecker:
         try:
             employee = user.employee
             if employee:
-                return employee.employee_roles.filter(is_active=True, is_primary=True).first()
+                return employee.roles.filter(is_active=True, is_primary=True).first()
         except:
             pass
 
@@ -253,45 +244,35 @@ class ApprovalChecker:
     def can_approve_overtime_org_wide(user):
         """
         Check if user can approve overtime organization-wide
-        
+
         Args:
             user: User object
-            
+
         Returns:
             bool: True if user can approve overtime org-wide
         """
         if user.is_superuser:
             return True
-        
-        try:
-            employee = user.employee
-            if employee and employee.position:
-                return employee.position.can_approve_overtime_org_wide
-        except:
-            pass
-        
-        return False
+
+        # Check if user has organization-level approval (level 2)
+        return ApprovalChecker.can_approve_organization_level(user)
     
     @staticmethod
     def can_approve_division_overtime(user, target_employee):
         """
         Check if user can approve overtime for specific employee at division level
-        
+
         Args:
             user: User object (approver)
             target_employee: Employee object (target)
-            
+
         Returns:
             bool: True if user can approve
         """
         # Check if user has division level approval
         if not ApprovalChecker.can_approve_division_level(user):
             return False
-        
-        # Check if user has no approval permission (level 0)
-        if ApprovalChecker.get_user_approval_level(user) == 0:
-            return False
-        
+
         # Check if same division
         try:
             approver_employee = user.employee
@@ -299,27 +280,23 @@ class ApprovalChecker:
                 return approver_employee.division == target_employee.division
         except:
             pass
-        
+
         return False
-    
+
     @staticmethod
     def can_approve_organization_overtime(user, target_employee):
         """
         Check if user can approve overtime for specific employee at organization level
-        
+
         Args:
             user: User object (approver)
             target_employee: Employee object (target)
-            
+
         Returns:
             bool: True if user can approve
         """
         # Check if user has organization level approval
-        if not ApprovalChecker.can_approve_organization_level(user):
-            return False
-        
-        # Check if user can approve org-wide
-        return ApprovalChecker.can_approve_overtime_org_wide(user)
+        return ApprovalChecker.can_approve_organization_level(user)
     
     @staticmethod
     def get_approval_capabilities(user):
@@ -338,8 +315,8 @@ class ApprovalChecker:
 
         # Get role names
         role_names = []
-        for role in active_roles:
-            role_names.append(role.group.name)
+        for role_assignment in active_roles:
+            role_names.append(role_assignment.role.name)
 
         return {
             'approval_level': approval_level,
@@ -350,7 +327,7 @@ class ApprovalChecker:
             'is_superuser': user.is_superuser,
             'position_name': user.employee.position.name if user.employee and user.employee.position else None,
             'roles': role_names,
-            'primary_role': primary_role.group.name if primary_role else None,
+            'primary_role': primary_role.role.name if primary_role else None,
             'has_multiple_roles': active_roles.count() > 1,
             'is_admin': 'admin' in role_names,
             'is_supervisor': 'supervisor' in role_names,
@@ -546,8 +523,7 @@ class MultiRoleManager:
         try:
             employee = user.employee
             if employee:
-                employee_roles = employee.employee_roles.filter(is_active=True).select_related('group')
-                return [er.group for er in employee_roles]
+                return employee.roles.filter(is_active=True)
         except:
             pass
         return []
@@ -558,11 +534,11 @@ class MultiRoleManager:
         try:
             employee = user.employee
             if employee:
-                employee_role = employee.employee_roles.filter(
+                role_assignment = employee.roles.filter(
                     is_active=True,
                     is_primary=True
-                ).select_related('group').first()
-                return employee_role.group if employee_role else None
+                ).first()
+                return role_assignment.role if role_assignment else None
         except:
             pass
         return None
@@ -570,30 +546,30 @@ class MultiRoleManager:
     @staticmethod
     def has_role(user, role_name):
         """Check if user has specific role"""
-        roles = MultiRoleManager.get_user_active_roles(user)
-        return any(role.name == role_name for role in roles)
+        role_assignments = MultiRoleManager.get_user_active_roles(user)
+        return any(ra.role.name == role_name for ra in role_assignments)
 
     @staticmethod
     def has_any_role(user, role_names):
         """Check if user has any of the specified roles"""
-        roles = MultiRoleManager.get_user_active_roles(user)
-        return any(role.name in role_names for role in roles)
+        role_assignments = MultiRoleManager.get_user_active_roles(user)
+        return any(ra.role.name in role_names for ra in role_assignments)
 
     @staticmethod
     def has_all_roles(user, role_names):
         """Check if user has all of the specified roles"""
-        roles = MultiRoleManager.get_user_active_roles(user)
-        user_role_names = [role.name for role in roles]
+        role_assignments = MultiRoleManager.get_user_active_roles(user)
+        user_role_names = [ra.role.name for ra in role_assignments]
         return set(role_names).issubset(set(user_role_names))
 
     @staticmethod
-    def assign_role(employee, group, assigned_by=None, is_primary=False):
+    def assign_role(employee, role, assigned_by=None, is_primary=False):
         """Assign role to employee"""
         from .models import EmployeeRole
 
-        role, created = EmployeeRole.objects.get_or_create(
+        role_assignment, created = EmployeeRole.objects.get_or_create(
             employee=employee,
-            group=group,
+            role=role,
             defaults={
                 'assigned_by': assigned_by,
                 'is_primary': is_primary
@@ -605,37 +581,37 @@ class MultiRoleManager:
             employee=employee,
             is_active=True,
             is_primary=True
-        ).exclude(pk=role.pk).exists():
-            role.is_primary = True
-            role.save()
+        ).exclude(pk=role_assignment.pk).exists():
+            role_assignment.is_primary = True
+            role_assignment.save()
 
-        return role, created
+        return role_assignment, created
 
     @staticmethod
-    def remove_role(employee, group):
+    def remove_role(employee, role):
         """Remove role from employee"""
         from .models import EmployeeRole
 
         deleted_count, _ = EmployeeRole.objects.filter(
             employee=employee,
-            group=group
+            role=role
         ).delete()
 
         # If primary role was removed, set another role as primary
         if deleted_count > 0:
-            remaining_roles = EmployeeRole.objects.filter(
+            remaining_assignments = EmployeeRole.objects.filter(
                 employee=employee,
                 is_active=True
             )
-            if remaining_roles.exists() and not remaining_roles.filter(is_primary=True).exists():
-                first_role = remaining_roles.first()
-                first_role.is_primary = True
-                first_role.save()
+            if remaining_assignments.exists() and not remaining_assignments.filter(is_primary=True).exists():
+                first_assignment = remaining_assignments.first()
+                first_assignment.is_primary = True
+                first_assignment.save()
 
         return deleted_count > 0
 
     @staticmethod
-    def set_primary_role(employee, group):
+    def set_primary_role(employee, role):
         """Set a role as primary for employee"""
         from .models import EmployeeRole
 
@@ -648,7 +624,7 @@ class MultiRoleManager:
         # Set the specified role as primary
         updated = EmployeeRole.objects.filter(
             employee=employee,
-            group=group,
+            role=role,
             is_active=True
         ).update(is_primary=True)
 
@@ -657,18 +633,19 @@ class MultiRoleManager:
     @staticmethod
     def get_user_role_names(user):
         """Get list of role names for a user"""
-        roles = MultiRoleManager.get_user_active_roles(user)
-        return [role.name for role in roles]
+        role_assignments = MultiRoleManager.get_user_active_roles(user)
+        return [ra.role.name for ra in role_assignments]
 
     @staticmethod
     def get_user_permissions(user):
         """Get all permissions for a user based on their roles"""
-        roles = MultiRoleManager.get_user_active_roles(user)
+        role_assignments = MultiRoleManager.get_user_active_roles(user)
         permissions = []
 
-        for role in roles:
-            role_permissions = role.custom_permissions.filter(is_active=True)
-            permissions.extend(list(role_permissions.values_list('permission_type', 'permission_action')))
+        for role_assignment in role_assignments:
+            # Note: This assumes roles have permissions through some mechanism
+            # For now, return empty list as permissions are handled elsewhere
+            pass
 
         return permissions
 
@@ -676,71 +653,61 @@ class MultiRoleManager:
     def create_default_roles():
         """Create default roles if they don't exist"""
         from django.contrib.auth.models import Group
-        from .models import RoleConfiguration
+        from .models import Role
 
-        # Create default role configurations
-        default_role_configs = [
+        # Create default roles
+        default_roles = [
             {
                 'name': 'admin',
                 'display_name': 'Administrator',
-                'role_type': 'primary',
                 'approval_level': 2,
-                'group': 'Primary',
                 'description': 'Full system access and organization-level approval',
                 'sort_order': 1
             },
             {
                 'name': 'supervisor',
                 'display_name': 'Supervisor',
-                'role_type': 'primary',
                 'approval_level': 1,
-                'group': 'Primary',
                 'description': 'Division-level supervision and approval',
                 'sort_order': 2
             },
             {
                 'name': 'pegawai',
                 'display_name': 'Pegawai',
-                'role_type': 'primary',
                 'approval_level': 0,
-                'group': 'Primary',
                 'description': 'Basic employee access',
                 'sort_order': 3
             },
             {
                 'name': 'konsuler',
                 'display_name': 'Konsuler',
-                'role_type': 'additional',
                 'approval_level': 0,
-                'group': 'Diplomatic',
                 'description': 'Consular services and diplomatic functions',
                 'sort_order': 10
             },
             {
                 'name': 'finance',
                 'display_name': 'Pengelola Keuangan',
-                'role_type': 'additional',
                 'approval_level': 1,
-                'group': 'Support',
                 'description': 'Financial management and approval',
                 'sort_order': 20
             },
             {
                 'name': 'hr',
                 'display_name': 'Human Resources',
-                'role_type': 'additional',
                 'approval_level': 1,
-                'group': 'Support',
                 'description': 'Human resources management',
                 'sort_order': 21
             }
         ]
 
-        for config_data in default_role_configs:
-            RoleConfiguration.objects.get_or_create(
-                name=config_data['name'],
-                defaults=config_data
+        for role_data in default_roles:
+            role, created = Role.objects.get_or_create(
+                name=role_data['name'],
+                defaults=role_data
             )
+            # Ensure Django Group exists
+            Group.objects.get_or_create(name=role_data['name'])
 
 
 # ============================================================================

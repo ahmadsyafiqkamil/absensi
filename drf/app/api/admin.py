@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, RoleConfiguration, EmployeeRole
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, Role, EmployeeRole
 
 # Unregister the default Group admin and register our custom one
 admin.site.unregister(Group)
@@ -297,21 +297,21 @@ class GroupPermissionTemplateAdmin(admin.ModelAdmin):
         return super().get_queryset(request)
 
 
-@admin.register(RoleConfiguration)
-class RoleConfigurationAdmin(admin.ModelAdmin):
-    list_display = ("name", "display_name", "role_type", "approval_level", "group", "is_active", "sort_order", "user_count", "created_at")
-    list_filter = ("role_type", "approval_level", "group", "is_active", "created_at")
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
+    list_display = ("name", "display_name", "approval_level", "is_active", "sort_order", "user_count", "created_at")
+    list_filter = ("approval_level", "is_active", "created_at")
     search_fields = ("name", "display_name", "description")
     ordering = ("sort_order", "name")
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'display_name', 'role_type', 'group', 'description')
+            'fields': ('name', 'display_name', 'description')
         }),
         ('Approval Configuration', {
             'fields': ('approval_level',),
-            'description': 'Set approval level: 0=No Approval, 1=Division Level, 2=Organization Level (KJRI)'
+            'description': 'Set approval level: 0=No Approval, 1=Division Level, 2=Organization Level'
         }),
         ('Settings', {
             'fields': ('is_active', 'sort_order')
@@ -324,36 +324,27 @@ class RoleConfigurationAdmin(admin.ModelAdmin):
 
     def user_count(self, obj):
         """Count users with this role"""
-        try:
-            group = Group.objects.get(name=obj.name)
-            return group.user_set.count()
-        except Group.DoesNotExist:
-            return 0
-    user_count.short_description = "User Count"
-
-    def get_queryset(self, request):
-        return super().get_queryset(request)
+        return obj.employee_assignments.filter(is_active=True).count()
+    user_count.short_description = "Active Users"
 
     def save_model(self, request, obj, form, change):
-        """Override save to create Django Group automatically"""
-        super().save_model(request, obj, form, change)
-
-        # Create corresponding Django Group if it doesn't exist
+        """Auto-create Django Group if it doesn't exist"""
         Group.objects.get_or_create(name=obj.name)
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(EmployeeRole)
 class EmployeeRoleAdmin(admin.ModelAdmin):
-    list_display = ("employee", "group", "role_display", "is_primary", "is_active", "assigned_by", "assigned_at")
-    list_filter = ("group", "is_primary", "is_active", "assigned_at")
-    search_fields = ("employee__user__username", "employee__fullname", "group__name")
-    ordering = ("-is_primary", "group__name", "-assigned_at")
+    list_display = ("employee", "role", "role_info", "is_primary", "is_active", "assigned_by", "assigned_at")
+    list_filter = ("role", "is_primary", "is_active", "assigned_at")
+    search_fields = ("employee__user__username", "employee__fullname", "role__name", "role__display_name")
+    ordering = ("-is_primary", "role__name", "-assigned_at")
     readonly_fields = ("assigned_at", "assigned_by")
     raw_id_fields = ("employee", "assigned_by")
 
     fieldsets = (
         ('Role Assignment', {
-            'fields': ('employee', 'group', 'is_primary', 'is_active')
+            'fields': ('employee', 'role', 'is_primary', 'is_active')
         }),
         ('Assignment Information', {
             'fields': ('assigned_by', 'assigned_at'),
@@ -361,28 +352,23 @@ class EmployeeRoleAdmin(admin.ModelAdmin):
         }),
     )
 
-    def role_display(self, obj):
-        """Display role configuration information"""
-        try:
-            role_config = RoleConfiguration.objects.get(name=obj.group.name)
-            return f"{role_config.display_name} (Level {role_config.approval_level})"
-        except RoleConfiguration.DoesNotExist:
-            return obj.group.name
-    role_display.short_description = "Role Info"
+    def role_info(self, obj):
+        """Display role information"""
+        return f"{obj.role.display_name} (Level {obj.role.approval_level})"
+    role_info.short_description = "Role Info"
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
-            'employee', 'employee__user', 'group', 'assigned_by'
+            'employee', 'employee__user', 'role', 'assigned_by'
         )
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "employee":
             # Only show employees with users
             kwargs["queryset"] = Employee.objects.select_related('user').filter(user__isnull=False)
-        elif db_field.name == "group":
-            # Only show groups that have role configurations
-            role_names = RoleConfiguration.objects.values_list('name', flat=True)
-            kwargs["queryset"] = Group.objects.filter(name__in=role_names)
+        elif db_field.name == "role":
+            # Only show active roles
+            kwargs["queryset"] = Role.objects.filter(is_active=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):

@@ -1444,10 +1444,70 @@ class EmployeeWithRolesSerializer(serializers.ModelSerializer):
         return data
 
 
+class RoleCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk create Role
+    """
+    class Meta:
+        model = Role
+        fields = [
+            'name', 'display_name', 'role_type', 'approval_level',
+            'group', 'description', 'is_active', 'sort_order'
+        ]
+
+    def create(self, validated_data):
+        # Auto-create Django Group
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name=validated_data['name'])
+        return super().create(validated_data)
 
 
+class RoleUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update Role
+    """
+    class Meta:
+        model = Role
+        fields = [
+            'display_name', 'role_type', 'approval_level',
+            'group', 'description', 'is_active', 'sort_order'
+        ]
 
 
+class RoleDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk detail Role dengan informasi tambahan
+    """
+    role_type_display = serializers.CharField(source='get_role_type_display', read_only=True)
+    user_count = serializers.SerializerMethodField()
+    is_used = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Role
+        fields = [
+            'id', 'name', 'display_name', 'role_type', 'role_type_display',
+            'approval_level', 'group', 'description', 'is_active', 'sort_order',
+            'user_count', 'is_used', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'name', 'created_at', 'updated_at']
+
+    def get_user_count(self, obj):
+        """Get count of users with this role"""
+        from django.contrib.auth.models import Group
+        try:
+            group = Group.objects.get(name=obj.name)
+            return group.user_set.count()
+        except Group.DoesNotExist:
+            return 0
+
+    def get_is_used(self, obj):
+        """Check if this role is currently being used"""
+        from django.contrib.auth.models import Group
+        try:
+            group = Group.objects.get(name=obj.name)
+            return group.user_set.exists()
+        except Group.DoesNotExist:
+            return False
 
 
 class WorkSettingsAdminSerializer(serializers.ModelSerializer):
@@ -2772,7 +2832,67 @@ class EmployeeWithRolesSerializer(serializers.ModelSerializer):
         return data
 
 
+class RoleCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk create Role
+    """
+    class Meta:
+        model = Role
+        fields = [
+            'name', 'display_name', 'role_type', 'approval_level',
+            'group', 'description', 'is_active', 'sort_order'
+        ]
+
+    def create(self, validated_data):
+        # Auto-create Django Group
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name=validated_data['name'])
+        return super().create(validated_data)
 
 
+class RoleUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update Role
+    """
+    class Meta:
+        model = Role
+        fields = [
+            'display_name', 'role_type', 'approval_level',
+            'group', 'description', 'is_active', 'sort_order'
+        ]
 
 
+class RoleDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk detail Role dengan informasi tambahan
+    """
+    role_type_display = serializers.CharField(source='get_role_type_display', read_only=True)
+    user_count = serializers.SerializerMethodField()
+    is_used = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Role
+        fields = [
+            'id', 'name', 'display_name', 'role_type', 'role_type_display',
+            'approval_level', 'group', 'description', 'is_active', 'sort_order',
+            'user_count', 'is_used', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'name', 'created_at', 'updated_at']
+
+    def get_user_count(self, obj):
+        """Get count of users with this role"""
+        from django.contrib.auth.models import Group
+        try:
+            group = Group.objects.get(name=obj.name)
+            return group.user_set.count()
+        except Group.DoesNotExist:
+            return 0
+
+    def get_is_used(self, obj):
+        """Check if this role is currently being used"""
+        from django.contrib.auth.models import Group
+        try:
+            group = Group.objects.get(name=obj.name)
+            return group.user_set.exists()
+        except Group.DoesNotExist:
+            return False
