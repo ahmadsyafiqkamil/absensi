@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -434,9 +435,9 @@ export default function MonthlySummaryRequestsTable({ onRefresh }: MonthlySummar
       setError(null);
       
       // Fetch data individually to avoid Promise.all issues
-      const monthlySummaryResponse = await authFetch('/api/supervisor/monthly-summary-requests/');
-      const divisionsResponse = await authFetch('/api/supervisor/divisions/');
-      const supervisorResponse = await authFetch('/api/supervisor/approvals/summary');
+      const monthlySummaryResponse = await authFetch(`${BACKEND_BASE_URL}/api/supervisor/monthly-summary-requests/`);
+      const divisionsResponse = await authFetch(`${BACKEND_BASE_URL}/api/supervisor/divisions/`);
+      const supervisorResponse = await authFetch(`${BACKEND_BASE_URL}/api/supervisor/approvals/summary`);
 
       if (!monthlySummaryResponse.ok) {
         throw new Error('Failed to fetch monthly summary requests');

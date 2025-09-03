@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import * as Dialog from '@radix-ui/react-dialog';
 import PotentialOvertimeTable from './PotentialOvertimeTable';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -202,8 +203,8 @@ export default function OvertimeRequestsManager() {
       setError(null);
       
       const [requestsResponse, summaryResponse] = await Promise.all([
-        authFetch('/api/overtime-requests/'),
-        authFetch('/api/overtime-requests/summary/')
+        authFetch(`${BACKEND_BASE_URL}/api/overtime-requests/`),
+        authFetch(`${BACKEND_BASE_URL}/api/overtime-requests/summary/`)
       ]);
 
       if (!requestsResponse.ok || !summaryResponse.ok) {
@@ -228,7 +229,7 @@ export default function OvertimeRequestsManager() {
     setFormErrors({});
 
     try {
-      const response = await authFetch('/api/overtime-requests/', {
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/overtime-requests/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

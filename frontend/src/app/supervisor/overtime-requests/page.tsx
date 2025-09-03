@@ -26,15 +26,22 @@ export default async function SupervisorOvertimeRequestsPage() {
     )
   }
 
-  const groups = me.groups || []
-  const isSupervisor = groups.includes('supervisor') || groups.includes('admin')
-  
-  if (!isSupervisor) {
+  const approvalLevel = me?.approval_level || 0
+  const hasApprovalPermission = approvalLevel > 0
+
+  if (!hasApprovalPermission) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
-          <p className="text-gray-600 mt-2">Supervisor privileges required.</p>
+          <p className="text-gray-600 mt-2">Supervisor privileges required (approval level 1 or higher).</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Current approval level: {approvalLevel}
+          </p>
+          <div className="mt-2 text-xs text-gray-400">
+            <p>Active roles: {me?.multi_roles?.active_roles?.join(', ') || 'None'}</p>
+            <p>Primary role: {me?.multi_roles?.primary_role || 'None'}</p>
+          </div>
           <a href="/" className="text-blue-600 hover:underline mt-4 inline-block">
             Return to Home
           </a>
@@ -43,7 +50,7 @@ export default async function SupervisorOvertimeRequestsPage() {
     )
   }
 
-  const role = groups.includes('admin') ? 'admin' : 'supervisor'
+  const role = (me?.groups || []).includes('admin') ? 'admin' : 'supervisor'
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { OvertimeStatus } from "@/components/ui/overtime-status";
+import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 
 type OvertimeData = {
   summary: {
@@ -94,7 +96,7 @@ export default function OvertimeSummary() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/overtime/report');
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/overtime/report`);
       if (!response.ok) {
         throw new Error('Failed to fetch overtime data');
       }

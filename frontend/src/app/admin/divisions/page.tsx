@@ -19,7 +19,7 @@ type PaginatedDivisions = {
 async function getDivisions(page: number, pageSize: number): Promise<PaginatedDivisions> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
   const url = new URL(`${backend}/api/divisions/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))

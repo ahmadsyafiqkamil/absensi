@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { authFetch } from '@/lib/authFetch'
+import { BACKEND_BASE_URL } from '@/lib/backend'
 
 type Attendance = {
   id: number
@@ -93,10 +95,10 @@ export default function TodayAttendance() {
     
     try {
       const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
-        fetch(`/api/attendance/me${q}&page=1&page_size=1`),
-        fetch(`/api/attendance/holidays/${q}`),
-        fetch('/api/employee/settings/work'),
-        fetch(`/api/overtime/report?start_date=${targetDate}&end_date=${targetDate}`),
+        authFetch(`${BACKEND_BASE_URL}/api/attendance/${q}&page=1&page_size=1`),
+        authFetch(`${BACKEND_BASE_URL}/api/settings/holidays/${q}`),
+        authFetch(`${BACKEND_BASE_URL}/api/employee/settings/work`),
+        authFetch(`${BACKEND_BASE_URL}/api/overtime/report?start_date=${targetDate}&end_date=${targetDate}`),
       ])
       
       const d = await attResp.json().catch(() => ({}))

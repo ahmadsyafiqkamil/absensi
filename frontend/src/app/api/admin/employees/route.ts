@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/auth/me`, {
+    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Call backend employee creation API (namespaced admin route)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees-with-roles/`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/admin/employees-with-roles/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -92,7 +92,7 @@ export async function GET() {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
     }
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
     // Verify admin
     const meResponse = await fetch(`${backendBase}/api/auth/me`, {

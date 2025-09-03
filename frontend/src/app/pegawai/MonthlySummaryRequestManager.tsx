@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import * as Dialog from '@radix-ui/react-dialog';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -149,7 +150,7 @@ export default function MonthlySummaryRequestManager() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await authFetch('/api/employee/monthly-summary-requests/');
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/`);
       
       if (response.ok) {
         const data: MonthlySummaryRequestsResponse = await response.json();
@@ -187,7 +188,7 @@ export default function MonthlySummaryRequestManager() {
       const submitData = { ...formData };
       
       console.log(submitData);
-      const response = await authFetch('/api/employee/monthly-summary-requests/', {
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -341,7 +342,7 @@ export default function MonthlySummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`/api/employee/monthly-summary-requests/${request.id}/export_docx/`);
+                      const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/${request.id}/export_docx/`);
                       
                       if (response.ok) {
                         // Get blob from response
@@ -373,7 +374,7 @@ export default function MonthlySummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`/api/employee/monthly-summary-requests/${request.id}/export_pdf/`);
+                      const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/${request.id}/export_pdf/`);
                       
                       if (response.ok) {
                         // Get blob from response

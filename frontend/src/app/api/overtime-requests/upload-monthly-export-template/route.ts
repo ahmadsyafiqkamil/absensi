@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward request to backend with authentication
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
     const backendResponse = await fetch(`${backendUrl}/api/overtime-requests/upload-monthly-export-template`, {
       method: 'POST',
       headers: {

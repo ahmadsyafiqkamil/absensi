@@ -5,6 +5,7 @@ import Header from '@/components/Header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ApprovalLevelWarning, RoleConfigurationsDisplay } from '@/components/ui/approval-level-warning'
 import { useSupervisorApprovalLevel } from '@/lib/hooks'
+import { authFetch } from '@/lib/authFetch'
 import { DataTable } from './data-table'
 import { columns, type AttendanceCorrection } from './columns'
 import { ApprovalActions } from './approval-actions'
@@ -66,7 +67,7 @@ export default function ApprovalsPage() {
     setLoading(true)
     setError(null)
     try {
-      const resp = await fetch('/api/attendance-corrections?status=pending')
+      const resp = await authFetch('http://localhost:8000/api/supervisor/attendance-corrections/?status=pending')
       const data = await resp.json().catch(() => ({}))
       const list = Array.isArray(data) ? data : (data.results || [])
       setItems(list)
@@ -94,15 +95,15 @@ export default function ApprovalsPage() {
     setSubmittingId(id)
     setError(null)
     try {
-      const path = action === 'approve' ? `/api/attendance-corrections/${id}/approve` : `/api/attendance-corrections/${id}/reject`
+      const path = action === 'approve' ? `http://localhost:8000/api/attendance-corrections/${id}/approve` : `http://localhost:8000/api/attendance-corrections/${id}/reject`
       console.log('APPROVAL_ACTION', { id, action, path })
       
-      const resp = await fetch(path, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-                  body: JSON.stringify({ 
-            decision_note: decisionNote
-          }) 
+      const resp = await authFetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision_note: decisionNote
+        })
       })
       
       const d = await resp.json().catch(() => ({}))
@@ -215,7 +216,7 @@ export default function ApprovalsPage() {
               <div>Data count: {items.length} records</div>
               <div>Approval level: {approvalLevel} (Level {approvalLevel === 0 ? '0 - No Approval' : approvalLevel === 1 ? '1 - Division Level' : '2+ - Organization Level'})</div>
               <div>Source: {approvalSource}</div>
-              {userGroups.length > 0 && (
+              {(userGroups && userGroups.length > 0) && (
                 <div>Roles: {userGroups.join(', ')}</div>
               )}
             </div>
@@ -238,7 +239,7 @@ export default function ApprovalsPage() {
         </Card>
 
         {/* Role Configurations Display - Only show if we have configurations and in development/debug mode */}
-        {roleConfigurations.length > 0 && process.env.NODE_ENV === 'development' && (
+        {(roleConfigurations && roleConfigurations.length > 0 && process.env.NODE_ENV === 'development') && (
           <RoleConfigurationsDisplay
             roleConfigurations={roleConfigurations}
             className="mt-6"

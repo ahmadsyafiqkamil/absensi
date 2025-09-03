@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { authFetch } from '@/lib/authFetch'
+import { BACKEND_BASE_URL } from '@/lib/backend'
 
 type AttendanceItem = {
   id: number
@@ -38,8 +40,8 @@ export default function PegawaiCalendar() {
       try {
         const q = `?start=${monthRange.start}&end=${monthRange.end}`
         const [attResp, holResp] = await Promise.all([
-          fetch(`/api/attendance/me/${q}`, { cache: 'no-store' }),
-          fetch(`/api/attendance/holidays/${q}`, { cache: 'no-store' }),
+          authFetch(`${BACKEND_BASE_URL}/api/attendance/${q}`, { cache: 'no-store' }),
+          authFetch(`${BACKEND_BASE_URL}/api/settings/holidays/${q}`, { cache: 'no-store' }),
         ])
         const attData: AttendanceResponse | any = await attResp.json().catch(() => ({ results: [] }))
         const holData: { results?: Holiday[] } | any = await holResp.json().catch(() => ({ results: [] }))

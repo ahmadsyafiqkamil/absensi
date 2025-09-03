@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Forward request to backend
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
     const response = await fetch(`${backendUrl}/api/employees/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,

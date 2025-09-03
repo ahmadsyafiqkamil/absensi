@@ -3,6 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 
 interface HeaderProps {
   title: string;
@@ -19,7 +21,7 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     let cancelled = false;
     async function loadFullname() {
       try {
-        const resp = await fetch('/api/employee/employees', { cache: 'no-store' });
+        const resp = await authFetch(`${BACKEND_BASE_URL}/api/employee/employees`, { cache: 'no-store' });
         const data = await resp.json().catch(() => ({}));
         const list = Array.isArray(data) ? data : (data?.results ?? []);
         const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
@@ -41,7 +43,7 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
 
   const handleLogout = async () => {
     try {
-      const response = await fetch('/api/auth/logout', {
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -14,6 +14,7 @@ import { RefreshCw, AlertCircle, CheckCircle, XCircle, Clock, FileText, MapPin, 
 import Header from '@/components/Header';
 import Link from 'next/link';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 import {
   ColumnDef,
   flexRender,
@@ -140,7 +141,7 @@ export default function PegawaiCorrectionsPage() {
         params.append('status', filters.status);
       }
       
-      const response = await authFetch(`/api/attendance/corrections?${params.toString()}`);
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/attendance/corrections?${params.toString()}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -284,7 +285,7 @@ export default function PegawaiCorrectionsPage() {
         formData.append('proposed_check_out_time', correctionForm.proposed_check_out_time);
       }
 
-      const response = await authFetch('/api/attendance/corrections/request', {
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/attendance/corrections/request`, {
         method: 'POST',
         body: formData
       });
@@ -328,7 +329,7 @@ export default function PegawaiCorrectionsPage() {
         formData.append('proposed_check_out_time', manualCorrectionForm.proposed_check_out_time);
       }
 
-      const response = await authFetch('/api/attendance/corrections/request', {
+      const response = await authFetch(`${BACKEND_BASE_URL}/api/attendance/corrections/request`, {
         method: 'POST',
         body: formData
       });

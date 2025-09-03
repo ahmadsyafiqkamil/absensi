@@ -11,6 +11,12 @@ interface RoleBasedRedirectProps {
     groups: string[];
     is_superuser: boolean;
     position?: Position | null;
+    approval_level?: number;  // NEW: From unified role system
+    multi_roles?: {
+      active_roles: string[];
+      primary_role?: string;
+      has_multiple_roles: boolean;
+    };
   } | null;
 }
 
@@ -18,93 +24,73 @@ export default function RoleBasedRedirect({ user }: RoleBasedRedirectProps) {
   const router = useRouter();
   const [roleConfigurations, setRoleConfigurations] = useState<any[]>([]);
 
-  // Function to determine approval level from role-based system
-  const getRoleBasedApprovalLevel = async (userGroups: string[]): Promise<number> => {
-    try {
-      // Try to get role configurations from API
-      const response = await fetch('/api/admin/role-configurations/', {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
+  // Function to determine approval level from unified role system
+  const getUnifiedApprovalLevel = (user: any): number => {
+    // NEW: Use backend-calculated approval level from unified system
+    if (user.approval_level !== undefined) {
+      console.log('Using backend-calculated approval level:', user.approval_level);
+      return user.approval_level;
+    }
 
-      if (response.ok) {
-        const configs = await response.json();
-        const activeConfigs = Array.isArray(configs) ? configs : (configs.results || []);
+    // Fallback to legacy systems if backend doesn't provide approval_level
+    if (user.multi_roles && user.multi_roles.active_roles) {
+      // Check for admin/supervisor roles
+      const adminRoles = ['admin', 'level_2_approver', 'supervisor_kjri', 'manager'];
+      const supervisorRoles = ['supervisor', 'level_1_approver', 'supervisor_division', 'finance', 'hr'];
 
-        // Find highest approval level from user groups
-        let maxLevel = 0;
-        for (const group of userGroups) {
-          const roleConfig = activeConfigs.find((config: any) => config.name === group && config.is_active);
-          if (roleConfig && roleConfig.approval_level > maxLevel) {
-            maxLevel = roleConfig.approval_level;
-          }
-        }
-        return maxLevel;
+      if (user.multi_roles.active_roles.some((role: string) => adminRoles.includes(role))) {
+        return 2;
       }
-    } catch (error) {
-      console.warn('Failed to fetch role configurations for redirect:', error);
+      if (user.multi_roles.active_roles.some((role: string) => supervisorRoles.includes(role))) {
+        return 1;
+      }
     }
 
-    // Fallback to hardcoded mapping if API fails
-    const fallbackMap: { [key: string]: number } = {
-      'admin': 2,
-      'supervisor_kjri': 2,
-      'manager': 2,
-      'supervisor': 1,
-      'supervisor_division': 1,
-      'finance': 1,
-      'hr': 1,
-    };
+    // Legacy group-based fallback
+    const groups = user.groups || [];
+    const adminGroups = ['admin', 'supervisor_kjri', 'manager'];
+    const supervisorGroups = ['supervisor', 'supervisor_division', 'finance', 'hr'];
 
-    let maxLevel = 0;
-    for (const group of userGroups) {
-      const level = fallbackMap[group] || 0;
-      maxLevel = Math.max(maxLevel, level);
+    if (groups.some((group: string) => adminGroups.includes(group))) {
+      return 2;
     }
-    return maxLevel;
+    if (groups.some((group: string) => supervisorGroups.includes(group))) {
+      return 1;
+    }
+
+    return 0;
   };
 
   useEffect(() => {
-    const handleRedirect = async () => {
+    const handleRedirect = () => {
       if (!user) return;
 
       const groups = user.groups || [];
       const isAdmin = groups.includes('admin') || user.is_superuser;
 
-      // NEW: Use role-based approval level
-      const roleApprovalLevel = await getRoleBasedApprovalLevel(groups);
+      // NEW: Use unified approval level from backend
+      const approvalLevel = getUnifiedApprovalLevel(user);
+      const hasApprovalPermission = approvalLevel > 0;
 
-      // Fallback to position-based if no role approval
-      let hasApprovalPermission = roleApprovalLevel > 0;
-
-      if (roleApprovalLevel === 0) {
-        // Only check position if no role approval found
-        const position = user.position || null;
-        const approvalCapabilities = getApprovalCapabilities(position);
-        hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level;
-      }
+      console.log('Unified redirect logic:', {
+        username: user.username,
+        isAdmin,
+        approvalLevel,
+        hasApprovalPermission,
+        groups,
+        multiRoles: user.multi_roles,
+        approval_level: user.approval_level
+      });
 
       // Redirect based on role with improved logging
       if (isAdmin) {
-        console.log('Redirecting to admin:', { isAdmin, groups });
+        console.log('🔄 Redirecting to admin dashboard');
         router.push('/admin');
       } else if (hasApprovalPermission) {
-        console.log('Redirecting to supervisor:', {
-          hasApprovalPermission,
-          roleApprovalLevel,
-          groups,
-          position: user.position?.name || 'No position'
-        });
+        console.log('🔄 Redirecting to supervisor dashboard');
         router.push('/supervisor');
       } else {
-        console.log('Redirecting to pegawai:', {
-          hasApprovalPermission,
-          roleApprovalLevel,
-          groups,
-          position: user.position?.name || 'No position'
-        });
+        console.log('🔄 Redirecting to employee dashboard');
         router.push('/pegawai');
       }
     };

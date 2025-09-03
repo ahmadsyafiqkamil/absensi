@@ -6,17 +6,31 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 
+// NEW: Updated interfaces for unified role system
 interface Role {
   id: number;
   name: string;
+  display_name: string;
+  description?: string;
+  approval_level: number;
+  is_active: boolean;
+  sort_order: number;
 }
 
 interface EmployeeRole {
   id: number;
-  group: Role;
+  role: Role; // Changed from 'group' to 'role'
   is_primary: boolean;
   is_active: boolean;
+  assigned_at: string;
+  assigned_by: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+  };
 }
 
 interface RoleManagementProps {
@@ -53,39 +67,51 @@ export default function RoleManagement({
 
   const loadAvailableRoles = async () => {
     try {
-      const response = await fetch('/api/admin/groups');
-      if (response.ok) {
-        const data = await response.json();
-        const roles = Array.isArray(data) ? data : (data.results || []);
-        setAvailableRoles(roles);
+      setLoading(true);
+      setError("");
+
+      // NEW: Use new unified roles API
+      const response = await api.admin.getRoles({ is_active: true });
+
+      if (response.results && Array.isArray(response.results)) {
+        setAvailableRoles(response.results as unknown as Role[]);
+      } else if (Array.isArray(response)) {
+        setAvailableRoles(response as unknown as Role[]);
+      } else {
+        setError("Failed to load available roles");
       }
     } catch (error) {
       console.error('Failed to load roles:', error);
+      setError("Failed to load available roles");
+    } finally {
+      setLoading(false);
     }
   };
 
   const loadCurrentRoles = () => {
-    const activeRoles = currentRoles.filter(role => role.is_active);
-    setSelectedRoles(activeRoles.map(role => role.group.name));
+    const activeRoles = currentRoles.filter((role: EmployeeRole) => role.is_active);
+    // NEW: Changed from role.group.name to role.role.name
+    setSelectedRoles(activeRoles.map((role: EmployeeRole) => role.role.name));
 
-    const primaryRoleObj = activeRoles.find(role => role.is_primary);
+    const primaryRoleObj = activeRoles.find((role: EmployeeRole) => role.is_primary);
     if (primaryRoleObj) {
-      setPrimaryRole(primaryRoleObj.group.name);
+      // NEW: Changed from role.group.name to role.role.name
+      setPrimaryRole(primaryRoleObj.role.name);
     } else if (activeRoles.length > 0) {
       // If no primary role, set the first one as primary
-      setPrimaryRole(activeRoles[0].group.name);
+      setPrimaryRole(activeRoles[0].role.name);
     }
   };
 
   const handleRoleToggle = (roleName: string, checked: boolean) => {
     if (checked) {
-      setSelectedRoles(prev => [...prev, roleName]);
+      setSelectedRoles((prev: string[]) => [...prev, roleName]);
       // If this is the first role, make it primary
       if (selectedRoles.length === 0) {
         setPrimaryRole(roleName);
       }
     } else {
-      setSelectedRoles(prev => prev.filter(r => r !== roleName));
+      setSelectedRoles((prev: string[]) => prev.filter((r: string) => r !== roleName));
       // If primary role is removed, clear it
       if (primaryRole === roleName) {
         setPrimaryRole("");
@@ -107,46 +133,39 @@ export default function RoleManagement({
     setError("");
 
     try {
-      // Get current employee roles
-      const currentRoleResponse = await fetch(`/api/admin/employee-roles/?employee=${employeeId}`);
-      const currentRoleData = await currentRoleResponse.json();
-      const currentEmployeeRoles = Array.isArray(currentRoleData) ? currentRoleData : (currentRoleData.results || []);
+      // Get current employee roles using API client
+      const response = await api.admin.getEmployeeRoles({
+        employee_id: employeeId
+      });
+      const currentEmployeeRoles: EmployeeRole[] = (response.results || response) as unknown as EmployeeRole[];
 
       // Remove roles that are no longer selected
       for (const currentRole of currentEmployeeRoles) {
-        if (!selectedRoles.includes(currentRole.group.name)) {
-          await fetch(`/api/admin/employee-roles/${currentRole.id}`, {
-            method: 'DELETE'
-          });
+        // NEW: Changed from currentRole.group.name to currentRole.role.name
+        if (!selectedRoles.includes(currentRole.role.name)) {
+          await api.admin.removeEmployeeRole(currentRole.id);
         }
       }
 
       // Add new roles or update existing ones
       for (const roleName of selectedRoles) {
-        const existingRole = currentEmployeeRoles.find(r => r.group.name === roleName);
+        // NEW: Changed from r.group.name to r.role.name
+        const existingRole = currentEmployeeRoles.find((r: EmployeeRole) => r.role.name === roleName);
 
         if (existingRole) {
-          // Update existing role
+          // Update existing role - set as primary if needed
           const isPrimary = roleName === primaryRole;
           if (existingRole.is_primary !== isPrimary) {
-            await fetch(`/api/admin/employee-roles/${existingRole.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ is_primary: isPrimary })
-            });
+            await api.admin.updateEmployeeRole(existingRole.id, { is_primary: isPrimary });
           }
         } else {
           // Create new role
-          const roleObj = availableRoles.find(r => r.name === roleName);
+          const roleObj = availableRoles.find((r: Role) => r.name === roleName);
           if (roleObj) {
-            await fetch('/api/admin/employee-roles/', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                employee: employeeId,
-                group: roleObj.id,
-                is_primary: roleName === primaryRole
-              })
+            await api.admin.assignEmployeeRole({
+              employee: employeeId,
+              role: roleObj.id, // NEW: Changed from 'group' to 'role'
+              is_primary: roleName === primaryRole
             });
           }
         }
@@ -184,7 +203,7 @@ export default function RoleManagement({
             <div>
               <Label className="text-sm font-medium">Current Roles</Label>
               <div className="flex flex-wrap gap-2 mt-2">
-                {selectedRoles.map(roleName => (
+                {selectedRoles.map((roleName: string) => (
                   <Badge key={roleName} className={getRoleBadgeColor(roleName)}>
                     {roleName === primaryRole ? `🎯 ${roleName}` : roleName}
                   </Badge>
@@ -199,7 +218,7 @@ export default function RoleManagement({
             <div>
               <Label className="text-sm font-medium">Available Roles</Label>
               <div className="grid grid-cols-2 gap-3 mt-2 max-h-60 overflow-y-auto">
-                {availableRoles.map(role => (
+                {availableRoles.map((role: Role) => (
                   <div key={role.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`role-${role.id}`}
@@ -210,7 +229,7 @@ export default function RoleManagement({
                       htmlFor={`role-${role.id}`}
                       className="text-sm font-normal cursor-pointer"
                     >
-                      {role.name}
+                      {role.display_name || role.name}
                     </Label>
                   </div>
                 ))}
@@ -230,7 +249,7 @@ export default function RoleManagement({
                   className="w-full h-10 border rounded px-3 text-sm"
                 >
                   <option value="">Select Primary Role</option>
-                  {selectedRoles.map(roleName => (
+                  {selectedRoles.map((roleName: string) => (
                     <option key={roleName} value={roleName}>
                       {roleName}
                     </option>

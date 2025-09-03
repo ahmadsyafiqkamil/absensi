@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -484,9 +485,9 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       setError(null);
       
       // Fetch data individually to avoid Promise.all issues
-      const overtimeResponse = await authFetch('/api/overtime-requests/');
-      const divisionsResponse = await authFetch('/api/supervisor/divisions/');
-      const supervisorResponse = await authFetch('/api/supervisor/approvals/summary');
+      const overtimeResponse = await authFetch(`${BACKEND_BASE_URL}/api/overtime-requests/`);
+      const divisionsResponse = await authFetch(`${BACKEND_BASE_URL}/api/supervisor/divisions/`);
+      const supervisorResponse = await authFetch(`${BACKEND_BASE_URL}/api/supervisor/approvals/summary`);
 
       if (!overtimeResponse.ok) {
         throw new Error('Failed to fetch overtime requests');
@@ -547,7 +548,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
     setProcessing(true);
     try {
-      const endpoint = `/api/overtime-requests/${selectedRequest.id}/${actionType}/`;
+      const endpoint = `${BACKEND_BASE_URL}/api/overtime-requests/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
 
       const response = await authFetch(endpoint, {

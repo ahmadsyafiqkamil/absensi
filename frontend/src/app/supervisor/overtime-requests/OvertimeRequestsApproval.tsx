@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import OvertimeRequestsTable from './OvertimeRequestsTable';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 
 type OvertimeSummary = {
   total_requests: number;
@@ -39,7 +40,7 @@ export default function OvertimeRequestsApproval() {
       setLoading(true);
       setError(null);
       
-      const summaryResponse = await authFetch('/api/overtime-requests/summary/');
+      const summaryResponse = await authFetch(`${BACKEND_BASE_URL}/api/overtime-requests/summary/`);
 
       if (!summaryResponse.ok) {
         throw new Error('Failed to fetch overtime summary');

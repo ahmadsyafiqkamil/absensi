@@ -28,7 +28,7 @@ export function ApprovalLevelWarning({
   let approvalSource = 'Position-based'
   let highestRoleConfig = null
 
-  if (roleConfigurations.length > 0 && userGroups.length > 0) {
+  if (roleConfigurations && roleConfigurations.length > 0 && userGroups && userGroups.length > 0) {
     // Find the highest approval level role configuration that user has
     let maxLevel = 0
     for (const group of userGroups) {
@@ -139,7 +139,7 @@ export function RoleConfigurationsDisplay({ roleConfigurations = [], className }
   roleConfigurations?: any[],
   className?: string
 }) {
-  if (roleConfigurations.length === 0) {
+  if (!roleConfigurations || roleConfigurations.length === 0) {
     return null
   }
 

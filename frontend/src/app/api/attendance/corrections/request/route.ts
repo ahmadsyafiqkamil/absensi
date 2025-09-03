@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     
     // Build backend URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://backend:8000'}/api/attendance/corrections/request`;
+    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/attendance/corrections/request`;
 
     // Forward request to backend
     const response = await fetch(backendUrl, {

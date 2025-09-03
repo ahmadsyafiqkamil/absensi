@@ -673,27 +673,6 @@ class MultiRoleManager:
                 'description': 'Basic employee access',
                 'sort_order': 3
             },
-            {
-                'name': 'konsuler',
-                'display_name': 'Konsuler',
-                'approval_level': 0,
-                'description': 'Consular services and diplomatic functions',
-                'sort_order': 10
-            },
-            {
-                'name': 'finance',
-                'display_name': 'Pengelola Keuangan',
-                'approval_level': 1,
-                'description': 'Financial management and approval',
-                'sort_order': 20
-            },
-            {
-                'name': 'hr',
-                'display_name': 'Human Resources',
-                'approval_level': 1,
-                'description': 'Human resources management',
-                'sort_order': 21
-            }
         ]
 
         for role_data in default_roles:

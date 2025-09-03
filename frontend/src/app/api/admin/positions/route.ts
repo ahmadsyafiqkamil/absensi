@@ -10,7 +10,7 @@ export async function GET() {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/auth/me`, {
+    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -28,7 +28,7 @@ export async function GET() {
     }
 
     // Fetch positions from backend (namespaced admin route)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/positions/`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/admin/positions/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
     }
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
     // Verify admin
     const meResponse = await fetch(`${backendBase}/api/auth/me`, {

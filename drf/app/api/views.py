@@ -10,7 +10,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import serializers
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, EmployeeRole
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, EmployeeRole, Role
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -44,24 +44,16 @@ from .serializers import (
     MonthlySummaryRequestEmployeeSerializer,
     MonthlySummaryRequestCreateSerializer,
     GroupSerializer,
-    GroupCreateSerializer,
-    GroupUpdateSerializer,
-    GroupDetailSerializer,
-    GroupAdminSerializer,
-    GroupPermissionSerializer,
-    GroupPermissionCreateSerializer,
-    GroupPermissionUpdateSerializer,
-    GroupPermissionDetailSerializer,
+    
     GroupPermissionTemplateSerializer,
-    GroupPermissionTemplateCreateSerializer,
-    GroupPermissionTemplateUpdateSerializer,
     GroupWithPermissionsSerializer,
-    BulkPermissionUpdateSerializer,
-    # EmployeeRole serializers
-    EmployeeRoleSerializer,
-    EmployeeRoleCreateSerializer,
-    EmployeeRoleUpdateSerializer,
     EmployeeWithRolesSerializer,
+)
+from .role_serializers import (
+    RoleSerializer,
+    RoleCreateSerializer,
+    RoleUpdateSerializer,
+    RoleDetailSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -91,7 +83,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from django.db import IntegrityError
 from django.db import transaction
 from django.middleware.csrf import get_token
@@ -175,8 +167,8 @@ def me(request):
         role_names = MultiRoleManager.get_user_role_names(user)
 
         data["multi_roles"] = {
-            "active_roles": [role.name for role in active_roles],
-            "primary_role": primary_role.name if primary_role else None,
+            "active_roles": [role.role.name for role in active_roles],  # role is EmployeeRole, role.role is Role
+            "primary_role": primary_role.name if primary_role else None,  # primary_role is already Role object
             "role_names": role_names,
             "has_multiple_roles": len(active_roles) > 1
         }
@@ -203,6 +195,16 @@ def me(request):
             data["position"] = None
     except:
         data["position"] = None
+
+    # Add approval level calculation for frontend routing
+    try:
+        from .utils import ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        data["approval_level"] = approval_level
+        data["approval_source"] = "Role-based" if approval_level > 0 else "No approval role"
+    except Exception as e:
+        data["approval_level"] = 0
+        data["approval_source"] = "Error calculating approval level"
 
     return JsonResponse(data)
 
@@ -659,22 +661,29 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
         qs = AttendanceCorrection.objects.select_related('user', 'user__employee__division').all()
         # Scope by role:
         # - admin/superuser: see all
-        # - supervisor: only corrections of users within same division
+        # - supervisor (approval level >= 1): only corrections of users within same division
         # - employee: only own corrections
-        from .utils import MultiRoleManager
+        from .utils import MultiRoleManager, ApprovalChecker
+
         if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
-            pass
-        elif MultiRoleManager.has_role(user, 'supervisor'):
-            try:
-                supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
-            except Exception:
-                supervisor_division_id = None
-            if supervisor_division_id is None:
-                qs = qs.none()
-            else:
-                qs = qs.filter(user__employee__division_id=supervisor_division_id)
+            pass  # Admin can see all
         else:
-            qs = qs.filter(user=user)
+            # Check approval level to determine if user is a supervisor
+            approval_level = ApprovalChecker.get_user_approval_level(user)
+            if approval_level >= 1:
+                # Supervisor can only see corrections from their division
+                try:
+                    supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
+                except Exception:
+                    supervisor_division_id = None
+                if supervisor_division_id is None:
+                    qs = qs.none()
+                else:
+                    qs = qs.filter(user__employee__division_id=supervisor_division_id)
+            else:
+                # Regular employee can only see their own corrections
+                qs = qs.filter(user=user)
+
         status_ = self.request.query_params.get('status')
         if status_:
             qs = qs.filter(status=status_)
@@ -698,8 +707,9 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
 
         # Division-based authorization for supervisors: must match division of the correction's user
         user = request.user
-        from .utils import MultiRoleManager
-        if (not (user.is_superuser or MultiRoleManager.has_role(user, 'admin'))) and MultiRoleManager.has_role(user, 'supervisor'):
+        from .utils import MultiRoleManager, ApprovalChecker
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        if (not (user.is_superuser or MultiRoleManager.has_role(user, 'admin'))) and approval_level >= 1:
             try:
                 supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
                 employee_division_id = corr.user.employee.division_id  # type: ignore[attr-defined]
@@ -6171,11 +6181,11 @@ def attendance_corrections(request):
             # Parse month (YYYY-MM format)
             try:
                 year, month_num = month.split('-')
-                start_of_month = datetime.date(int(year), int(month_num), 1)
+                start_of_month = date(int(year), int(month_num), 1)
                 if int(month_num) == 12:
-                    end_of_month = datetime.date(int(year) + 1, 1, 1) - timedelta(days=1)
+                    end_of_month = date(int(year) + 1, 1, 1) - timedelta(days=1)
                 else:
-                    end_of_month = datetime.date(int(year), int(month_num) + 1, 1) - timedelta(days=1)
+                    end_of_month = date(int(year), int(month_num) + 1, 1) - timedelta(days=1)
                 
                 date_filter = Q(date_local__gte=start_of_month) & Q(date_local__lte=end_of_month)
             except (ValueError, TypeError):
@@ -7051,4 +7061,75 @@ class RoleConfigurationViewSet(viewsets.ModelViewSet):
         return Response({
             'message': f'Role configuration {"activated" if role_config.is_active else "deactivated"} successfully',
             'is_active': role_config.is_active
+        })
+
+
+# ============================================================================
+# NEW UNIFIED ROLE MANAGEMENT VIEWSET
+# ============================================================================
+
+class RoleViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen Role dengan unified role system
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        return Role.objects.all().order_by('sort_order', 'name')
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return RoleCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return RoleUpdateSerializer
+        elif self.action == 'retrieve':
+            return RoleDetailSerializer
+        return RoleSerializer
+
+    def perform_create(self, serializer):
+        # Auto-create Django Group when creating role
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name=serializer.validated_data['name'])
+        serializer.save()
+
+    @action(detail=False, methods=['get'])
+    def active_roles(self, request):
+        """Get all active roles"""
+        active_roles = self.get_queryset().filter(is_active=True)
+        page = self.paginate_queryset(active_roles)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(active_roles, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        """Toggle active status of role"""
+        try:
+            role = self.get_object()
+            role.is_active = not role.is_active
+            role.save()
+
+            return Response({
+                'message': f'Role {"activated" if role.is_active else "deactivated"} successfully',
+                'is_active': role.is_active
+            })
+
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'])
+    def initialize_defaults(self, request):
+        """Initialize default roles"""
+        from .utils import MultiRoleManager
+        MultiRoleManager.create_default_roles()
+
+        return Response({
+            'message': 'Default roles initialized successfully'
         })

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const endDate = searchParams.get('end_date')
   const employeeId = searchParams.get('employee_id')
   
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
   
   // Build query parameters for backend
   const params = new URLSearchParams()

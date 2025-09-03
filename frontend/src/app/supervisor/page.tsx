@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import TodayAttendance from '../pegawai/TodayAttendance';
 import AttendanceWidget from '../pegawai/AttendanceWidget';
-import { getApprovalCapabilities } from '@/lib/approval-utils';
+
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -30,10 +30,9 @@ export default async function SupervisorPage() {
     )
   }
 
-  // Check position-based approval level instead of group membership
-  const position = me?.position || null
-  const approvalCapabilities = getApprovalCapabilities(position)
-  const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level
+  // Check approval level using new unified role system
+  const approvalLevel = me?.approval_level || 0
+  const hasApprovalPermission = approvalLevel > 0
 
   if (!hasApprovalPermission) {
     return (
@@ -42,8 +41,12 @@ export default async function SupervisorPage() {
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">Supervisor privileges required (approval level 1 or higher).</p>
           <p className="text-sm text-gray-500 mt-1">
-            Current approval level: {position?.approval_level || 0}
+            Current approval level: {approvalLevel}
           </p>
+          <div className="mt-2 text-xs text-gray-400">
+            <p>Active roles: {me?.multi_roles?.active_roles?.join(', ') || 'None'}</p>
+            <p>Primary role: {me?.multi_roles?.primary_role || 'None'}</p>
+          </div>
           <Link href="/" className="text-blue-600 hover:underline mt-4 inline-block">
             Return to Home
           </Link>

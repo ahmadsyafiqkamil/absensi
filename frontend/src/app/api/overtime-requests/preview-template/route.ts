@@ -9,7 +9,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
     const url = `${backend}/api/overtime-requests/preview_template/`
     
     const resp = await fetch(url, {

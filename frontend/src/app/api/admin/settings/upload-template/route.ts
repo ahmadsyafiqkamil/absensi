@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ detail: 'Ukuran file maksimal 10MB' }, { status: 400 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
     const url = `${backend}/api/overtime-requests/upload_template/`
     
     // Convert File to FormData for backend

@@ -75,9 +75,9 @@ services:
     container_name: absensi_frontend_dev
     restart: unless-stopped
     environment:
-      # Use Docker internal networking for container-to-container communication
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+      # Use localhost for development (browser can't resolve 'backend' hostname)
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
       # Internal Docker networking (for container-to-container)
       - BACKEND_URL=http://backend:8000
       # HeroUI specific environment variables

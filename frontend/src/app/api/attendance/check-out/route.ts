@@ -5,7 +5,7 @@ export async function POST(req: Request) {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
   const body = await req.json().catch(() => ({}))
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
   const resp = await fetch(`${backend}/api/attendance/check-out`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },

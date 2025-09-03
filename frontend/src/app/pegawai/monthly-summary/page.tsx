@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Header from '@/components/Header'
 import { formatWorkHoursID } from '@/lib/utils'
+import { authFetch } from '@/lib/authFetch'
+import { BACKEND_BASE_URL } from '@/lib/backend'
 
 type MonthlySummary = {
   month: string
@@ -107,9 +109,9 @@ export default function MonthlySummaryPage() {
 
       // Fetch attendance and holidays in parallel
       const [attResp, holResp] = await Promise.all([
-        fetch(`/api/attendance/me?start=${startISO}&end=${endISO}`),
+        authFetch(`${BACKEND_BASE_URL}/api/attendance/?start=${startISO}&end=${endISO}`),
         // Try range first; if backend ignores range, fallback to date param
-        fetch(`/api/attendance/holidays?start=${startISO}&end=${endISO}`).then(async r => r.ok ? r : fetch(`/api/attendance/holidays?date=${startISO}`)),
+        authFetch(`${BACKEND_BASE_URL}/api/settings/holidays?start=${startISO}&end=${endISO}`).then(async r => r.ok ? r : authFetch(`${BACKEND_BASE_URL}/api/settings/holidays?date=${startISO}`)),
       ])
 
       const attJson = await attResp.json().catch(() => ({}))

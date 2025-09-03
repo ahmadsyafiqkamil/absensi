@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { authFetch } from '@/lib/authFetch';
+import { BACKEND_BASE_URL } from '@/lib/backend';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -19,7 +20,7 @@ export default function MonthlySummaryResultPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/generate_report/`);
+        const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/${requestId}/generate_report/`);
         
         if (!response.ok) {
           if (response.status === 401) {
@@ -100,7 +101,7 @@ export default function MonthlySummaryResultPage() {
           <Button 
             onClick={async () => {
               try {
-                const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/export_docx/`);
+                const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/${requestId}/export_docx/`);
                 
                 if (response.ok) {
                   // Get blob from response
@@ -130,7 +131,7 @@ export default function MonthlySummaryResultPage() {
           <Button 
             onClick={async () => {
               try {
-                const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/export_pdf/`);
+                const response = await authFetch(`${BACKEND_BASE_URL}/api/employee/monthly-summary-requests/${requestId}/export_pdf/`);
                 
                 if (response.ok) {
                   // Get blob from response
