@@ -16,17 +16,18 @@ class Division(models.Model):
 class Position(models.Model):
     name = models.CharField(max_length=100, unique=True)
     
-    # Approval permissions for overtime requests
+    # DEPRECATED: Approval permissions moved to Role model
+    # These fields are kept for backward compatibility but no longer used in approval logic
     can_approve_overtime_org_wide = models.BooleanField(
         default=False,
-        verbose_name="Can Approve Overtime Organization-Wide",
-        help_text="If true, supervisors with this position can approve overtime requests from all divisions (final approval)"
+        verbose_name="[DEPRECATED] Can Approve Overtime Organization-Wide",
+        help_text="[DEPRECATED] This field is no longer used. Approval permissions are now handled by Role model."
     )
     approval_level = models.PositiveSmallIntegerField(
         default=1,
         choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level')],
-        verbose_name="Approval Level",
-        help_text="0 = No approval permission, 1 = Division-level approval, 2 = Organization-level (final) approval"
+        verbose_name="[DEPRECATED] Approval Level",
+        help_text="[DEPRECATED] This field is no longer used. Approval permissions are now handled by Role model."
     )
 
     class Meta:
@@ -633,51 +634,44 @@ class MonthlySummaryRequest(models.Model):
         return f"Rekap {self.get_report_type_display()} - {self.request_period}"
     
     def can_be_approved_by(self, user):
-        """Check if user can approve this summary request"""
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        """Check if user can approve this summary request using role-based logic"""
+        from .utils import MultiRoleManager, ApprovalChecker
+
+        # Admin can approve anything
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             return True
-        
-        if user.groups.filter(name='supervisor').exists():
+
+        # Supervisor can approve based on role permissions
+        if MultiRoleManager.has_role(user, 'supervisor'):
             try:
-                supervisor_employee = user.employee
-                # Check approval level first
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.approval_level == 0):
-                    return False  # Level 0: No approval permission
-                
                 # Check if supervisor has org-wide approval permission
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.can_approve_overtime_org_wide):
+                if ApprovalChecker.can_approve_organization_overtime(user, self.employee):
                     return True
                 # Check if supervisor is in same division
-                if (supervisor_employee.division and 
-                    supervisor_employee.division == self.employee.division):
+                if (user.employee.division and
+                    user.employee.division == self.employee.division):
                     return True
             except:
                 pass
-        
+
         return False
     
     def can_be_final_approved_by(self, user):
-        """Check if user can give final approval"""
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        """Check if user can give final approval using role-based logic"""
+        from .utils import MultiRoleManager, ApprovalChecker
+
+        # Admin can give final approval
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             return True
-        
-        if user.groups.filter(name='supervisor').exists():
+
+        # Only supervisors with org-wide approval can give final approval
+        if MultiRoleManager.has_role(user, 'supervisor'):
             try:
-                supervisor_employee = user.employee
-                # Check approval level first
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.approval_level == 0):
-                    return False  # Level 0: No approval permission
-                
-                # Only org-wide supervisors can give final approval
-                if (supervisor_employee.position and 
-                    supervisor_employee.position.can_approve_overtime_org_wide):
-                    return True
+                # Check if supervisor has organization-level approval (level 2)
+                return ApprovalChecker.can_approve_organization_level(user)
             except:
                 pass
-        
+
         return False
     
     class Meta:

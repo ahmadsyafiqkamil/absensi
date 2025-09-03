@@ -195,8 +195,9 @@ def me(request):
             data["position"] = {
                 "id": employee.position.id,
                 "name": employee.position.name,
-                "approval_level": employee.position.approval_level,
-                "can_approve_overtime_org_wide": employee.position.can_approve_overtime_org_wide,
+                # DEPRECATED: Approval info moved to roles
+                "approval_level": "[DEPRECATED] Use role.approval_level",
+                "can_approve_overtime_org_wide": "[DEPRECATED] Use role.approval_level >= 2",
             }
         else:
             data["position"] = None
@@ -242,8 +243,9 @@ def employee_me(request):
             data["position"] = {
                 "id": employee.position.id,
                 "name": employee.position.name,
-                "approval_level": employee.position.approval_level,
-                "can_approve_overtime_org_wide": employee.position.can_approve_overtime_org_wide,
+                # DEPRECATED: Approval info moved to roles
+                "approval_level": "[DEPRECATED] Use role.approval_level",
+                "can_approve_overtime_org_wide": "[DEPRECATED] Use role.approval_level >= 2",
             }
         
         # Add division details if available
@@ -287,7 +289,8 @@ def logout(request):
 def users_list(request):
     # Only allow admin or superuser to view the list of users
     user = request.user
-    is_admin = bool(user.is_superuser or user.groups.filter(name='admin').exists())
+    from .utils import MultiRoleManager
+    is_admin = bool(user.is_superuser or MultiRoleManager.has_role(user, 'admin'))
     if not is_admin:
         return JsonResponse({"detail": "forbidden"}, status=403)
 
@@ -658,9 +661,10 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
         # - admin/superuser: see all
         # - supervisor: only corrections of users within same division
         # - employee: only own corrections
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             pass
-        elif user.groups.filter(name='supervisor').exists():
+        elif MultiRoleManager.has_role(user, 'supervisor'):
             try:
                 supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
             except Exception:
@@ -694,7 +698,8 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
 
         # Division-based authorization for supervisors: must match division of the correction's user
         user = request.user
-        if (not (user.is_superuser or user.groups.filter(name='admin').exists())) and user.groups.filter(name='supervisor').exists():
+        from .utils import MultiRoleManager
+        if (not (user.is_superuser or MultiRoleManager.has_role(user, 'admin'))) and MultiRoleManager.has_role(user, 'supervisor'):
             try:
                 supervisor_division_id = user.employee.division_id  # type: ignore[attr-defined]
                 employee_division_id = corr.user.employee.division_id  # type: ignore[attr-defined]
@@ -850,7 +855,8 @@ def supervisor_team_attendance(request):
     user = request.user
     
     # Check if user is admin or has supervisor capabilities (position approval level >= 1)
-    if user.is_superuser or user.groups.filter(name='admin').exists():
+    from .utils import MultiRoleManager
+    if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
         pass  # Admin can see all data
     else:
         from .utils import ApprovalChecker
@@ -972,7 +978,8 @@ def supervisor_attendance_detail(request, employee_id):
     user = request.user
     
     # Check if user is admin or has supervisor capabilities (position approval level >= 1)
-    if user.is_superuser or user.groups.filter(name='admin').exists():
+    from .utils import MultiRoleManager
+    if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
         pass  # Admin can see all data
     else:
         from .utils import ApprovalChecker
@@ -1710,7 +1717,8 @@ def supervisor_team_attendance_pdf(request):
     user = request.user
     
     # Check if user is supervisor or admin
-    if not (user.is_superuser or user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+    from .utils import MultiRoleManager
+    if not (user.is_superuser or MultiRoleManager.has_any_role(user, ['admin', 'supervisor'])):
         return HttpResponse("Forbidden", status=403)
     
     # Get supervisor's division
@@ -1987,7 +1995,8 @@ def supervisor_team_attendance_pdf_alt(request):
         return HttpResponse("Unauthorized", status=401)
     
     # Check if user is supervisor or admin
-    if not (request.user.is_superuser or request.user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+    from .utils import MultiRoleManager
+    if not (request.user.is_superuser or MultiRoleManager.has_any_role(request.user, ['admin', 'supervisor'])):
         return HttpResponse("Forbidden", status=403)
     
     user = request.user
@@ -2228,9 +2237,10 @@ def approve_overtime(request, attendance_id):
         user = request.user
         
         # Admin can approve any overtime
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             pass
-        # Use position-based approval checking
+        # Use role-based approval checking
         else:
             from .utils import ApprovalChecker
             
@@ -2287,7 +2297,8 @@ def overtime_report(request):
     pending_only = request.GET.get('pending_only', '').lower() == 'true'
     
     # Build base queryset
-    if user.is_superuser or user.groups.filter(name='admin').exists():
+    from .utils import MultiRoleManager
+    if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
         # Admin can see all overtime
         qs = Attendance.objects.filter(overtime_minutes__gt=0)
     else:
@@ -2548,7 +2559,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # Admin can see all overtime requests
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             return OvertimeRequest.objects.all().select_related(
                 'user', 'employee', 'approved_by', 'level1_approved_by', 'final_approved_by'
             )
@@ -2592,7 +2604,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             return OvertimeRequestCreateSerializer
         
         # Role-based serializers for other actions
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             return OvertimeRequestAdminSerializer
         
         # Use position-based approval checking for supervisor capabilities
@@ -2624,7 +2637,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Override create to ensure only employees can create requests"""
-        if not request.user.groups.filter(name='pegawai').exists():
+        from .utils import MultiRoleManager
+        if not MultiRoleManager.has_role(request.user, 'pegawai'):
             return Response(
                 {"detail": "Hanya pegawai yang dapat mengajukan lembur"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -2652,9 +2666,10 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         """Approve overtime request with 2-level approval system"""
         overtime_request = self.get_object()
         user = request.user
-        
+
         # Check if user is admin (can bypass 2-level approval)
-        is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
+        from .utils import MultiRoleManager
+        is_admin = user.is_superuser or MultiRoleManager.has_role(user, 'admin')
         
         # Use position-based approval checking
         from .utils import ApprovalChecker
@@ -2747,9 +2762,10 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         """Reject overtime request with 2-level rejection system"""
         overtime_request = self.get_object()
         user = request.user
-        
+
         # Check if user is admin (can bypass 2-level approval)
-        is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
+        from .utils import MultiRoleManager
+        is_admin = user.is_superuser or MultiRoleManager.has_role(user, 'admin')
         
         # Use position-based approval checking
         from .utils import ApprovalChecker
@@ -2885,7 +2901,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # Only employees can view their potential overtime
-        if not user.groups.filter(name='pegawai').exists():
+        from .utils import MultiRoleManager
+        if not MultiRoleManager.has_role(user, 'pegawai'):
             return Response(
                 {"detail": "Hanya pegawai yang dapat melihat potensi lembur"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -4217,9 +4234,9 @@ def supervisor_approvals_summary(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Check if supervisor has org-wide approval permission
-    is_org_wide_supervisor = (supervisor_employee.position and 
-                            supervisor_employee.position.can_approve_overtime_org_wide)
+    # Check if supervisor has org-wide approval permission (using role-based logic)
+    from .utils import ApprovalChecker
+    is_org_wide_supervisor = ApprovalChecker.can_approve_overtime_org_wide(user)
     
     # Build overtime requests queryset based on supervisor scope
     if is_org_wide_supervisor:
@@ -4255,7 +4272,7 @@ def supervisor_approvals_summary(request):
         'is_org_wide_supervisor': is_org_wide_supervisor,
         'supervisor_division': supervisor_employee.division.name if supervisor_employee.division else None,
         'can_approve_overtime_org_wide': is_org_wide_supervisor,
-        'is_admin': user.is_superuser or user.groups.filter(name='admin').exists(),
+        'is_admin': user.is_superuser or MultiRoleManager.has_role(user, 'admin'),
     })
 
 
@@ -4275,7 +4292,8 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # Admin can see all requests
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             return MonthlySummaryRequest.objects.all().select_related(
                 'user', 'employee', 'level1_approved_by', 'final_approved_by'
             )
@@ -4319,7 +4337,8 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
             return MonthlySummaryRequestCreateSerializer
         
         # Role-based serializers for other actions
-        if user.is_superuser or user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if user.is_superuser or MultiRoleManager.has_role(user, 'admin'):
             return MonthlySummaryRequestAdminSerializer
         
         # Use position-based approval checking for supervisor capabilities
@@ -4351,7 +4370,8 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Override create to ensure only employees can create requests"""
-        if not request.user.groups.filter(name='pegawai').exists():
+        from .utils import MultiRoleManager
+        if not MultiRoleManager.has_role(request.user, 'pegawai'):
             return Response(
                 {"detail": "Hanya pegawai yang dapat mengajukan rekap bulanan"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -4365,7 +4385,8 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         user = request.user
         
         # Check if user is admin (can bypass 2-level approval)
-        is_admin = user.is_superuser or user.groups.filter(name='admin').exists()
+        from .utils import MultiRoleManager
+        is_admin = user.is_superuser or MultiRoleManager.has_role(user, 'admin')
         
         # Use position-based approval checking
         from .utils import ApprovalChecker
@@ -6534,9 +6555,9 @@ class EmployeeRoleViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = EmployeeRole.objects.select_related(
-            'employee', 'group', 'assigned_by'
+            'employee', 'role', 'assigned_by'
         ).prefetch_related(
-            'employee__division', 'employee__position'
+            'employee__division', 'employee__position', 'role'
         )
 
         # Filter by employee if specified
@@ -6544,10 +6565,10 @@ class EmployeeRoleViewSet(viewsets.ModelViewSet):
         if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
 
-        # Filter by group if specified
-        group_id = self.request.query_params.get('group_id')
-        if group_id:
-            queryset = queryset.filter(group_id=group_id)
+        # Filter by role if specified
+        role_id = self.request.query_params.get('role_id')
+        if role_id:
+            queryset = queryset.filter(role_id=role_id)
 
         # Filter by active status
         is_active = self.request.query_params.get('is_active')
@@ -6650,7 +6671,8 @@ class EmployeeWithRolesViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         # Filter by division if user is supervisor (not admin)
-        if not self.request.user.groups.filter(name='admin').exists():
+        from .utils import MultiRoleManager
+        if not MultiRoleManager.has_role(self.request.user, 'admin'):
             supervisor_employee = Employee.objects.filter(user=self.request.user).first()
             if supervisor_employee and supervisor_employee.division:
                 queryset = queryset.filter(division=supervisor_employee.division)

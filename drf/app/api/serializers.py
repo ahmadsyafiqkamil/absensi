@@ -16,6 +16,9 @@ class DivisionSerializer(serializers.ModelSerializer):
 
 
 class PositionSerializer(serializers.ModelSerializer):
+    """
+    [DEPRECATED] Position serializer - approval fields moved to Role model
+    """
     class Meta:
         model = Position
         fields = ["id", "name", "can_approve_overtime_org_wide", "approval_level"]

@@ -160,12 +160,7 @@ class ApprovalChecker:
                 for role_assignment in employee.roles.filter(is_active=True):
                     max_approval_level = max(max_approval_level, role_assignment.role.approval_level)
 
-                if max_approval_level > 0:
-                    return max_approval_level
-
-                # Fallback to position-based approval (for backward compatibility)
-                if employee.position:
-                    return employee.position.approval_level
+                return max_approval_level
         except:
             pass
 

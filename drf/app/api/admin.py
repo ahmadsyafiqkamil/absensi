@@ -39,9 +39,10 @@ class PositionAdmin(admin.ModelAdmin):
         ('Basic Information', {
             'fields': ('name',)
         }),
-        ('Approval Permissions', {
+        ('[DEPRECATED] Approval Permissions', {
             'fields': ('approval_level', 'can_approve_overtime_org_wide'),
-            'description': 'Set approval level and organization-wide approval permission'
+            'description': '[DEPRECATED] These fields are no longer used. Approval permissions are now handled by Role model.',
+            'classes': ('collapse',)
         }),
     )
 
