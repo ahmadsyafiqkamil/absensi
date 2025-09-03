@@ -374,3 +374,4 @@ print(permissions)
 ---
 
 **Catatan**: Sistem ini dirancang untuk fleksibilitas maksimal sambil mempertahankan keamanan dan performa. Pastikan untuk test thoroughly sebelum deploy ke production.
+

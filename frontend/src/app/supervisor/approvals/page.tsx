@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Header from '@/components/Header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning'
+import { ApprovalLevelWarning, RoleConfigurationsDisplay } from '@/components/ui/approval-level-warning'
 import { useSupervisorApprovalLevel } from '@/lib/hooks'
 import { DataTable } from './data-table'
 import { columns, type AttendanceCorrection } from './columns'
@@ -22,7 +22,15 @@ interface WorkSettings {
 }
 
 export default function ApprovalsPage() {
-  const { approvalLevel, canApprove, isLevel0, loading: approvalLevelLoading } = useSupervisorApprovalLevel()
+  const {
+    approvalLevel,
+    canApprove,
+    isLevel0,
+    loading: approvalLevelLoading,
+    userGroups,
+    approvalSource,
+    roleConfigurations
+  } = useSupervisorApprovalLevel()
   const [me, setMe] = useState<{ username: string; groups: string[] } | null>(null)
   const [items, setItems] = useState<AttendanceCorrection[]>([])
   const [loading, setLoading] = useState(true)
@@ -174,7 +182,13 @@ export default function ApprovalsPage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Approval Level Warning */}
         {approvalLevel !== null && (
-          <ApprovalLevelWarning approvalLevel={approvalLevel} className="mb-6" />
+          <ApprovalLevelWarning
+            approvalLevel={approvalLevel}
+            userGroups={userGroups}
+            roleConfigurations={roleConfigurations}
+            showDetails={true}
+            className="mb-6"
+          />
         )}
 
         <Card>
@@ -199,7 +213,11 @@ export default function ApprovalsPage() {
             <div className="text-xs text-gray-500 mt-2">
               <div>Last updated: {new Date().toLocaleTimeString('id-ID')}</div>
               <div>Data count: {items.length} records</div>
-              <div>Approval level: {approvalLevel} (Level {approvalLevel === 0 ? '0 - No Approval' : approvalLevel === 1 ? '1 - Can Approve' : '2+ - Admin Level'})</div>
+              <div>Approval level: {approvalLevel} (Level {approvalLevel === 0 ? '0 - No Approval' : approvalLevel === 1 ? '1 - Division Level' : '2+ - Organization Level'})</div>
+              <div>Source: {approvalSource}</div>
+              {userGroups.length > 0 && (
+                <div>Roles: {userGroups.join(', ')}</div>
+              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -218,6 +236,14 @@ export default function ApprovalsPage() {
             />
           </CardContent>
         </Card>
+
+        {/* Role Configurations Display - Only show if we have configurations and in development/debug mode */}
+        {roleConfigurations.length > 0 && process.env.NODE_ENV === 'development' && (
+          <RoleConfigurationsDisplay
+            roleConfigurations={roleConfigurations}
+            className="mt-6"
+          />
+        )}
       </div>
     </div>
   )

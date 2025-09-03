@@ -903,3 +903,79 @@ class EmployeeRole(models.Model):
             self.is_primary = True
 
         super().save(*args, **kwargs)
+
+
+class RoleConfiguration(models.Model):
+    """
+    Model untuk konfigurasi role secara dinamis.
+    Menggantikan hardcoded roles dengan konfigurasi yang dapat diubah.
+    """
+    ROLE_TYPES = [
+        ('primary', 'Primary Role'),
+        ('additional', 'Additional Role'),
+        ('legacy', 'Legacy Role'),
+    ]
+    
+    name = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name="Role Name",
+        help_text="Nama role (e.g., admin, supervisor, pegawai)"
+    )
+    display_name = models.CharField(
+        max_length=100,
+        verbose_name="Display Name",
+        help_text="Nama yang ditampilkan di UI (e.g., Administrator, Supervisor)"
+    )
+    role_type = models.CharField(
+        max_length=20,
+        choices=ROLE_TYPES,
+        default='additional',
+        verbose_name="Role Type",
+        help_text="Tipe role: primary (wajib), additional (opsional), legacy (backward compatibility)"
+    )
+    approval_level = models.PositiveSmallIntegerField(
+        default=0,
+        choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level (KJRI)')],
+        verbose_name="Approval Level",
+        help_text="0 = Tidak ada akses approval, 1 = Approval se-divisi, 2 = Approval se-KJRI (organization-wide)"
+    )
+    group = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name="UI Group",
+        help_text="Grup untuk pengelompokan di UI (e.g., Primary, Diplomatic, Support)"
+    )
+    description = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Description",
+        help_text="Deskripsi role dan fungsinya"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Is Active",
+        help_text="Apakah role ini aktif dan dapat digunakan"
+    )
+    sort_order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Sort Order",
+        help_text="Urutan tampilan di UI"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Role Configuration'
+        verbose_name_plural = 'Role Configurations'
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return f"{self.display_name} ({self.name})"
+
+    def save(self, *args, **kwargs):
+        # Auto-create Django Group if it doesn't exist
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name=self.name)
+        super().save(*args, **kwargs)

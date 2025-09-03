@@ -55,6 +55,7 @@ admin_router.register(r'groups-with-permissions', views.AdminGroupWithPermission
 admin_router.register(r'employee-roles', views.EmployeeRoleViewSet, basename='admin-employee-role')
 admin_router.register(r'employees-with-roles', views.EmployeeWithRolesViewSet, basename='admin-employees-with-roles')
 admin_router.register(r'multi-role-management', views.MultiRoleManagementViewSet, basename='admin-multi-role-management')
+admin_router.register(r'role-configurations', views.RoleConfigurationViewSet, basename='admin-role-configuration')
 admin_router.register(r'group-permissions', views.GroupPermissionViewSet, basename='admin-group-permission')
 admin_router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='admin-permission-template')
 admin_router.register(r'permission-management', views.PermissionManagementViewSet, basename='admin-permission-management')

@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Call backend employee creation API (namespaced admin route)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees/`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees-with-roles/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

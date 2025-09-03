@@ -19,9 +19,9 @@ def ensure_default_groups(sender, **kwargs):
         except Group.DoesNotExist:
             pass
 
-    # Ensure default groups
-    for name in ["admin", "supervisor", "pegawai"]:
-        Group.objects.get_or_create(name=name)
+    # Initialize default role configurations (this will also create Django Groups)
+    from .utils import MultiRoleManager
+    MultiRoleManager.create_default_roles()
 
     # Ensure WorkSettings singleton exists with defaults
     WorkSettings.objects.get_or_create()

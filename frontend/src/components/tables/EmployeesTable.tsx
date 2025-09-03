@@ -10,13 +10,14 @@ import {
   ColumnFiltersState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Label } from "@/components/ui/label";
 import RoleManagement from "@/components/RoleManagement";
+import { RoleMultiSelect, type RoleOption } from "@/components/ui/role-multiselect";
 
 export type EmployeeRow = {
   id: number;
@@ -169,6 +170,27 @@ const columns: ColumnDef<EmployeeRow>[] = [
   },
 ];
 
+// Role options for multi-select
+const roleOptions: RoleOption[] = [
+  // Primary Roles
+  { value: "admin", label: "Administrator", group: "Primary", isPrimary: true },
+  { value: "supervisor", label: "Supervisor", group: "Primary", isPrimary: true },
+  { value: "pegawai", label: "Pegawai", group: "Primary", isPrimary: true },
+
+  // Diplomatic & Consular Roles
+  { value: "konsuler", label: "Konsuler", group: "Diplomatic" },
+  { value: "protokol", label: "Protokol", group: "Diplomatic" },
+  { value: "ekonomi", label: "Ekonomi", group: "Diplomatic" },
+  { value: "sosial_budaya", label: "Sosial Budaya", group: "Diplomatic" },
+
+  // Operational Support Roles
+  { value: "finance", label: "Pengelola Keuangan", group: "Support" },
+  { value: "hr", label: "Human Resources", group: "Support" },
+  { value: "manager", label: "Manager", group: "Support" },
+  { value: "it_support", label: "IT Support", group: "Support" },
+  { value: "security", label: "Security", group: "Support" },
+];
+
 export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
   const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -177,6 +199,19 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
   // Role management state
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [selectedEmployeeForRoles, setSelectedEmployeeForRoles] = useState<EmployeeRow | null>(null);
+
+  // Edit dialog role state
+  const [editSelectedRoles, setEditSelectedRoles] = useState<string[]>([]);
+  const [editPrimaryRole, setEditPrimaryRole] = useState<string>("");
+
+  // Debug: Track role state changes
+  useEffect(() => {
+    console.log('🔄 EDIT SELECTED ROLES CHANGED:', editSelectedRoles);
+  }, [editSelectedRoles]);
+
+  useEffect(() => {
+    console.log('🔄 EDIT PRIMARY ROLE CHANGED:', editPrimaryRole);
+  }, [editPrimaryRole]);
 
   const handleDelete = useCallback(async (id: number) => {
     if (!confirm('Delete this employee?')) return;
@@ -224,8 +259,10 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
   const [positions, setPositions] = useState<{ id: number; name: string }[]>([])
 
   const handleOpenEdit = useCallback(async (id: number) => {
+    console.log('📂 OPENING EDIT DIALOG FOR EMPLOYEE ID:', id)
     setEditingId(id)
     setErrorMsg("")
+
     // load lookups
     const [d, p] = await Promise.all([
       fetch('/api/admin/divisions').then(r => r.json()).catch(() => ({})),
@@ -233,13 +270,16 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     ])
     setDivisions(Array.isArray(d) ? d : (d?.results ?? []))
     setPositions(Array.isArray(p) ? p : (p?.results ?? []))
-    // load employee
+
+    // load employee data
     const resp = await fetch(`/api/admin/employees/${id}`)
     const data = await resp.json().catch(() => ({} as any))
     if (!resp.ok) {
       alert(data?.detail || 'Failed to load employee')
       return
     }
+
+    // Set employee form data
     setFormData({
       nip: data.nip || '',
       fullname: data.fullname || '',
@@ -250,6 +290,44 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
       tempat_lahir: data.tempat_lahir || '',
       tanggal_lahir: data.tanggal_lahir || '',
     })
+
+    // Load current roles for this employee
+    console.log('🎭 LOADING ROLES FOR EMPLOYEE:', id)
+    try {
+      const rolesResp = await fetch(`/api/admin/employee-roles/?employee=${id}`)
+      console.log('📡 ROLES API RESPONSE STATUS:', rolesResp.status)
+
+      const rolesData = await rolesResp.json()
+      console.log('📋 RAW ROLES DATA:', rolesData)
+
+      if (rolesResp.ok && rolesData.results) {
+        const activeRoles = rolesData.results.filter((role: any) => role.is_active)
+        const primaryRole = activeRoles.find((role: any) => role.is_primary)
+
+        console.log('✅ ACTIVE ROLES:', activeRoles)
+        console.log('⭐ PRIMARY ROLE FOUND:', primaryRole)
+
+        const primaryRoleName = primaryRole?.group_name || ''
+        const selectedRoleNames = activeRoles.map((role: any) => role.group_name)
+
+        console.log('🎯 SETTING PRIMARY ROLE TO:', primaryRoleName)
+        console.log('📝 SETTING SELECTED ROLES TO:', selectedRoleNames)
+
+        setEditPrimaryRole(primaryRoleName)
+        setEditSelectedRoles(selectedRoleNames)
+      } else {
+        console.log('⚠️ NO ROLES FOUND, SETTING DEFAULTS')
+        setEditPrimaryRole('')
+        setEditSelectedRoles([])
+      }
+    } catch (error) {
+      console.warn('❌ Failed to load roles for employee:', error)
+      console.error('❌ ROLES LOADING ERROR:', error)
+      setEditPrimaryRole('')
+      setEditSelectedRoles([])
+    }
+
+    console.log('📂 EDIT DIALOG SETUP COMPLETED')
     setEditOpen(true)
   }, [])
   function onChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
@@ -260,7 +338,18 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     if (!editingId) return
     setSaving(true)
     setErrorMsg("")
+
+    console.log('🚀 STARTING EMPLOYEE EDIT SAVE')
+    console.log('📋 Current Data:', {
+      editingId,
+      formData,
+      editSelectedRoles,
+      editPrimaryRole,
+      editSelectedRolesLength: editSelectedRoles.length
+    })
+
     try {
+      // First, update employee data
       const payload: any = {
         nip: formData.nip,
         fullname: formData.fullname || null,
@@ -271,21 +360,157 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
         tempat_lahir: formData.tempat_lahir || null,
         tanggal_lahir: formData.tanggal_lahir || null,
       }
+
+      console.log('📤 EMPLOYEE UPDATE PAYLOAD:', payload)
+
       const resp = await fetch(`/api/admin/employees/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+
+      console.log('📥 EMPLOYEE UPDATE RESPONSE:', {
+        status: resp.status,
+        ok: resp.ok,
+        statusText: resp.statusText
+      })
+
       const data = await resp.json().catch(() => ({} as any))
+      console.log('📄 EMPLOYEE UPDATE RESPONSE DATA:', data)
+
       if (!resp.ok) throw new Error(data?.detail || 'Failed to update employee')
+
+      console.log('✅ EMPLOYEE DATA UPDATED SUCCESSFULLY')
+
+      // Then, update roles if they have changed
+      if (editSelectedRoles.length > 0) {
+        console.log('🎭 STARTING ROLE UPDATES')
+        console.log('🎯 Selected Roles:', editSelectedRoles)
+        console.log('⭐ Primary Role:', editPrimaryRole)
+        // Get all groups first to map role names to IDs
+        const groupsResponse = await fetch('/api/admin/groups')
+        const groupsData = groupsResponse.ok ? await groupsResponse.json() : []
+        const groupMap = Array.isArray(groupsData) ? groupsData : (groupsData.results || [])
+
+        // Create a map of role name to group ID
+        const roleNameToId: { [key: string]: number } = {}
+        groupMap.forEach((group: any) => {
+          roleNameToId[group.name] = group.id
+        })
+
+        console.log('🔗 ROLE NAME TO ID MAPPING:', roleNameToId)
+
+        // Get current roles for this employee
+        const currentRolesResp = await fetch(`/api/admin/employee-roles/?employee=${editingId}`)
+        const currentRolesData = currentRolesResp.ok ? await currentRolesResp.json() : { results: [] }
+        const currentRoles = Array.isArray(currentRolesData) ? currentRolesData : (currentRolesData.results || [])
+
+        console.log('📋 CURRENT ROLES FROM DB:', currentRoles)
+        console.log('📊 CURRENT ROLES SUMMARY:', currentRoles.map(r => ({
+          id: r.id,
+          group_name: r.group_name,
+          is_primary: r.is_primary
+        })))
+
+        // Remove roles that are no longer selected
+        console.log('🗑️ CHECKING ROLES TO REMOVE:')
+        for (const currentRole of currentRoles) {
+          const shouldRemove = !editSelectedRoles.includes(currentRole.group_name)
+          console.log(`  ${currentRole.group_name}: ${shouldRemove ? 'REMOVE' : 'KEEP'}`)
+
+          if (shouldRemove) {
+            try {
+              console.log(`🗑️ REMOVING ROLE: ${currentRole.group_name} (ID: ${currentRole.id})`)
+              const deleteResp = await fetch(`/api/admin/employee-roles/${currentRole.id}`, {
+                method: 'DELETE'
+              })
+              console.log(`✅ DELETE RESPONSE: ${deleteResp.status}`)
+            } catch (error) {
+              console.warn(`❌ Failed to remove role ${currentRole.group_name}:`, error)
+            }
+          }
+        }
+
+        // Add new roles or update existing ones
+        console.log('➕ CHECKING ROLES TO ADD/UPDATE:')
+        for (const roleName of editSelectedRoles) {
+          try {
+            const groupId = roleNameToId[roleName]
+            const isPrimaryRole = roleName === editPrimaryRole
+
+            console.log(`🎭 PROCESSING ROLE: ${roleName}`)
+            console.log(`  - Group ID: ${groupId}`)
+            console.log(`  - Is Primary: ${isPrimaryRole}`)
+
+            if (!groupId) {
+              console.warn(`❌ Group ID not found for role: ${roleName}`)
+              continue
+            }
+
+            // Check if role already exists
+            const existingRole = currentRoles.find((role: any) => role.group_name === roleName)
+
+            if (existingRole) {
+              console.log(`📝 ROLE EXISTS: ${roleName} (ID: ${existingRole.id})`)
+              console.log(`  - Current Primary: ${existingRole.is_primary}`)
+              console.log(`  - New Primary: ${isPrimaryRole}`)
+
+              // Update existing role (especially primary status)
+              const needsPrimaryUpdate = existingRole.is_primary !== isPrimaryRole
+              console.log(`  - Needs Primary Update: ${needsPrimaryUpdate}`)
+
+              if (needsPrimaryUpdate) {
+                console.log(`🔄 UPDATING PRIMARY STATUS for ${roleName}`)
+                const updateResp = await fetch(`/api/admin/employee-roles/${existingRole.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ is_primary: isPrimaryRole })
+                })
+                console.log(`✅ UPDATE RESPONSE: ${updateResp.status}`)
+              } else {
+                console.log(`⏭️ NO UPDATE NEEDED for ${roleName}`)
+              }
+            } else {
+              console.log(`🆕 CREATING NEW ROLE: ${roleName}`)
+              const createResp = await fetch('/api/admin/employee-roles/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  employee: editingId,
+                  group: groupId,
+                  is_primary: isPrimaryRole,
+                })
+              })
+              console.log(`✅ CREATE RESPONSE: ${createResp.status}`)
+            }
+          } catch (error) {
+            console.warn(`❌ Error updating role ${roleName}:`, error)
+          }
+        }
+
+        console.log('🎉 ROLE UPDATES COMPLETED')
+      } else {
+        console.log('⚠️ NO ROLES SELECTED - SKIPPING ROLE UPDATES')
+      }
+
+      console.log('🎯 FINAL STATE BEFORE CLOSING:')
+      console.log('  - editSelectedRoles:', editSelectedRoles)
+      console.log('  - editPrimaryRole:', editPrimaryRole)
+
       setEditOpen(false)
+      console.log('🔄 REFRESHING PAGE...')
       router.refresh()
+      console.log('✅ EMPLOYEE EDIT COMPLETED SUCCESSFULLY')
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Unknown error')
+      console.error('❌ ERROR IN EMPLOYEE EDIT SAVE:', e)
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error'
+      console.error('❌ ERROR MESSAGE:', errorMessage)
+      setErrorMsg(errorMessage)
     } finally {
+      console.log('🏁 SAVE PROCESS FINISHED')
       setSaving(false)
     }
-  }, [editingId, formData, router])
+  }, [editingId, formData, editSelectedRoles, editPrimaryRole, router])
   const table = useReactTable({
     data,
     columns,
@@ -399,7 +624,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
       <Dialog.Root open={editOpen} onOpenChange={setEditOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-lg w-[560px] max-w-[95vw] p-4">
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-lg w-[700px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-6">
             <Dialog.Title className="text-lg font-semibold">Edit Employee</Dialog.Title>
             <Dialog.Description className="text-sm text-gray-500 mb-4">Update employee details</Dialog.Description>
             <div className="space-y-3">
@@ -447,6 +672,20 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
                   <Input id="tanggal_lahir" name="tanggal_lahir" type="date" value={formData.tanggal_lahir} onChange={onChange} />
                 </div>
               </div>
+
+              {/* Roles Section */}
+              <div className="space-y-4">
+                <h4 className="text-md font-medium text-gray-900 border-b pb-2">Roles & Permissions</h4>
+                <RoleMultiSelect
+                  options={roleOptions}
+                  selectedRoles={editSelectedRoles}
+                  primaryRole={editPrimaryRole}
+                  onRolesChange={setEditSelectedRoles}
+                  onPrimaryRoleChange={setEditPrimaryRole}
+                  placeholder="Select additional roles..."
+                />
+              </div>
+
               {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{errorMsg}</div>}
             </div>
             <div className="mt-4 flex justify-end gap-2">

@@ -314,7 +314,7 @@ def users_list(request):
                 'username': {'type': 'string'},
                 'password': {'type': 'string'},
                 'email': {'type': 'string'},
-                'group': {'type': 'string', 'enum': ['admin', 'supervisor', 'pegawai']},
+                'group': {'type': 'string', 'description': 'Role name from RoleConfiguration'},
             },
             'required': ['username', 'group'],
         }
@@ -333,8 +333,14 @@ def provision_user(request):
     group_name = (data.get('group') or '').strip()
     alias = {'hs': 'supervisor', 'ls': 'pegawai', 'localstaff': 'pegawai'}
     mapped = alias.get(group_name.lower(), group_name)
-    if not username or mapped not in {'admin', 'supervisor', 'pegawai'}:
-        return JsonResponse({'detail': 'username dan group (admin/supervisor/pegawai) wajib.'}, status=400)
+    
+    # Check if role exists in RoleConfiguration
+    from .models import RoleConfiguration
+    valid_roles = RoleConfiguration.objects.filter(is_active=True).values_list('name', flat=True)
+    if not username or mapped not in valid_roles:
+        return JsonResponse({
+            'detail': f'username dan group wajib. Valid roles: {", ".join(valid_roles)}'
+        }, status=400)
 
     User = get_user_model()
     user, created = User.objects.get_or_create(username=username, defaults={'email': email})
@@ -6918,3 +6924,109 @@ class MultiRoleManagementViewSet(viewsets.ViewSet):
                 })
 
         return Response({'results': results})
+
+
+class RoleConfigurationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen RoleConfiguration dengan role-based access control
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+    
+    def get_queryset(self):
+        return RoleConfiguration.objects.all()
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return RoleConfigurationCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return RoleConfigurationUpdateSerializer
+        elif self.action == 'retrieve':
+            return RoleConfigurationDetailSerializer
+        return RoleConfigurationSerializer
+
+    def perform_create(self, serializer):
+        # Auto-create Django Group when creating role configuration
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name=serializer.validated_data['name'])
+        serializer.save()
+
+    @action(detail=False, methods=['get'])
+    def primary_roles(self, request):
+        """Get all primary roles"""
+        primary_roles = RoleConfiguration.objects.filter(
+            role_type='primary',
+            is_active=True
+        ).order_by('sort_order')
+        
+        serializer = self.get_serializer(primary_roles, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def additional_roles(self, request):
+        """Get all additional roles"""
+        additional_roles = RoleConfiguration.objects.filter(
+            role_type='additional',
+            is_active=True
+        ).order_by('sort_order')
+        
+        serializer = self.get_serializer(additional_roles, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def by_group(self, request):
+        """Get roles grouped by UI group"""
+        group_name = request.query_params.get('group')
+        if group_name:
+            roles = RoleConfiguration.objects.filter(
+                group=group_name,
+                is_active=True
+            ).order_by('sort_order')
+        else:
+            roles = RoleConfiguration.objects.filter(
+                is_active=True
+            ).order_by('group', 'sort_order')
+        
+        # Group by group name
+        grouped_roles = {}
+        for role in roles:
+            group = role.group or 'Other'
+            if group not in grouped_roles:
+                grouped_roles[group] = []
+            grouped_roles[group].append(RoleConfigurationSerializer(role).data)
+        
+        return Response(grouped_roles)
+
+    @action(detail=False, methods=['post'])
+    def initialize_defaults(self, request):
+        """Initialize default role configurations"""
+        from .utils import MultiRoleManager
+        MultiRoleManager.create_default_roles()
+        
+        return Response({
+            'message': 'Default role configurations initialized successfully'
+        })
+
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        """Toggle active status of role configuration"""
+        role_config = self.get_object()
+        
+        # Check if role is being used
+        from django.contrib.auth.models import Group
+        try:
+            group = Group.objects.get(name=role_config.name)
+            if group.user_set.exists() and not role_config.is_active:
+                return Response({
+                    'error': 'Cannot deactivate role that is currently assigned to users'
+                }, status=400)
+        except Group.DoesNotExist:
+            pass
+        
+        role_config.is_active = not role_config.is_active
+        role_config.save()
+        
+        return Response({
+            'message': f'Role configuration {"activated" if role_config.is_active else "deactivated"} successfully',
+            'is_active': role_config.is_active
+        })

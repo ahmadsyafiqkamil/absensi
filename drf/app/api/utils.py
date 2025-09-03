@@ -150,26 +150,25 @@ class ApprovalChecker:
         try:
             employee = user.employee
             if employee:
-                # Define role approval mapping
-                ROLE_APPROVAL_MAPPING = {
-                    'admin': 2,      # Organization level
-                    'manager': 2,    # Organization level (Manager role)
-                    'supervisor': 1, # Division level
-                    'hr': 1,         # Division level (HR can approve leaves)
-                    'finance': 1,    # Division level (Finance can approve reimbursements)
+                # Get dynamic role approval mapping from RoleConfiguration
+                from .models import RoleConfiguration
+                role_configs = RoleConfiguration.objects.filter(is_active=True)
+                role_approval_mapping = {
+                    config.name.lower(): config.approval_level 
+                    for config in role_configs
                 }
 
                 # Check primary role first
                 primary_role = employee.employee_roles.filter(is_active=True, is_primary=True).first()
-                if primary_role and primary_role.group.name.lower() in ROLE_APPROVAL_MAPPING:
-                    return ROLE_APPROVAL_MAPPING[primary_role.group.name.lower()]
+                if primary_role and primary_role.group.name.lower() in role_approval_mapping:
+                    return role_approval_mapping[primary_role.group.name.lower()]
 
                 # Check all active roles for highest approval level
                 max_approval_level = 0
                 for employee_role in employee.employee_roles.filter(is_active=True):
                     role_name = employee_role.group.name.lower()
-                    if role_name in ROLE_APPROVAL_MAPPING:
-                        max_approval_level = max(max_approval_level, ROLE_APPROVAL_MAPPING[role_name])
+                    if role_name in role_approval_mapping:
+                        max_approval_level = max(max_approval_level, role_approval_mapping[role_name])
 
                 if max_approval_level > 0:
                     return max_approval_level
@@ -677,10 +676,71 @@ class MultiRoleManager:
     def create_default_roles():
         """Create default roles if they don't exist"""
         from django.contrib.auth.models import Group
+        from .models import RoleConfiguration
 
-        default_roles = ['admin', 'supervisor', 'pegawai']
-        for role_name in default_roles:
-            Group.objects.get_or_create(name=role_name)
+        # Create default role configurations
+        default_role_configs = [
+            {
+                'name': 'admin',
+                'display_name': 'Administrator',
+                'role_type': 'primary',
+                'approval_level': 2,
+                'group': 'Primary',
+                'description': 'Full system access and organization-level approval',
+                'sort_order': 1
+            },
+            {
+                'name': 'supervisor',
+                'display_name': 'Supervisor',
+                'role_type': 'primary',
+                'approval_level': 1,
+                'group': 'Primary',
+                'description': 'Division-level supervision and approval',
+                'sort_order': 2
+            },
+            {
+                'name': 'pegawai',
+                'display_name': 'Pegawai',
+                'role_type': 'primary',
+                'approval_level': 0,
+                'group': 'Primary',
+                'description': 'Basic employee access',
+                'sort_order': 3
+            },
+            {
+                'name': 'konsuler',
+                'display_name': 'Konsuler',
+                'role_type': 'additional',
+                'approval_level': 0,
+                'group': 'Diplomatic',
+                'description': 'Consular services and diplomatic functions',
+                'sort_order': 10
+            },
+            {
+                'name': 'finance',
+                'display_name': 'Pengelola Keuangan',
+                'role_type': 'additional',
+                'approval_level': 1,
+                'group': 'Support',
+                'description': 'Financial management and approval',
+                'sort_order': 20
+            },
+            {
+                'name': 'hr',
+                'display_name': 'Human Resources',
+                'role_type': 'additional',
+                'approval_level': 1,
+                'group': 'Support',
+                'description': 'Human resources management',
+                'sort_order': 21
+            }
+        ]
+
+        for config_data in default_role_configs:
+            RoleConfiguration.objects.get_or_create(
+                name=config_data['name'],
+                defaults=config_data
+            )
 
 
 # ============================================================================
