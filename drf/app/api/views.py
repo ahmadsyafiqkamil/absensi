@@ -10,7 +10,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import serializers
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, EmployeeRole, Role
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate, EmployeeRole, Role, RoleTemplate
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -45,15 +45,15 @@ from .serializers import (
     MonthlySummaryRequestCreateSerializer,
     GroupSerializer,
     
-    GroupPermissionTemplateSerializer,
-    GroupWithPermissionsSerializer,
-    EmployeeWithRolesSerializer,
 )
 from .role_serializers import (
     RoleSerializer,
     RoleCreateSerializer,
     RoleUpdateSerializer,
     RoleDetailSerializer,
+    RoleTemplateSerializer,
+    RoleTemplateCreateSerializer,
+    RoleTemplateUpdateSerializer,
 )
 from .pagination import DefaultPagination
 from .utils import evaluate_lateness_as_dict, haversine_meters
@@ -5925,27 +5925,27 @@ class GroupPermissionViewSet(viewsets.ModelViewSet):
         return GroupPermissionSerializer
 
 
-class GroupPermissionTemplateViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet untuk manajemen GroupPermissionTemplate
-    """
-    permission_classes = [IsAdmin]
-    pagination_class = DefaultPagination
-    serializer_class = GroupPermissionTemplateSerializer
-    
-    def get_queryset(self):
-        return GroupPermissionTemplate.objects.all().order_by('name')
-    
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return GroupPermissionTemplateCreateSerializer
-        elif self.action in ['update', 'partial_update']:
-            return GroupPermissionTemplateUpdateSerializer
-        return GroupPermissionTemplateSerializer
-    
-    @action(detail=True, methods=['post'])
-    def apply_to_group(self, request, pk=None):
-        """Apply template permissions to a specific group"""
+# class GroupPermissionTemplateViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet untuk manajemen GroupPermissionTemplate
+#     """
+#     permission_classes = [IsAdmin]
+#     pagination_class = DefaultPagination
+#     serializer_class = GroupPermissionTemplateSerializer
+#     
+#     def get_queryset(self):
+#         return GroupPermissionTemplate.objects.all().order_by('name')
+#     
+#     def get_serializer_class(self):
+#         if self.action == 'create':
+#             return GroupPermissionTemplateCreateSerializer
+#         elif self.action in ['update', 'partial_update']:
+#             return GroupPermissionTemplateUpdateSerializer
+#         return GroupPermissionTemplateSerializer
+#     
+#     @action(detail=True, methods=['post'])
+#     def apply_to_group(self, request, pk=None):
+#         """Apply template permissions to a specific group"""
         template = self.get_object()
         group_id = request.data.get('group_id')
         
@@ -5967,8 +5967,8 @@ class AdminGroupWithPermissionsViewSet(viewsets.ReadOnlyModelViewSet):
     Admin ViewSet untuk Group dengan permissions detail
     """
     permission_classes = [IsAdmin]
-    pagination_class = DefaultPagination
-    serializer_class = GroupWithPermissionsSerializer
+#     pagination_class = DefaultPagination
+#     serializer_class = GroupWithPermissionsSerializer
     
     def get_queryset(self):
         return Group.objects.prefetch_related('custom_permissions').all().order_by('name')
@@ -6671,14 +6671,14 @@ class EmployeeWithRolesViewSet(viewsets.ReadOnlyModelViewSet):
     ViewSet untuk mendapatkan employee dengan roles mereka
     """
     permission_classes = [IsAdminOrSupervisor]
-    serializer_class = EmployeeWithRolesSerializer
+    serializer_class = EmployeeSerializer
     pagination_class = DefaultPagination
 
     def get_queryset(self):
         queryset = Employee.objects.select_related(
             'user', 'division', 'position'
         ).prefetch_related(
-            'employee_roles__group'
+            'roles'
         )
 
         # Filter by division if user is supervisor (not admin)
@@ -7134,3 +7134,183 @@ class RoleViewSet(viewsets.ModelViewSet):
         return Response({
             'message': 'Default roles initialized successfully'
         })
+
+    # Phase 2: Hierarchy & Analytics Actions
+    @action(detail=False, methods=['get'])
+    def hierarchy(self, request):
+        """Get full role hierarchy tree"""
+        from .models import Role
+        from .utils import build_role_hierarchy
+
+        roles = Role.objects.filter(is_active=True).prefetch_related('child_roles')
+        hierarchy_data = build_role_hierarchy(list(roles))
+
+        # Convert to serializable format
+        def serialize_hierarchy(nodes):
+            return [
+                {
+                    'role': RoleSerializer(node.role).data,
+                    'children': serialize_hierarchy(node.children),
+                    'level': node.level,
+                    'permissions_count': node.permissions_count,
+                    'descendant_count': node.descendant_count
+                }
+                for node in nodes
+            ]
+
+        return Response(serialize_hierarchy(hierarchy_data))
+
+    @action(detail=True, methods=['get'])
+    def descendants(self, request, pk=None):
+        """Get all descendant roles of this role"""
+        from .models import Role
+        from .utils import get_descendants
+
+        try:
+            role = self.get_object()
+            descendants = get_descendants(role, Role.objects.filter(is_active=True))
+            serializer = RoleSerializer(descendants, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['get'])
+    def permissions_inherited(self, request, pk=None):
+        """Get inherited permissions for this role"""
+        from .utils import get_all_permissions
+
+        try:
+            role = self.get_object()
+            all_permissions = get_all_permissions(role, Role.objects.filter(is_active=True))
+            return Response({
+                'role': RoleSerializer(role).data,
+                'permissions': all_permissions,
+                'inherit_permissions': role.inherit_permissions,
+                'parent_chain': [
+                    RoleSerializer(parent).data
+                    for parent in role.get_parent_chain()
+                ]
+            })
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def analytics(self, request):
+        """Get role analytics data"""
+        from .utils import get_role_statistics
+        from .models import RoleTemplate
+
+        try:
+            analytics_type = request.query_params.get('type', 'usage')
+
+            if analytics_type == 'usage':
+                roles = Role.objects.filter(is_active=True)
+                stats = get_role_statistics(list(roles))
+
+                return Response({
+                    'total_roles': stats['total'],
+                    'active_roles': stats['active'],
+                    'system_roles': stats['system'],
+                    'roles_by_category': stats['by_category'],
+                    'hierarchy_depth': stats['maxDepth'],
+                    'average_permissions': stats['averagePermissions'],
+                })
+
+            elif analytics_type == 'templates':
+                templates = RoleTemplate.objects.filter(is_active=True)
+                total_usage = sum(t.usage_count for t in templates)
+
+                return Response({
+                    'total_templates': templates.count(),
+                    'system_templates': templates.filter(is_system_template=True).count(),
+                    'active_templates': templates.count(),
+                    'total_usage': total_usage,
+                    'most_used_template': {
+                        'name': templates.order_by('-usage_count').first().display_name if templates.exists() else None,
+                        'usage_count': templates.order_by('-usage_count').first().usage_count if templates.exists() else 0,
+                    } if templates.exists() else None,
+                })
+
+            else:
+                return Response(
+                    {'detail': f'Unknown analytics type: {analytics_type}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+# Phase 2: RoleTemplate ViewSet
+class RoleTemplateViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet untuk manajemen RoleTemplate
+    """
+    permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        return RoleTemplate.objects.all().order_by('category', 'name')
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return RoleTemplateCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return RoleTemplateUpdateSerializer
+        return RoleTemplateSerializer
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    @action(detail=True, methods=['post'])
+    def create_role(self, request, pk=None):
+        """Create a role from this template"""
+        try:
+            template = self.get_object()
+            data = request.data
+
+            # Validate required fields
+            if not data.get('role_name'):
+                return Response(
+                    {'detail': 'role_name is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create role from template
+            role = template.create_role_from_template(
+                role_name=data['role_name'],
+                display_name=data.get('display_name'),
+                description=data.get('description'),
+                parent_role_id=data.get('parent_role_id')
+            )
+
+            # Return created role
+            serializer = RoleSerializer(role)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get template categories with counts"""
+        from django.db.models import Count
+
+        categories = RoleTemplate.objects.values('category').annotate(
+            count=Count('id'),
+            active_count=Count('id', filter=models.Q(is_active=True))
+        ).order_by('category')
+
+        return Response(list(categories))

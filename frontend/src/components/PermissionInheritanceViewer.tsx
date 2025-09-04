@@ -27,6 +27,13 @@ export default function PermissionInheritanceViewer({
 }: PermissionInheritanceViewerProps) {
   const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [parentChain, setParentChain] = useState<any[]>([]);
+  const [permissionBreakdown, setPermissionBreakdown] = useState<{
+    own: number;
+    inherited: number;
+    total: number;
+    conflicts: number;
+  }>({ own: 0, inherited: 0, total: 0, conflicts: 0 });
 
   useEffect(() => {
     if (role.id) {
@@ -40,24 +47,45 @@ export default function PermissionInheritanceViewer({
       const response = await fetch(`/api/admin/roles/${role.id}/permissions/inherited/`);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch permissions');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch permissions');
       }
 
       const data = await response.json();
 
-      // Convert to PermissionItem format
+      // Set parent chain
+      setParentChain(data.parent_chain || []);
+
+      // Convert to PermissionItem format with inheritance info
       const permissionItems: PermissionItem[] = [];
-      Object.entries(data).forEach(([type, actions]) => {
+      const ownPermissions = role.permissions || {};
+
+      Object.entries(data.permissions || {}).forEach(([type, actions]) => {
         if (Array.isArray(actions)) {
+          const isInherited = !ownPermissions[type] || !arraysEqual(ownPermissions[type], actions);
           permissionItems.push({
             type,
             actions,
-            isInherited: false, // Will be updated based on inheritance logic
+            isInherited,
+            sourceRole: isInherited ? getPermissionSource(type, data.parent_chain) : undefined,
           });
         }
       });
 
       setAllPermissions(permissionItems);
+
+      // Calculate breakdown
+      const ownCount = Object.keys(ownPermissions).length;
+      const inheritedCount = permissionItems.filter(p => p.isInherited).length;
+      const totalCount = permissionItems.length;
+
+      setPermissionBreakdown({
+        own: ownCount,
+        inherited: inheritedCount,
+        total: totalCount,
+        conflicts: 0, // Will be calculated if needed
+      });
+
     } catch (error) {
       console.error('Error fetching inherited permissions:', error);
       // Fallback to role's own permissions
@@ -72,9 +100,24 @@ export default function PermissionInheritanceViewer({
         }
       });
       setAllPermissions(fallbackPermissions);
+      setPermissionBreakdown({ own: fallbackPermissions.length, inherited: 0, total: fallbackPermissions.length, conflicts: 0 });
     } finally {
       setLoading(false);
     }
+  };
+
+  const arraysEqual = (a: any[], b: any[]) => {
+    if (a.length !== b.length) return false;
+    return a.every((val, index) => val === b[index]);
+  };
+
+  const getPermissionSource = (permissionType: string, parentChain: any[]) => {
+    for (const parent of parentChain) {
+      if (parent.permissions && parent.permissions[permissionType]) {
+        return parent.display_name;
+      }
+    }
+    return 'Parent Role';
   };
 
   const getPermissionIcon = (type: string) => {

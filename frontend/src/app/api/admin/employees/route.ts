@@ -85,14 +85,14 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value;
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
     }
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendBase = 'http://backend:8000';
 
     // Verify admin
     const meResponse = await fetch(`${backendBase}/api/auth/me`, {
@@ -108,16 +108,61 @@ export async function GET() {
       return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Fetch employees from backend (namespaced admin route)
-    const response = await fetch(`${backendBase}/api/admin/employees/`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
+    // Parse query parameters for advanced search
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
+
+    const page = searchParams.get('page') || '1';
+    const pageSize = searchParams.get('page_size') || '20';
+    const search = searchParams.get('search') || '';
+    const division = searchParams.get('division');
+    const role = searchParams.get('role');
+    const sortBy = searchParams.get('sort_by') || 'name';
+    const sortOrder = searchParams.get('sort_order') || 'asc';
+
+    // Build backend query parameters
+    const backendParams = new URLSearchParams();
+    backendParams.set('page', page);
+    backendParams.set('page_size', pageSize);
+
+    if (search) backendParams.set('search', search);
+    if (division && division !== 'all') backendParams.set('division', division);
+    if (role && role !== 'all') backendParams.set('role', role);
+    if (sortBy) backendParams.set('ordering', `${sortOrder === 'desc' ? '-' : ''}${sortBy}`);
+
+    // Fetch employees from backend with parameters
+    const backendUrl = `${backendBase}/api/admin/employees-with-roles/?${backendParams.toString()}`;
+
+    console.log('Fetching employees from:', backendUrl); // Debug log
+
+    const response = await fetch(backendUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
       cache: 'no-store',
     });
-    const data = await response.json().catch(() => ([]));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Backend response error:', response.status, errorText);
+      return NextResponse.json(
+        { detail: `Backend error: ${response.status} - ${errorText}` },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    console.log('Backend response data:', data); // Debug log
+
     return NextResponse.json(data, { status: response.status });
+
   } catch (error) {
     console.error('Error fetching employees:', error);
-    return NextResponse.json({ detail: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { detail: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      { status: 500 }
+    );
   }
 }
 

@@ -19,7 +19,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
 from django.contrib.auth.models import User, Group
-from api.models import Employee, EmployeeRole
+from api.models import Employee, EmployeeRole, Role
 from api.utils import MultiRoleManager
 
 
@@ -39,26 +39,26 @@ def test_basic_multi_role():
         manager = MultiRoleManager()
         print("   ✓ MultiRoleManager exists")
 
-        # Check default groups
-        print("3. Checking default groups...")
-        admin_group = Group.objects.filter(name='admin').first()
-        supervisor_group = Group.objects.filter(name='supervisor').first()
-        pegawai_group = Group.objects.filter(name='pegawai').first()
+        # Check default roles
+        print("3. Checking default roles...")
+        admin_role = Role.objects.filter(name='admin').first()
+        supervisor_role = Role.objects.filter(name='supervisor').first()
+        pegawai_role = Role.objects.filter(name='pegawai').first()
 
-        if admin_group:
-            print(f"   ✓ Admin group exists: {admin_group.name}")
+        if admin_role:
+            print(f"   ✓ Admin role exists: {admin_role.display_name}")
         else:
-            print("   ❌ Admin group not found")
+            print("   ❌ Admin role not found")
 
-        if supervisor_group:
-            print(f"   ✓ Supervisor group exists: {supervisor_group.name}")
+        if supervisor_role:
+            print(f"   ✓ Supervisor role exists: {supervisor_role.display_name}")
         else:
-            print("   ❌ Supervisor group not found")
+            print("   ❌ Supervisor role not found")
 
-        if pegawai_group:
-            print(f"   ✓ Pegawai group exists: {pegawai_group.name}")
+        if pegawai_role:
+            print(f"   ✓ Pegawai role exists: {pegawai_role.display_name}")
         else:
-            print("   ❌ Pegawai group not found")
+            print("   ❌ Pegawai role not found")
 
         # Test utility functions
         print("4. Testing utility functions...")
@@ -72,32 +72,48 @@ def test_basic_multi_role():
             # Test role assignment functions
             print("5. Testing role assignment functions...")
             try:
-                # Test assign_role
-                if admin_group and supervisor_group:
-                    role_assigned = MultiRoleManager.assign_role(employee, admin_group)
-                    print(f"   ✓ Role assignment function works: {role_assigned}")
+                # Check if employee already has admin role
+                existing_admin_role = EmployeeRole.objects.filter(
+                    employee=employee,
+                    role=admin_role
+                ).first()
 
-                    # Check if role was actually assigned
-                    employee_role = EmployeeRole.objects.filter(
-                        employee=employee,
-                        group=admin_group
-                    ).first()
-                    if employee_role:
-                        print(f"   ✓ Role successfully assigned in database")
-                    else:
-                        print("   ❌ Role assignment failed")
-
+                if existing_admin_role:
+                    print("   ⚠️  Employee already has admin role, skipping assignment test")
                     # Test get_user_active_roles
                     active_roles = MultiRoleManager.get_user_active_roles(employee.user)
-                    print(f"   ✓ Active roles for user: {[r.name for r in active_roles]}")
+                    print(f"   ✓ Active roles for user: {[r.display_name if hasattr(r, 'display_name') else str(r) for r in active_roles]}")
 
                     # Test has_role
                     has_admin = MultiRoleManager.has_role(employee.user, 'admin')
                     print(f"   ✓ User has admin role: {has_admin}")
+                else:
+                    # Test assign_role
+                    if admin_role and supervisor_role:
+                        role_assigned = MultiRoleManager.assign_role(employee, admin_role)
+                        print(f"   ✓ Role assignment function works: {role_assigned}")  
 
-                    # Clean up test role
-                    MultiRoleManager.remove_role(employee, admin_group)
-                    print("   ✓ Test role removed")
+                        # Check if role was actually assigned
+                        employee_role = EmployeeRole.objects.filter(
+                            employee=employee,
+                            role=admin_role
+                        ).first()
+                        if employee_role:
+                            print(f"   ✓ Role successfully assigned in database")
+                        else:
+                            print("   ❌ Role assignment failed")
+
+                        # Test get_user_active_roles
+                        active_roles = MultiRoleManager.get_user_active_roles(employee.user)
+                        print(f"   ✓ Active roles for user: {[r.display_name if hasattr(r, 'display_name') else str(r) for r in active_roles]}")
+
+                        # Test has_role
+                        has_admin = MultiRoleManager.has_role(employee.user, 'admin')
+                        print(f"   ✓ User has admin role: {has_admin}")
+
+                        # Clean up test role
+                        MultiRoleManager.remove_role(employee, admin_role)
+                        print("   ✓ Test role removed")
 
             except Exception as e:
                 print(f"   ❌ Error testing role functions: {e}")

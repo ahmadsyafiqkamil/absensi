@@ -758,3 +758,223 @@ class MultiRoleAuthenticationBackend:
             return None
 
 
+# Phase 2: Role Management Utilities
+@dataclass
+class RoleHierarchyNode:
+    role: Any  # Role model instance
+    children: list['RoleHierarchyNode']
+    level: int
+    permissions_count: int
+    descendant_count: int
+
+
+def build_role_hierarchy(roles: list) -> list[RoleHierarchyNode]:
+    """
+    Build hierarchical tree structure from flat role list
+    """
+    if not roles:
+        return []
+
+    # Create role map for quick lookup
+    role_map = {role.id: role for role in roles}
+
+    # Find root roles (no parent)
+    root_nodes = []
+
+    for role in roles:
+        if not role.parent_role_id:
+            node = _build_hierarchy_node(role, role_map, set(), 0)
+            if node:
+                root_nodes.append(node)
+
+    return root_nodes
+
+
+def _build_hierarchy_node(role, role_map: dict, processed: set, level: int) -> RoleHierarchyNode | None:
+    """
+    Recursively build hierarchy node
+    """
+    if role.id in processed:
+        return None
+
+    processed.add(role.id)
+
+    node = RoleHierarchyNode(
+        role=role,
+        children=[],
+        level=level,
+        permissions_count=len(role.permissions) if hasattr(role, 'permissions') else 0,
+        descendant_count=0
+    )
+
+    # Find children
+    for child_role in role_map.values():
+        if child_role.parent_role_id == role.id and child_role.id not in processed:
+            child_node = _build_hierarchy_node(child_role, role_map, processed, level + 1)
+            if child_node:
+                node.children.append(child_node)
+                node.descendant_count += 1 + child_node.descendant_count
+
+    return node
+
+
+def get_all_permissions(role, all_roles: list) -> dict:
+    """
+    Get all permissions for a role including inherited ones
+    """
+    all_permissions = dict(role.permissions) if hasattr(role, 'permissions') else {}
+
+    if not getattr(role, 'inherit_permissions', True) or not role.parent_role_id:
+        return all_permissions
+
+    # Find parent role
+    parent_role = next((r for r in all_roles if r.id == role.parent_role_id), None)
+    if not parent_role:
+        return all_permissions
+
+    # Get parent's permissions recursively
+    parent_permissions = get_all_permissions(parent_role, all_roles)
+
+    # Merge permissions (child takes precedence)
+    for perm_type, actions in parent_permissions.items():
+        if perm_type not in all_permissions:
+            all_permissions[perm_type] = actions
+        else:
+            # Merge actions, remove duplicates
+            combined = set(all_permissions[perm_type]) | set(actions)
+            all_permissions[perm_type] = list(combined)
+
+    return all_permissions
+
+
+def has_permission_inherited(role, permission_type: str, permission_action: str, all_roles: list) -> bool:
+    """
+    Check if a role has a specific permission including inherited ones
+    """
+    all_permissions = get_all_permissions(role, all_roles)
+    return permission_action in all_permissions.get(permission_type, [])
+
+
+def get_parent_chain(role, all_roles: list) -> list:
+    """
+    Get the full parent chain of a role
+    """
+    chain = []
+    current = role
+
+    while getattr(current, 'parent_role_id', None):
+        parent = next((r for r in all_roles if r.id == current.parent_role_id), None)
+        if not parent:
+            break
+        chain.insert(0, parent)
+        current = parent
+
+        # Prevent infinite loops
+        if len(chain) > 10:
+            break
+
+    return chain
+
+
+def get_hierarchy_level(role, all_roles: list) -> int:
+    """
+    Get hierarchy level of a role (0 = root)
+    """
+    if not getattr(role, 'parent_role_id', None):
+        return 0
+
+    parent = next((r for r in all_roles if r.id == role.parent_role_id), None)
+    if not parent:
+        return 0
+
+    return get_hierarchy_level(parent, all_roles) + 1
+
+
+def can_be_parent_of(parent_role, child_role, all_roles: list) -> bool:
+    """
+    Check if a role can be assigned as parent of another role
+    """
+    if parent_role.id == child_role.id:
+        return False
+
+    # Check if child is in parent's ancestry
+    parent_chain = get_parent_chain(parent_role, all_roles)
+    return not any(r.id == child_role.id for r in parent_chain)
+
+
+def get_descendants(role, all_roles: list) -> list:
+    """
+    Get all descendant roles of a role
+    """
+    descendants = []
+
+    for r in all_roles:
+        if getattr(r, 'parent_role_id', None) == role.id:
+            descendants.append(r)
+            descendants.extend(get_descendants(r, all_roles))
+
+    return descendants
+
+
+def get_role_statistics(roles: list) -> dict:
+    """
+    Get comprehensive statistics about roles
+    """
+    if not roles:
+        return {
+            'total': 0, 'active': 0, 'inactive': 0, 'system': 0,
+            'by_category': {}, 'with_inheritance': 0, 'maxDepth': 0, 'averagePermissions': 0
+        }
+
+    stats = {
+        'total': len(roles),
+        'active': len([r for r in roles if getattr(r, 'is_active', True)]),
+        'inactive': len([r for r in roles if not getattr(r, 'is_active', True)]),
+        'system': len([r for r in roles if getattr(r, 'is_system_role', False)]),
+        'by_category': {},
+        'with_inheritance': len([r for r in roles if getattr(r, 'inherit_permissions', True)]),
+        'maxDepth': 0,
+        'averagePermissions': 0
+    }
+
+    # Category breakdown
+    for role in roles:
+        category = getattr(role, 'role_category', 'unknown')
+        stats['by_category'][category] = stats['by_category'].get(category, 0) + 1
+
+    # Max depth
+    for role in roles:
+        level = get_hierarchy_level(role, roles)
+        stats['maxDepth'] = max(stats['maxDepth'], level)
+
+    # Average permissions
+    total_permissions = sum(len(getattr(r, 'permissions', {})) for r in roles)
+    stats['averagePermissions'] = total_permissions / len(roles) if roles else 0
+
+    return stats
+
+
+def validate_hierarchy(roles: list) -> dict:
+    """
+    Validate role hierarchy for circular references and other issues
+    """
+    errors = []
+
+    for role in roles:
+        if getattr(role, 'parent_role_id', None):
+            parent = next((r for r in roles if r.id == role.parent_role_id), None)
+            if not parent:
+                errors.append(f'Role "{getattr(role, "name", role.id)}" has invalid parent reference')
+                continue
+
+            # Check for circular reference
+            chain = get_parent_chain(role, roles)
+            if any(r.id == role.id for r in chain):
+                errors.append(f'Circular reference detected in role "{getattr(role, "name", role.id)}" hierarchy')
+
+    return {
+        'valid': len(errors) == 0,
+        'errors': errors
+    }
+
+

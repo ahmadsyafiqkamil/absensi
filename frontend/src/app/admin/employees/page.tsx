@@ -1,8 +1,18 @@
-import { meFromServerCookies, BACKEND_BASE_URL } from '@/lib/backend';
-import Header from '@/components/Header';
-import { cookies } from 'next/headers';
-import Link from 'next/link';
+"use client";
+
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Users,
+  Search,
+  RefreshCw,
+  AlertCircle
+} from "lucide-react";
 import EmployeesTable from '@/components/tables/EmployeesTable';
+import DashboardLayout from '@/components/DashboardLayout';
 
 type EmployeeRow = {
   id: number;
@@ -38,109 +48,169 @@ type PaginatedEmployees = {
   results: EmployeeRow[]
 }
 
-async function getEmployees(page: number, pageSize: number): Promise<PaginatedEmployees> {
-  const token = (await cookies()).get('access_token')?.value
-  if (!token) return { count: 0, next: null, previous: null, results: [] }
-  const url = new URL(`${BACKEND_BASE_URL}/api/admin/employees-with-roles/`)
-  url.searchParams.set('page', String(page))
-  url.searchParams.set('page_size', String(pageSize))
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  })
-  if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-
-  const data = await res.json()
-
-  // Transform data to match frontend expectations
-  const transformedResults = data.results.map((employee: any) => ({
-    ...employee,
-    roles: {
-      active_roles: employee.roles || [],
-      primary_role: employee.primary_role || null,
-      role_names: employee.roles?.map((role: any) => role.group_name) || [],
-      has_multiple_roles: (employee.roles?.length || 0) > 1,
-      total_roles: employee.roles?.length || 0,
-      role_categories: employee.roles?.map((role: any) => role.group_name) || []
-    }
-  }))
-
-  return {
-    ...data,
-    results: transformedResults
-  }
+type EmployeeStats = {
+  total_employees: number;
+  active_employees: number;
+  inactive_employees: number;
+  employees_by_division: Record<string, number>;
+  employees_by_role: Record<string, number>;
+  recent_hires: number;
+  upcoming_birthdays: number;
 }
 
-export default async function AdminEmployeesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const meResp = await meFromServerCookies()
-  const { resp, data: me } = meResp
-  if (!resp.ok) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
-          <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
-          <a href="/" className="text-blue-600 hover:underline mt-4 inline-block">Return to Home</a>
-        </div>
-      </div>
-    )
-  }
+export default function AdminEmployeesPage() {
+  const [employees, setEmployees] = useState<EmployeeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [userInfo, setUserInfo] = useState<{username: string, role: string}>({username: '', role: ''});
 
-  const isAdmin = me.is_superuser || (me.groups || []).includes('admin')
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
-          <p className="text-gray-600 mt-2">Admin privileges required.</p>
-          <a href="/" className="text-blue-600 hover:underline mt-4 inline-block">Return to Home</a>
-        </div>
-      </div>
-    )
-  }
+  // Load employees data
+  const loadEmployees = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-  const sp = await searchParams
-  const page = Number(sp?.page ?? '1') || 1
-  const pageSize = Number(sp?.page_size ?? '20') || 20
-  const data = await getEmployees(page, pageSize)
-  const employees = data.results
-  const role = (me.groups || []).includes('admin') ? 'admin' : 'superuser'
-  const totalPages = Math.max(1, Math.ceil((data.count || 0) / pageSize))
-  const prevPage = Math.max(1, page - 1)
-  const nextPage = Math.min(totalPages, page + 1)
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        page_size: pageSize.toString(),
+        search: searchQuery,
+        sort_by: 'name',
+        sort_order: 'asc',
+      });
+
+      const response = await fetch(`/api/admin/employees?${params}`);
+      if (!response.ok) {
+        throw new Error('Failed to load employees');
+      }
+
+      const data = await response.json();
+      setEmployees(data.results);
+      setTotalCount(data.count);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load employees');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, pageSize, searchQuery]);
+
+  // Load user info
+  useEffect(() => {
+    const loadUserInfo = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUserInfo({
+            username: data.username || 'User',
+            role: data.groups?.[0] || data.role || 'User'
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load user info:', err);
+      }
+    };
+
+    loadUserInfo();
+  }, []);
+
+  // Initialize data
+  useEffect(() => {
+    loadEmployees();
+  }, [loadEmployees]);
+
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header 
-        title="Employees" 
-        subtitle="All registered employees"
-        username={me.username}
-        role={role}
-      />
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-gray-600">Total: {data.count} • Page {page} of {totalPages}</p>
-          <div className="flex gap-2">
-            <Link href={{ pathname: '/admin/employees', query: { page: prevPage, page_size: pageSize } }}>
-              <span className={`px-3 py-1 border rounded text-sm ${page <= 1 ? 'pointer-events-none opacity-50' : ''}`}>Prev</span>
-            </Link>
-            <Link href={{ pathname: '/admin/employees', query: { page: nextPage, page_size: pageSize } }}>
-              <span className={`px-3 py-1 border rounded text-sm ${page >= totalPages ? 'pointer-events-none opacity-50' : ''}`}>Next</span>
-            </Link>
+    <DashboardLayout
+      title="Daftar Pegawai"
+      subtitle="Kelola data pegawai organisasi"
+      username={userInfo.username}
+      role={userInfo.role}
+    >
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Search Bar */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Cari pegawai berdasarkan nama, NIP, atau email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button onClick={loadEmployees} variant="outline">
+                Cari
+              </Button>
+              <Button onClick={() => { setSearchQuery(''); loadEmployees(); }} variant="outline">
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Employee Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Daftar Pegawai ({totalCount})</CardTitle>
+            <CardDescription>
+              Menampilkan data pegawai yang aktif dalam organisasi
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+                <span>Memuat data pegawai...</span>
+              </div>
+            ) : error ? (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-700">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <EmployeesTable data={employees} />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <div className="text-sm text-gray-600">
+              Menampilkan {((currentPage - 1) * pageSize) + 1} sampai {Math.min(currentPage * pageSize, totalCount)} dari {totalCount} pegawai
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage <= 1}
+              >
+                Sebelumnya
+              </Button>
+              <span className="px-3 py-2 text-sm">
+                Halaman {currentPage} dari {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages}
+              >
+                Selanjutnya
+              </Button>
+            </div>
           </div>
-        </div>
-        <EmployeesTable data={employees} />
-        <div className="flex items-center justify-end mt-4 gap-2">
-          <Link href={{ pathname: '/admin/employees', query: { page: prevPage, page_size: pageSize } }}>
-            <span className={`px-3 py-1 border rounded text-sm ${page <= 1 ? 'pointer-events-none opacity-50' : ''}`}>Prev</span>
-          </Link>
-          <Link href={{ pathname: '/admin/employees', query: { page: nextPage, page_size: pageSize } }}>
-            <span className={`px-3 py-1 border rounded text-sm ${page >= totalPages ? 'pointer-events-none opacity-50' : ''}`}>Next</span>
-          </Link>
-        </div>
+        )}
       </div>
-    </div>
-  )
+    </DashboardLayout>
+  );
 }
-
-

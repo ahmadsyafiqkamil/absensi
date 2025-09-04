@@ -130,6 +130,8 @@ export default function RoleHierarchyTree({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
 
   useEffect(() => {
     fetchHierarchy();
@@ -158,6 +160,43 @@ export default function RoleHierarchyTree({
     } finally {
       setLoading(false);
     }
+  };
+
+  // Filter hierarchy based on search and category
+  const getFilteredHierarchy = () => {
+    let filtered = hierarchy;
+
+    // Apply category filter
+    if (filterCategory !== "all") {
+      const filterNodes = (nodes: RoleHierarchyNode[]): RoleHierarchyNode[] => {
+        return nodes
+          .filter(node => node.role.role_category === filterCategory)
+          .map(node => ({
+            ...node,
+            children: filterNodes(node.children)
+          }));
+      };
+      filtered = filterNodes(filtered);
+    }
+
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase();
+      const searchNodes = (nodes: RoleHierarchyNode[]): RoleHierarchyNode[] => {
+        return nodes
+          .filter(node =>
+            node.role.name.toLowerCase().includes(searchLower) ||
+            node.role.display_name.toLowerCase().includes(searchLower)
+          )
+          .map(node => ({
+            ...node,
+            children: searchNodes(node.children)
+          }));
+      };
+      filtered = searchNodes(filtered);
+    }
+
+    return filtered;
   };
 
   const toggleNode = (roleId: number) => {
@@ -218,6 +257,8 @@ export default function RoleHierarchyTree({
     );
   }
 
+  const filteredHierarchy = getFilteredHierarchy();
+
   return (
     <Card>
       <CardHeader>
@@ -235,16 +276,40 @@ export default function RoleHierarchyTree({
             </Button>
           </div>
         </div>
+
+        {/* Search and Filter Controls */}
+        <div className="flex gap-4 mt-4">
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="Search roles..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Categories</option>
+            <option value="admin">Admin</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="employee">Employee</option>
+            <option value="system">System</option>
+          </select>
+        </div>
       </CardHeader>
 
       <CardContent>
-        {hierarchy.length === 0 ? (
+        {filteredHierarchy.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            No roles found in hierarchy
+            {hierarchy.length === 0 ? 'No roles found in hierarchy' : 'No roles match the current filters'}
           </div>
         ) : (
           <div className="space-y-1">
-            {hierarchy.map((node) => (
+            {filteredHierarchy.map((node) => (
               <TreeNode
                 key={node.role.id}
                 node={node}

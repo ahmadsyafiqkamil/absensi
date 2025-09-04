@@ -36,7 +36,7 @@ router.register(r'positions', views.PositionViewSet, basename='position')
 router.register(r'employees', views.EmployeeViewSet, basename='employee')
 router.register(r'groups', views.GroupViewSet, basename='group')
 router.register(r'group-permissions', views.GroupPermissionViewSet, basename='group-permission')
-router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='permission-template')
+# router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='permission-template')
 router.register(r'permission-management', views.PermissionManagementViewSet, basename='permission-management')
 router.register(r'settings/work', views.WorkSettingsViewSet, basename='work-settings')
 router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
@@ -60,8 +60,9 @@ admin_router.register(r'role-configurations', views.RoleConfigurationViewSet, ba
 
 # NEW: Unified Role management endpoint
 admin_router.register(r'roles', views.RoleViewSet, basename='admin-role')
+admin_router.register(r'role-templates', views.RoleTemplateViewSet, basename='admin-role-template')
 admin_router.register(r'group-permissions', views.GroupPermissionViewSet, basename='admin-group-permission')
-admin_router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='admin-permission-template')
+# admin_router.register(r'permission-templates', views.GroupPermissionTemplateViewSet, basename='admin-permission-template')
 admin_router.register(r'permission-management', views.PermissionManagementViewSet, basename='admin-permission-management')
 admin_router.register(r'settings/work', views.AdminWorkSettingsViewSet, basename='admin-work-settings')
 admin_router.register(r'settings/holidays', views.AdminHolidayViewSet, basename='admin-holiday')
@@ -94,7 +95,7 @@ employee_router.register(r'monthly-summary-requests', views.MonthlySummaryReques
 urlpatterns += [
     path('', include(router.urls)),
     # Admin role-specific endpoints (namespaced)
-    path('admin/', include((admin_router.urls, 'admin'), namespace='admin')),
+    path('admin/', include((admin_router.urls, 'api'), namespace='api-admin')),
     # Supervisor role-specific endpoints (namespaced)
     path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='supervisor')),
     # Employee role-specific endpoints (namespaced)

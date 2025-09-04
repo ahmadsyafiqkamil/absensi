@@ -92,11 +92,18 @@ export default function RoleTemplateManager({
     try {
       const response = await fetch('/api/admin/role-templates/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Add CSRF token if needed
+          'X-CSRFToken': document.cookie.split('csrftoken=')[1]?.split(';')[0] || ''
+        },
         body: JSON.stringify(createForm),
       });
 
-      if (!response.ok) throw new Error('Failed to create template');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create template');
+      }
 
       setShowCreateDialog(false);
       setCreateForm({
@@ -111,8 +118,10 @@ export default function RoleTemplateManager({
         base_role_priority: 0,
       });
       fetchTemplates();
+      alert('Template created successfully!');
     } catch (error) {
       console.error('Error creating template:', error);
+      alert(`Error creating template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -146,7 +155,33 @@ export default function RoleTemplateManager({
       alert('Role created successfully from template!');
     } catch (error) {
       console.error('Error creating role:', error);
-      alert('Failed to create role from template');
+      alert(`Failed to create role: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: number, templateName: string) => {
+    if (!confirm(`Are you sure you want to delete the template "${templateName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/role-templates/${templateId}/`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRFToken': document.cookie.split('csrftoken=')[1]?.split(';')[0] || ''
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete template');
+      }
+
+      fetchTemplates();
+      alert('Template deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -359,6 +394,17 @@ export default function RoleTemplateManager({
                   >
                     Create Role
                   </Button>
+
+                  {!template.is_system_template && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDeleteTemplate(template.id, template.display_name)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
