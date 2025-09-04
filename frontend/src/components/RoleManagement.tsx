@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -32,6 +33,9 @@ export default function RoleManagement({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string>("");
+  const [roleNotes, setRoleNotes] = useState<string>("");
 
   // Load available roles
   useEffect(() => {

@@ -914,11 +914,29 @@ class Role(models.Model):
         verbose_name="Role Priority"
     )
 
+    # Parent role relationship for hierarchy (Phase 2)
+    parent_role = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='child_roles',
+        help_text="Parent role for permission inheritance",
+        verbose_name="Parent Role"
+    )
+
     # Permissions and inheritance
     permissions = models.JSONField(
         default=dict,
         help_text="Permissions in format: {'attendance': ['view', 'create'], 'overtime': ['view']}",
         verbose_name="Role Permissions"
+    )
+
+    # Inheritance settings
+    inherit_permissions = models.BooleanField(
+        default=True,
+        help_text="Whether to inherit permissions from parent role",
+        verbose_name="Inherit Permissions"
     )
 
     # Timestamps
@@ -997,6 +1015,227 @@ class Role(models.Model):
     def is_system_role_type(self):
         """Check if this is a system role"""
         return self.role_category == 'system'
+
+    # Phase 2: Parent-Child Relationship Methods
+    def get_all_permissions(self):
+        """Get all permissions including inherited ones"""
+        all_permissions = dict(self.permissions)
+
+        if self.inherit_permissions and self.parent_role:
+            parent_permissions = self.parent_role.get_all_permissions()
+
+            # Merge parent permissions (child permissions take precedence)
+            for perm_type, actions in parent_permissions.items():
+                if perm_type not in all_permissions:
+                    all_permissions[perm_type] = actions
+                else:
+                    # Merge actions, child actions override parent
+                    parent_actions = set(actions)
+                    child_actions = set(all_permissions[perm_type])
+                    all_permissions[perm_type] = list(parent_actions | child_actions)
+
+        return all_permissions
+
+    def has_permission_inherited(self, permission_type, permission_action):
+        """Check if this role has a specific permission (including inherited)"""
+        return permission_action in self.get_all_permissions().get(permission_type, [])
+
+    def get_permission_list_inherited(self, permission_type=None):
+        """Get list of permissions including inherited ones"""
+        all_permissions = self.get_all_permissions()
+        if permission_type:
+            return all_permissions.get(permission_type, [])
+        return all_permissions
+
+    def get_child_roles(self, include_self=False):
+        """Get all child roles recursively"""
+        children = []
+        if include_self:
+            children.append(self)
+
+        for child in self.child_roles.filter(is_active=True):
+            children.extend(child.get_child_roles(include_self=True))
+
+        return children
+
+    def get_parent_chain(self, include_self=False):
+        """Get the full parent chain up to root"""
+        chain = []
+        if include_self:
+            chain.append(self)
+
+        current = self
+        while current.parent_role and current != current.parent_role:
+            chain.append(current.parent_role)
+            current = current.parent_role
+
+        return chain
+
+    def get_hierarchy_level(self):
+        """Get the hierarchy level (0 for root, 1 for direct child, etc.)"""
+        if not self.parent_role:
+            return 0
+        return self.parent_role.get_hierarchy_level() + 1
+
+    def can_be_parent_of(self, child_role):
+        """Check if this role can be a parent of the given child role"""
+        # Prevent circular references
+        if child_role == self:
+            return False
+
+        # Check if child_role is in our parent chain
+        parent_chain = self.get_parent_chain(include_self=True)
+        return child_role not in parent_chain
+
+    def get_descendants_count(self):
+        """Get count of all descendant roles"""
+        return len(self.get_child_roles()) - 1  # Exclude self
+
+
+class RoleTemplate(models.Model):
+    """
+    Template for creating roles with predefined configurations.
+    Allows administrators to quickly create roles with standard settings.
+    """
+    TEMPLATE_CATEGORIES = [
+        ('system', 'System Templates'),
+        ('organizational', 'Organizational Templates'),
+        ('departmental', 'Departmental Templates'),
+        ('custom', 'Custom Templates'),
+    ]
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Unique template name",
+        verbose_name="Template Name"
+    )
+    display_name = models.CharField(
+        max_length=150,
+        help_text="Display name for the template",
+        verbose_name="Display Name"
+    )
+    description = models.TextField(
+        help_text="Description of what this template is for",
+        verbose_name="Description"
+    )
+
+    # Template category
+    category = models.CharField(
+        max_length=20,
+        choices=TEMPLATE_CATEGORIES,
+        default='custom',
+        help_text="Category of the template",
+        verbose_name="Category"
+    )
+
+    # Base configuration that will be applied to created roles
+    base_role_category = models.CharField(
+        max_length=20,
+        choices=[
+            ('admin', 'Administrator'),
+            ('supervisor', 'Supervisor'),
+            ('employee', 'Employee'),
+            ('system', 'System Role'),
+        ],
+        default='employee',
+        help_text="Default role category for roles created from this template",
+        verbose_name="Base Role Category"
+    )
+
+    base_approval_level = models.PositiveSmallIntegerField(
+        default=0,
+        choices=[
+            (0, 'No Approval'),
+            (1, 'Division Level'),
+            (2, 'Organization Level'),
+        ],
+        help_text="Default approval level",
+        verbose_name="Base Approval Level"
+    )
+
+    base_permissions = models.JSONField(
+        default=dict,
+        help_text="Default permissions in format: {'attendance': ['view', 'create'], 'overtime': ['view']}",
+        verbose_name="Base Permissions"
+    )
+
+    base_max_users = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Default maximum users (null = unlimited)",
+        verbose_name="Base Max Users"
+    )
+
+    base_role_priority = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Default role priority",
+        verbose_name="Base Role Priority"
+    )
+
+    # Template settings
+    is_system_template = models.BooleanField(
+        default=False,
+        help_text="System templates cannot be deleted",
+        verbose_name="System Template"
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this template is active and available for use",
+        verbose_name="Is Active"
+    )
+
+    # Usage tracking
+    usage_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of times this template has been used to create roles",
+        verbose_name="Usage Count"
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Role Template'
+        verbose_name_plural = 'Role Templates'
+        ordering = ['category', 'name']
+
+    def __str__(self):
+        return f"{self.display_name} ({self.category})"
+
+    def create_role_from_template(self, role_name, display_name=None, description=None, parent_role=None):
+        """Create a new role from this template"""
+        if not display_name:
+            display_name = role_name.replace('_', ' ').title()
+
+        role = Role.objects.create(
+            name=role_name,
+            display_name=display_name,
+            description=description or f"Created from template: {self.display_name}",
+            role_category=self.base_role_category,
+            approval_level=self.base_approval_level,
+            permissions=dict(self.base_permissions),  # Deep copy
+            max_users=self.base_max_users,
+            role_priority=self.base_role_priority,
+            parent_role=parent_role,
+        )
+
+        # Increment usage count
+        self.usage_count += 1
+        self.save(update_fields=['usage_count'])
+
+        return role
+
+    def get_template_stats(self):
+        """Get statistics about roles created from this template"""
+        roles_created = Role.objects.filter(description__contains=f"Created from template: {self.display_name}")
+        return {
+            'total_roles_created': roles_created.count(),
+            'active_roles': roles_created.filter(is_active=True).count(),
+            'inactive_roles': roles_created.filter(is_active=False).count(),
+        }
 
 
 class EmployeeRole(models.Model):

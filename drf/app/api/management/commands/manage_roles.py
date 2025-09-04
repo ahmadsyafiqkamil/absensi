@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth.models import Group
-from api.models import RoleConfiguration
+from api.models import Role, RoleTemplate  
 from api.utils import MultiRoleManager
 
 
@@ -62,9 +62,38 @@ class Command(BaseCommand):
             help='Set as primary role'
         )
 
+    def add_arguments(self, parser):
+        # Existing arguments...
+        parser.add_argument('--list-templates', action='store_true', help='List all role templates')
+        parser.add_argument('--create-from-template', type=str, help='Create role from template: --create-from-template=template_name --role-name=new_role_name')
+        parser.add_argument('--role-name', type=str, help='Role name for create-from-template')
+        parser.add_argument('--parent-role', type=str, help='Parent role name for hierarchy')
+        parser.add_argument('--show-hierarchy', action='store_true', help='Show role hierarchy')
+        parser.add_argument('--template-stats', action='store_true', help='Show template usage statistics')
+
+        super().add_arguments(parser)
+
     def handle(self, *args, **options):
-        action = options['action']
-        
+        # Phase 2: Handle new template and hierarchy features first
+        if options.get('list_templates'):
+            self.list_templates()
+            return
+        elif options.get('create_from_template'):
+            self.create_from_template(options)
+            return
+        elif options.get('show_hierarchy'):
+            self.show_hierarchy()
+            return
+        elif options.get('template_stats'):
+            self.show_template_stats()
+            return
+
+        # Handle legacy actions
+        action = options.get('action')
+        if not action:
+            self.stdout.write(self.style.ERROR('Action is required. Use --help for available options.'))
+            return
+
         if action == 'list':
             self.list_roles()
         elif action == 'create':
@@ -79,12 +108,131 @@ class Command(BaseCommand):
             self.assign_role(options)
         elif action == 'remove':
             self.remove_role(options)
+        else:
+            self.stdout.write(self.style.ERROR(f'Unknown action: {action}'))
+
+    # Phase 2: Template and Hierarchy Management Methods
+    def list_templates(self):
+        """List all role templates"""
+        from api.models import RoleTemplate
+
+        self.stdout.write(self.style.SUCCESS('=== Role Templates ==='))
+
+        templates = RoleTemplate.objects.all().order_by('category', 'name')
+        if not templates:
+            self.stdout.write(self.style.WARNING('No role templates found'))
+            return
+
+        for template in templates:
+            status = '✓' if template.is_active else '✗'
+            system = '[SYSTEM]' if template.is_system_template else ''
+            self.stdout.write(
+                f'{status} {template.name} ({template.category}) - {template.display_name} {system}'
+            )
+            self.stdout.write(f'    Usage: {template.usage_count} roles created')
+            self.stdout.write(f'    Permissions: {len(template.base_permissions)} types')
+            self.stdout.write('')
+
+    def create_from_template(self, options):
+        """Create a role from a template"""
+        from api.models import RoleTemplate, Role
+
+        template_name = options.get('create_from_template')
+        role_name = options.get('role_name')
+        parent_role_name = options.get('parent_role')
+
+        if not template_name or not role_name:
+            self.stdout.write(
+                self.style.ERROR('--create-from-template and --role-name are required')
+            )
+            return
+
+        try:
+            template = RoleTemplate.objects.get(name=template_name, is_active=True)
+        except RoleTemplate.DoesNotExist:
+            self.stdout.write(self.style.ERROR(f'Template "{template_name}" not found'))
+            return
+
+        # Check if role already exists
+        if Role.objects.filter(name=role_name).exists():
+            self.stdout.write(self.style.ERROR(f'Role "{role_name}" already exists'))
+            return
+
+        # Get parent role if specified
+        parent_role = None
+        if parent_role_name:
+            try:
+                parent_role = Role.objects.get(name=parent_role_name, is_active=True)
+            except Role.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f'Parent role "{parent_role_name}" not found'))
+                return
+
+        # Create role from template
+        try:
+            role = template.create_role_from_template(
+                role_name=role_name,
+                parent_role=parent_role
+            )
+            self.stdout.write(
+                self.style.SUCCESS(f'Role "{role.name}" created from template "{template.name}"')
+            )
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Error creating role: {e}'))
+
+    def show_hierarchy(self):
+        """Show role hierarchy"""
+        from api.models import Role
+
+        self.stdout.write(self.style.SUCCESS('=== Role Hierarchy ==='))
+
+        # Get root roles (no parent)
+        root_roles = Role.objects.filter(parent_role__isnull=True, is_active=True).order_by('role_priority')
+
+        if not root_roles:
+            self.stdout.write(self.style.WARNING('No root roles found'))
+            return
+
+        for root_role in root_roles:
+            self._print_role_tree(root_role, 0)
+
+    def _print_role_tree(self, role, level):
+        """Recursively print role tree"""
+        indent = '  ' * level
+        marker = '├── ' if level > 0 else ''
+        self.stdout.write(
+            f'{indent}{marker}{role.display_name} ({role.name}) - Priority: {role.role_priority}'
+        )
+
+        for child in role.child_roles.filter(is_active=True).order_by('-role_priority'):
+            self._print_role_tree(child, level + 1)
+
+    def show_template_stats(self):
+        """Show template usage statistics"""
+        from api.models import RoleTemplate
+
+        self.stdout.write(self.style.SUCCESS('=== Template Usage Statistics ==='))
+
+        templates = RoleTemplate.objects.all().order_by('-usage_count')
+        total_usage = sum(t.usage_count for t in templates)
+
+        if not templates:
+            self.stdout.write(self.style.WARNING('No templates found'))
+            return
+
+        self.stdout.write(f'Total roles created from templates: {total_usage}')
+        self.stdout.write('')
+
+        for template in templates:
+            percentage = (template.usage_count / total_usage * 100) if total_usage > 0 else 0
+            self.stdout.write(
+                f'{template.display_name}: {template.usage_count} roles ({percentage:.1f}%)'
+            )
 
     def list_roles(self):
         """List all role configurations"""
         self.stdout.write(self.style.SUCCESS('=== Role Configurations ==='))
         
-        roles = RoleConfiguration.objects.all().order_by('sort_order', 'name')
+        roles = Role.objects.all().order_by('sort_order', 'name')
         if not roles:
             self.stdout.write(self.style.WARNING('No role configurations found'))
             return
@@ -111,7 +259,7 @@ class Command(BaseCommand):
             raise CommandError('--name is required for create action')
         
         # Check if role already exists
-        if RoleConfiguration.objects.filter(name=name).exists():
+        if Role.objects.filter(name=name).exists():
             raise CommandError(f'Role "{name}" already exists')
         
         role_data = {
@@ -125,7 +273,7 @@ class Command(BaseCommand):
             'is_active': True
         }
         
-        role = RoleConfiguration.objects.create(**role_data)
+        role = Role.objects.create(**role_data)
         
         # Create corresponding Django Group
         Group.objects.get_or_create(name=name)
@@ -141,8 +289,8 @@ class Command(BaseCommand):
             raise CommandError('--name is required for update action')
         
         try:
-            role = RoleConfiguration.objects.get(name=name)
-        except RoleConfiguration.DoesNotExist:
+            role = Role.objects.get(name=name)
+        except Role.DoesNotExist:
             raise CommandError(f'Role "{name}" not found')
         
         # Update fields if provided
@@ -172,8 +320,8 @@ class Command(BaseCommand):
             raise CommandError('--name is required for delete action')
         
         try:
-            role = RoleConfiguration.objects.get(name=name)
-        except RoleConfiguration.DoesNotExist:
+            role = Role.objects.get(name=name)
+        except Role.DoesNotExist:
             raise CommandError(f'Role "{name}" not found')
         
         # Check if role is being used

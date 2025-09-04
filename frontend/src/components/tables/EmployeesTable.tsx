@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Label } from "@/components/ui/label";
 import RoleManagement from "@/components/RoleManagement";
+import RoleHierarchyDisplay from "@/components/RoleHierarchyDisplay";
 import { RoleMultiSelect, type RoleOption } from "@/components/ui/role-multiselect";
 import { Role, EmployeeRole } from "@/lib/types";
 
@@ -165,6 +166,45 @@ const columns: ColumnDef<EmployeeRow>[] = [
               </div>
             )}
           </div>
+        </div>
+      );
+    },
+  },
+  {
+    header: "Role Hierarchy",
+    accessorFn: (row) => {
+      const primaryRole = row.roles?.primary_role?.role;
+      return primaryRole?.parent_role?.display_name || "-";
+    },
+    id: "role_hierarchy",
+    cell: ({ row }) => {
+      const roles = row.original.roles?.active_roles?.map(er => er.role).filter(Boolean) || [];
+      if (roles.length === 0) {
+        return <span className="text-gray-500 text-sm">-</span>;
+      }
+
+      return <RoleHierarchyDisplay roles={roles} maxDepth={2} compact={true} />;
+    },
+  },
+  {
+    header: "Permissions",
+    accessorFn: (row) => {
+      const primaryRole = row.roles?.primary_role?.role;
+      if (!primaryRole) return 0;
+      return Object.keys(primaryRole.permissions || {}).length;
+    },
+    id: "permission_count",
+    cell: ({ getValue }) => {
+      const count = getValue<number>();
+      return (
+        <div className="text-center">
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+            count > 5 ? 'bg-green-100 text-green-800' :
+            count > 2 ? 'bg-yellow-100 text-yellow-800' :
+            'bg-gray-100 text-gray-700'
+          }`}>
+            🔑 {count}
+          </span>
         </div>
       );
     },
@@ -436,7 +476,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
         const currentRoles = Array.isArray(currentRolesData) ? currentRolesData : (currentRolesData.results || [])
 
         console.log('📋 CURRENT ROLES FROM DB:', currentRoles)
-        console.log('📊 CURRENT ROLES SUMMARY:', currentRoles.map(r => ({
+        console.log('📊 CURRENT ROLES SUMMARY:', currentRoles.map((r: any) => ({
           id: r.id,
           group_name: r.group_name,
           is_primary: r.is_primary
