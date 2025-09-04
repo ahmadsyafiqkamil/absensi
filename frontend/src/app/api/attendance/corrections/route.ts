@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     // Build backend URL with parameters
     // Use Docker internal networking for container-to-container communication
-    const backendUrl = new URL('/api/attendance/corrections', 'http://localhost:8000');
+    const backendUrl = new URL('/api/attendance/corrections', 'getBackendUrl()');
     
     if (month) {
       backendUrl.searchParams.append('month', month);

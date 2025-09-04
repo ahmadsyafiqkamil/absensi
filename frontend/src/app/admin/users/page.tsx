@@ -1,4 +1,5 @@
 import { meFromServerCookies } from '@/lib/backend';
+import { getBackendUrl } from '@/lib/api-utils'
 import Header from '@/components/Header';
 import { cookies } from 'next/headers';
 
@@ -13,7 +14,7 @@ type UserRow = {
 async function getUsers(): Promise<UserRow[]> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return []
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+  const backend = getBackendUrl()
   const res = await fetch(`${backend}/api/users`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',

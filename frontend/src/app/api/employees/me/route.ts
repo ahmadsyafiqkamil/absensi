@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Forward request to backend
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    const backendUrl = getBackendUrl()
     const response = await fetch(`${backendUrl}/api/employees/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,

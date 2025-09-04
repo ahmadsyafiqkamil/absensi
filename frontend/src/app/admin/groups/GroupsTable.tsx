@@ -8,10 +8,19 @@ import Link from 'next/link';
 interface Group {
   id: number;
   name: string;
-  permissions: Permission[];
-  user_set: number[];
+  permissions?: Permission[];
+  user_set?: number[];
+  permission_count?: number;
   created_at?: string;
   updated_at?: string;
+  // Additional role-related info if available
+  related_roles?: Array<{
+    id: number;
+    name: string;
+    display_name: string;
+    role_category: string;
+    is_active: boolean;
+  }>;
 }
 
 interface Permission {
@@ -177,7 +186,7 @@ export default function GroupsTable() {
           <thead>
             <tr className="border-b border-gray-200">
               <th className="text-left py-3 px-4 font-medium text-gray-900">Group Name</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-900">Permissions</th>
+              <th className="text-left py-3 px-4 font-medium text-gray-900">Permissions & Roles</th>
               <th className="text-left py-3 px-4 font-medium text-gray-900">Users</th>
               <th className="text-left py-3 px-4 font-medium text-gray-900">Created</th>
               <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
@@ -198,26 +207,42 @@ export default function GroupsTable() {
                     <div className="text-xs text-gray-500">ID: {group.id}</div>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="flex flex-wrap gap-1">
-                      {group.permissions && group.permissions.length > 0 ? (
-                        <>
-                          {group.permissions.slice(0, 2).map((permission, index) => (
-                            <span
-                              key={permission.id}
-                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                              title={`${permission.name} (${permission.codename})`}
-                            >
-                              {permission.name}
+                    <div className="space-y-2">
+                      {/* Permissions */}
+                      <div className="flex flex-wrap gap-1">
+                        {group.permissions && group.permissions.length > 0 ? (
+                          <>
+                            {group.permissions.slice(0, 3).map((permission, index) => (
+                              <span
+                                key={permission.id}
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border"
+                                title={`${permission.name} (${permission.codename})`}
+                              >
+                                {permission.name}
+                              </span>
+                            ))}
+                            {group.permissions.length > 3 && (
+                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border">
+                                +{group.permissions.length - 3} more
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-gray-400 text-xs">No permissions</span>
+                        )}
+                      </div>
+
+                      {/* Related Roles Info */}
+                      {group.related_roles && group.related_roles.length > 0 && (
+                        <div className="text-xs text-purple-600">
+                          <span className="font-medium">Roles:</span>{' '}
+                          {group.related_roles.map(role => (
+                            <span key={role.id} className="capitalize">
+                              {role.role_category}
+                              {group.related_roles!.indexOf(role) < group.related_roles!.length - 1 ? ', ' : ''}
                             </span>
                           ))}
-                          {group.permissions.length > 2 && (
-                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                              +{group.permissions.length - 2} more
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-gray-400 text-xs">No permissions</span>
+                        </div>
                       )}
                     </div>
                   </td>

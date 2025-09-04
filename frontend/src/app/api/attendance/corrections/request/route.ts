@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     
     // Build backend URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/attendance/corrections/request`;
+    const backendUrl = `${process.env.BACKEND_URL || 'getBackendUrl()'}/api/attendance/corrections/request`;
 
     // Forward request to backend
     const response = await fetch(backendUrl, {

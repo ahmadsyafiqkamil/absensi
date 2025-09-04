@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 async function ensureAdmin() {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return { ok: false, status: 401 as const }
-  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+  const backendBase = getBackendUrl()
   const meResponse = await fetch(`${backendBase}/api/auth/me`, {
     headers: { 'Authorization': `Bearer ${accessToken}` },
     cache: 'no-store',

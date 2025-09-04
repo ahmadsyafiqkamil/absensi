@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers';
 
 export async function GET() {
@@ -9,7 +10,7 @@ export async function GET() {
     }
 
     // Verify admin
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendBase = getBackendUrl();
     const meResponse = await fetch(`${backendBase}/api/auth/me`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',

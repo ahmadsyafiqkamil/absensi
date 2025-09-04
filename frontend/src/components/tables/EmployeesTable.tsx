@@ -18,6 +18,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Label } from "@/components/ui/label";
 import RoleManagement from "@/components/RoleManagement";
 import { RoleMultiSelect, type RoleOption } from "@/components/ui/role-multiselect";
+import { Role, EmployeeRole } from "@/lib/types";
 
 export type EmployeeRow = {
   id: number;
@@ -35,12 +36,14 @@ export type EmployeeRow = {
   tmt_kerja?: string | null;
   tempat_lahir?: string | null;
   tanggal_lahir?: string | null;
-  // Multi-role information
+  // Enhanced multi-role information
   roles?: {
-    active_roles: string[];
-    primary_role: string | null;
+    active_roles: EmployeeRole[];
+    primary_role: EmployeeRole | null;
     role_names: string[];
     has_multiple_roles: boolean;
+    total_roles: number;
+    role_categories: string[];
   };
 };
 
@@ -117,24 +120,51 @@ const columns: ColumnDef<EmployeeRow>[] = [
       if (!roles) return <span className="text-gray-500 text-sm">-</span>;
 
       return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2 max-w-xs">
+          {/* Primary Role */}
           {roles.primary_role && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              🎯 {roles.primary_role}
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border">
+                🎯 {roles.primary_role.role?.display_name || roles.primary_role.role?.name}
+              </span>
+              <span className="text-xs text-gray-500 capitalize">
+                {roles.primary_role.role?.role_category}
+              </span>
+            </div>
           )}
-          {roles.role_names.filter(role => role !== roles.primary_role).length > 0 && (
+
+          {/* Additional Roles */}
+          {roles.active_roles && roles.active_roles.filter(role => !role.is_primary).length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {roles.role_names.filter(role => role !== roles.primary_role).map(role => (
-                <span key={role} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                  {role}
+              {roles.active_roles.filter(role => !role.is_primary).map(employeeRole => (
+                <span
+                  key={employeeRole.id}
+                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border"
+                  title={`Priority: ${employeeRole.role?.role_priority || 0}`}
+                >
+                  {employeeRole.role?.display_name || employeeRole.role?.name}
                 </span>
               ))}
             </div>
           )}
-          {roles.has_multiple_roles && (
-            <span className="text-xs text-purple-600 font-medium">🔄 Multi-role</span>
-          )}
+
+          {/* Role Statistics */}
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            {roles.total_roles > 1 && (
+              <span className="text-purple-600 font-medium">
+                🔄 {roles.total_roles} roles
+              </span>
+            )}
+            {roles.role_categories && roles.role_categories.length > 0 && (
+              <div className="flex gap-1">
+                {roles.role_categories.map(category => (
+                  <span key={category} className="capitalize">
+                    {category}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       );
     },
@@ -701,14 +731,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
         <RoleManagement
           employeeId={selectedEmployeeForRoles.id}
           employeeName={selectedEmployeeForRoles.fullname || selectedEmployeeForRoles.user.username}
-          currentRoles={
-            selectedEmployeeForRoles.roles?.active_roles.map(roleName => ({
-              id: 0, // Will be populated in component
-              role: { id: 0, name: roleName },
-              is_primary: roleName === selectedEmployeeForRoles.roles?.primary_role,
-              is_active: true
-            })) || []
-          }
+          currentRoles={selectedEmployeeForRoles.roles?.active_roles || []}
           isOpen={roleDialogOpen}
           onClose={handleCloseRoles}
           onSave={handleRolesSaved}

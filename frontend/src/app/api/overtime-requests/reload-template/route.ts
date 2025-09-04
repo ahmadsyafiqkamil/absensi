@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    const backend = getBackendUrl()
     const url = `${backend}/api/overtime-requests/reload_template/`
 
     const response = await fetch(url, {

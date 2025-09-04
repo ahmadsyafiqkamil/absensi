@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react'
+import { getBackendUrl } from '@/lib/api-utils'
 import Header from '@/components/Header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ApprovalLevelWarning, RoleConfigurationsDisplay } from '@/components/ui/approval-level-warning'
@@ -67,7 +68,7 @@ export default function ApprovalsPage() {
     setLoading(true)
     setError(null)
     try {
-      const resp = await authFetch('http://localhost:8000/api/supervisor/attendance-corrections/?status=pending')
+      const resp = await authFetch('getBackendUrl()/api/supervisor/attendance-corrections/?status=pending')
       const data = await resp.json().catch(() => ({}))
       const list = Array.isArray(data) ? data : (data.results || [])
       setItems(list)
@@ -95,7 +96,7 @@ export default function ApprovalsPage() {
     setSubmittingId(id)
     setError(null)
     try {
-      const path = action === 'approve' ? `http://localhost:8000/api/attendance-corrections/${id}/approve` : `http://localhost:8000/api/attendance-corrections/${id}/reject`
+      const path = action === 'approve' ? `getBackendUrl()/api/attendance-corrections/${id}/approve` : `getBackendUrl()/api/attendance-corrections/${id}/reject`
       console.log('APPROVAL_ACTION', { id, action, path })
       
       const resp = await authFetch(path, {

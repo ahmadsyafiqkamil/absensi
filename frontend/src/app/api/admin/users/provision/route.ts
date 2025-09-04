@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/auth/me`, {
+    const meResponse = await fetch(`${getBackendUrl()}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Call backend provision API
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/users/provision`, {
+    const response = await fetch(`${getBackendUrl()}/api/users/provision`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

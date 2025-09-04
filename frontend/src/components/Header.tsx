@@ -3,8 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { authFetch } from '@/lib/authFetch';
+import { authFetch, extractErrorMessage } from '@/lib/authFetch';
 import { BACKEND_BASE_URL } from '@/lib/backend';
+import { getCSRFToken, clearCSRFToken } from '@/lib/csrf';
+import { handleApiError, logApiError, showErrorNotification } from '@/lib/error-handling';
 
 interface HeaderProps {
   title: string;
@@ -43,20 +45,66 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
 
   const handleLogout = async () => {
     try {
+      console.log('Attempting logout...');
+
+      // Ensure we have CSRF token before logout
+      const csrfToken = await getCSRFToken();
+      console.log('CSRF token for logout:', csrfToken ? csrfToken.substring(0, 10) + '...' : 'none');
+
       const response = await authFetch(`${BACKEND_BASE_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(csrfToken && { 'X-CSRFToken': csrfToken }),
         },
       });
 
+      console.log('Logout response status:', response.status);
+
       if (response.ok) {
+        console.log('Logout successful');
+
+        // Clear stored tokens
+        clearCSRFToken();
+
+        // Clear local storage/session storage if any
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+
         // Redirect to login page
+        router.push('/login');
+      } else {
+        // Handle logout failure with proper error handling
+        const errorMessage = await extractErrorMessage(response);
+        console.error('Logout failed with status:', response.status, errorMessage);
+
+        // Show error notification to user
+        showErrorNotification(new Error(`Logout gagal: ${errorMessage}`), 'Logout');
+
+        // Even if logout fails, clear local data and redirect
+        clearCSRFToken();
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
         router.push('/login');
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      // Use enhanced error handling
+      const { userMessage, shouldLogout } = handleApiError(error);
+      logApiError(error, 'Logout');
+
+      // Show error notification
+      showErrorNotification(error, 'Logout');
+
       // Force redirect even if logout fails
+      clearCSRFToken();
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
       router.push('/login');
     }
   };

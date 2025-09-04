@@ -7,31 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-
-// NEW: Updated interfaces for unified role system
-interface Role {
-  id: number;
-  name: string;
-  display_name: string;
-  description?: string;
-  approval_level: number;
-  is_active: boolean;
-  sort_order: number;
-}
-
-interface EmployeeRole {
-  id: number;
-  role: Role; // Changed from 'group' to 'role'
-  is_primary: boolean;
-  is_active: boolean;
-  assigned_at: string;
-  assigned_by: {
-    id: number;
-    username: string;
-    first_name: string;
-    last_name: string;
-  };
-}
+import { Role, EmployeeRole, RoleCategory } from "@/lib/types";
 
 interface RoleManagementProps {
   employeeId: number;
@@ -181,9 +157,35 @@ export default function RoleManagement({
     }
   };
 
-  const getRoleBadgeColor = (roleName: string) => {
-    if (roleName === primaryRole) return "bg-blue-100 text-blue-800";
-    return "bg-gray-100 text-gray-700";
+  const getRoleBadgeColor = (role: Role) => {
+    // Color based on role category and primary status
+    if (role.name === primaryRole) {
+      return "bg-blue-100 text-blue-800 border-blue-200";
+    }
+
+    switch (role.role_category) {
+      case 'admin':
+        return "bg-red-100 text-red-800 border-red-200";
+      case 'supervisor':
+        return "bg-orange-100 text-orange-800 border-orange-200";
+      case 'system':
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      default:
+        return "bg-gray-100 text-gray-700 border-gray-200";
+    }
+  };
+
+  const getRoleCategoryIcon = (category: RoleCategory) => {
+    switch (category) {
+      case 'admin':
+        return '👑';
+      case 'supervisor':
+        return '👨‍💼';
+      case 'system':
+        return '⚙️';
+      default:
+        return '👤';
+    }
   };
 
   return (
@@ -195,18 +197,30 @@ export default function RoleManagement({
             Manage Roles: {employeeName}
           </Dialog.Title>
           <Dialog.Description className="text-sm text-gray-600 mb-4">
-            Assign roles and set primary role for this employee
+            Assign multiple roles with different priorities and permissions. System roles cannot be removed.
+            Primary role takes precedence in approval workflows.
           </Dialog.Description>
 
           <div className="space-y-6">
             {/* Current Roles Display */}
             <div>
               <Label className="text-sm font-medium">Current Roles</Label>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {selectedRoles.map((roleName: string) => (
-                  <Badge key={roleName} className={getRoleBadgeColor(roleName)}>
-                    {roleName === primaryRole ? `🎯 ${roleName}` : roleName}
-                  </Badge>
+              <div className="space-y-2 mt-2">
+                {availableRoles.filter(role => selectedRoles.includes(role.name)).map((role: Role) => (
+                  <div key={role.id} className="flex items-center justify-between p-2 border rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Badge className={`${getRoleBadgeColor(role)} border`}>
+                        {role.name === primaryRole && '🎯 '}
+                        {getRoleCategoryIcon(role.role_category)} {role.display_name}
+                      </Badge>
+                      <span className="text-xs text-gray-500 capitalize">
+                        {role.role_category}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Priority: {role.role_priority} | Users: {role.user_count}/{role.max_users || '∞'}
+                    </div>
+                  </div>
                 ))}
                 {selectedRoles.length === 0 && (
                   <span className="text-gray-500 text-sm">No roles assigned</span>
@@ -217,20 +231,41 @@ export default function RoleManagement({
             {/* Role Selection */}
             <div>
               <Label className="text-sm font-medium">Available Roles</Label>
-              <div className="grid grid-cols-2 gap-3 mt-2 max-h-60 overflow-y-auto">
-                {availableRoles.map((role: Role) => (
-                  <div key={role.id} className="flex items-center space-x-2">
+              <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+                {availableRoles
+                  .sort((a, b) => b.role_priority - a.role_priority) // Sort by priority (desc)
+                  .map((role: Role) => (
+                  <div key={role.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
                     <Checkbox
                       id={`role-${role.id}`}
                       checked={selectedRoles.includes(role.name)}
                       onCheckedChange={(checked) => handleRoleToggle(role.name, checked as boolean)}
+                      className="mt-1"
                     />
-                    <Label
-                      htmlFor={`role-${role.id}`}
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      {role.display_name || role.name}
-                    </Label>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor={`role-${role.id}`}
+                          className="text-sm font-medium cursor-pointer"
+                        >
+                          {role.display_name || role.name}
+                        </Label>
+                        {role.is_system_role && (
+                          <Badge variant="secondary" className="text-xs">System</Badge>
+                        )}
+                      </div>
+                      {role.description && (
+                        <p className="text-xs text-gray-600 mt-1">{role.description}</p>
+                      )}
+                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                        <span>{getRoleCategoryIcon(role.role_category)} {role.role_category}</span>
+                        <span>Priority: {role.role_priority}</span>
+                        <span>Users: {role.user_count}/{role.max_users || '∞'}</span>
+                        {!role.can_assign_more_users && role.max_users && (
+                          <span className="text-red-600 font-medium">Full</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -241,7 +276,7 @@ export default function RoleManagement({
               <div>
                 <Label className="text-sm font-medium">Primary Role</Label>
                 <p className="text-xs text-gray-600 mb-2">
-                  Primary role determines main approval permissions
+                  Primary role determines main approval permissions and takes precedence in conflicts
                 </p>
                 <select
                   value={primaryRole}
@@ -249,11 +284,14 @@ export default function RoleManagement({
                   className="w-full h-10 border rounded px-3 text-sm"
                 >
                   <option value="">Select Primary Role</option>
-                  {selectedRoles.map((roleName: string) => (
-                    <option key={roleName} value={roleName}>
-                      {roleName}
-                    </option>
-                  ))}
+                  {availableRoles
+                    .filter(role => selectedRoles.includes(role.name))
+                    .sort((a, b) => b.role_priority - a.role_priority)
+                    .map((role: Role) => (
+                      <option key={role.name} value={role.name}>
+                        {getRoleCategoryIcon(role.role_category)} {role.display_name} (Priority: {role.role_priority})
+                      </option>
+                    ))}
                 </select>
               </div>
             )}

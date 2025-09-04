@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function GET() {
@@ -9,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    const backend = getBackendUrl()
     const url = `${backend}/api/employee/divisions/`
     
     const resp = await fetch(url, {

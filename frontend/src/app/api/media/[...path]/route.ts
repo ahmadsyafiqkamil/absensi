@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ path: string[] }> }) {
 	try {
@@ -13,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ path: s
 		const encoded = parts.map(encodeURIComponent).join('/')
 		const safePath = `media/${encoded}`
 
-		const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+		const backendBase = getBackendUrl()
 		const url = `${backendBase}/${safePath}`
 
 		const resp = await fetch(url, { cache: 'no-store' })

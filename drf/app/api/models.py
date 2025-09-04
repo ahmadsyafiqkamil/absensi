@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from datetime import time
 
 
@@ -862,6 +863,18 @@ class Role(models.Model):
         help_text="Description of role responsibilities",
         verbose_name="Description"
     )
+    role_category = models.CharField(
+        max_length=20,
+        choices=[
+            ('admin', 'Administrator'),
+            ('supervisor', 'Supervisor'),
+            ('employee', 'Employee'),
+            ('system', 'System Role'),
+        ],
+        default='employee',
+        help_text='Category of the role for better organization',
+        verbose_name='Role Category'
+    )
 
     # Approval and permission fields
     approval_level = models.PositiveSmallIntegerField(
@@ -883,6 +896,31 @@ class Role(models.Model):
         verbose_name="Sort Order"
     )
 
+    # Advanced role management fields
+    is_system_role = models.BooleanField(
+        default=False,
+        help_text="System roles cannot be deleted",
+        verbose_name="System Role"
+    )
+    max_users = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Maximum number of users that can be assigned this role (0 = unlimited)",
+        verbose_name="Max Users"
+    )
+    role_priority = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Priority level for approval hierarchy (higher = more authority)",
+        verbose_name="Role Priority"
+    )
+
+    # Permissions and inheritance
+    permissions = models.JSONField(
+        default=dict,
+        help_text="Permissions in format: {'attendance': ['view', 'create'], 'overtime': ['view']}",
+        verbose_name="Role Permissions"
+    )
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -894,6 +932,71 @@ class Role(models.Model):
 
     def __str__(self):
         return f"{self.display_name} ({self.name})"
+
+    def has_permission(self, permission_type, permission_action):
+        """Check if this role has a specific permission"""
+        role_permissions = self.permissions.get(permission_type, [])
+        return permission_action in role_permissions
+
+    def get_permission_list(self, permission_type=None):
+        """Get list of permissions for this role"""
+        if permission_type:
+            return self.permissions.get(permission_type, [])
+        return self.permissions
+
+    def can_assign_to_user(self, user):
+        """Check if this role can be assigned to a user (considering max_users limit)"""
+        if not self.max_users:
+            return True
+
+        current_count = self.employee_assignments.filter(is_active=True).count()
+        return current_count < self.max_users
+
+    def get_active_user_count(self):
+        """Get count of active users with this role"""
+        return self.employee_assignments.filter(is_active=True).count()
+
+    @classmethod
+    def get_roles_by_priority(cls, min_priority=0):
+        """Get roles filtered by minimum priority"""
+        return cls.objects.filter(
+            is_active=True,
+            role_priority__gte=min_priority
+        ).order_by('-role_priority', 'sort_order')
+
+    @classmethod
+    def get_system_roles(cls):
+        """Get all system roles"""
+        return cls.objects.filter(is_system_role=True, is_active=True)
+
+    @classmethod
+    def get_roles_by_category(cls, category):
+        """Get roles filtered by category"""
+        return cls.objects.filter(
+            role_category=category,
+            is_active=True
+        ).order_by('sort_order', 'name')
+
+    @property
+    def category_display(self):
+        """Get display name for role category"""
+        return dict(self._meta.get_field('role_category').choices)[self.role_category]
+
+    def is_admin_role(self):
+        """Check if this is an admin role"""
+        return self.role_category == 'admin'
+
+    def is_supervisor_role(self):
+        """Check if this is a supervisor role"""
+        return self.role_category == 'supervisor'
+
+    def is_employee_role(self):
+        """Check if this is an employee role"""
+        return self.role_category == 'employee'
+
+    def is_system_role_type(self):
+        """Check if this is a system role"""
+        return self.role_category == 'system'
 
 
 class EmployeeRole(models.Model):
@@ -934,6 +1037,32 @@ class EmployeeRole(models.Model):
         verbose_name='Assigned By'
     )
     assigned_at = models.DateTimeField(auto_now_add=True)
+
+    # Audit and expiry fields
+    notes = models.TextField(
+        blank=True,
+        help_text='Additional notes about this role assignment',
+        verbose_name='Notes'
+    )
+    expires_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When this role assignment expires (optional)',
+        verbose_name='Expires At'
+    )
+    deactivated_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Deactivated At'
+    )
+    deactivated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='deactivated_role_assignments',
+        verbose_name='Deactivated By'
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -962,6 +1091,47 @@ class EmployeeRole(models.Model):
             self.is_primary = True
 
         super().save(*args, **kwargs)
+
+    def deactivate(self, deactivated_by=None, notes=None):
+        """Deactivate this role assignment with audit trail"""
+        self.is_active = False
+        self.deactivated_at = timezone.now()
+        self.deactivated_by = deactivated_by
+        if notes:
+            if self.notes:
+                self.notes += f"\n\nDeactivated: {notes}"
+            else:
+                self.notes = f"Deactivated: {notes}"
+        self.save()
+
+    def extend_expiry(self, new_expiry_date, updated_by=None):
+        """Extend the expiry date of this role assignment"""
+        self.expires_at = new_expiry_date
+        if updated_by and self.notes:
+            self.notes += f"\n\nExpiry extended by {updated_by.username} on {timezone.now()}"
+        self.save()
+
+    @property
+    def is_expired(self):
+        """Check if this role assignment has expired"""
+        if not self.expires_at:
+            return False
+        return timezone.now() > self.expires_at
+
+    @property
+    def days_until_expiry(self):
+        """Get days until expiry (negative if already expired)"""
+        if not self.expires_at:
+            return None
+        delta = self.expires_at - timezone.now()
+        return delta.days
+
+    def should_warn_expiry(self, warning_days=30):
+        """Check if this assignment should show expiry warning"""
+        if not self.expires_at:
+            return False
+        days_left = self.days_until_expiry
+        return days_left is not None and 0 <= days_left <= warning_days
 
     @property
     def approval_level(self):

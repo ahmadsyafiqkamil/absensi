@@ -1,4 +1,5 @@
 import { meFromServerCookies } from '@/lib/backend';
+import { getBackendUrl } from '@/lib/api-utils'
 import Header from '@/components/Header';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
@@ -20,7 +21,7 @@ type PaginatedPositions = {
 
 async function getPositions(page: number, pageSize: number): Promise<PaginatedPositions> {
   const token = (await cookies()).get('access_token')?.value
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+  const backend = getBackendUrl()
   const url = new URL(`${backend}/api/admin/positions/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))

@@ -87,7 +87,7 @@ from datetime import datetime, timedelta, date
 from django.db import IntegrityError
 from django.db import transaction
 from django.middleware.csrf import get_token
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db.models import Q
 
@@ -269,6 +269,7 @@ def employee_me(request):
 )
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Allow both authenticated and unauthenticated users
+@csrf_exempt  # Allow logout without CSRF token for better UX
 def logout(request):
     """
     Logout endpoint for JWT authentication.

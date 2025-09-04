@@ -1,4 +1,4 @@
-import { meFromServerCookies } from '@/lib/backend';
+import { meFromServerCookies, BACKEND_BASE_URL } from '@/lib/backend';
 import Header from '@/components/Header';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
@@ -22,10 +22,12 @@ type EmployeeRow = {
   tanggal_lahir?: string | null;
   // Multi-role information
   roles?: {
-    active_roles: string[];
-    primary_role: string | null;
+    active_roles: any[];
+    primary_role: any | null;
     role_names: string[];
     has_multiple_roles: boolean;
+    total_roles: number;
+    role_categories: string[];
   };
 }
 
@@ -39,8 +41,7 @@ type PaginatedEmployees = {
 async function getEmployees(page: number, pageSize: number): Promise<PaginatedEmployees> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
-  const url = new URL(`${backend}/api/admin/employees-with-roles/`)
+  const url = new URL(`${BACKEND_BASE_URL}/api/admin/employees-with-roles/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
   const res = await fetch(url.toString(), {
@@ -55,10 +56,12 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
   const transformedResults = data.results.map((employee: any) => ({
     ...employee,
     roles: {
-      active_roles: employee.roles.map((role: any) => role.group_name),
-      primary_role: employee.primary_role?.group_name || null,
-      role_names: employee.roles.map((role: any) => role.group_name),
-      has_multiple_roles: employee.roles.length > 1
+      active_roles: employee.roles || [],
+      primary_role: employee.primary_role || null,
+      role_names: employee.roles?.map((role: any) => role.group_name) || [],
+      has_multiple_roles: (employee.roles?.length || 0) > 1,
+      total_roles: employee.roles?.length || 0,
+      role_categories: employee.roles?.map((role: any) => role.group_name) || []
     }
   }))
 
