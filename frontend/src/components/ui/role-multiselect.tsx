@@ -6,6 +6,13 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -75,24 +82,25 @@ const RoleMultiSelect = React.forwardRef<HTMLDivElement, RoleMultiSelectProps>(
       <div ref={ref} className={cn("space-y-4", className)}>
         {/* Primary Role Selection */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Primary Role *</label>
-          <select
-            value={primaryRole || ""}
-            onChange={(e) => onPrimaryRoleChange(e.target.value)}
-            className="w-full h-10 border border-gray-300 rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            required
-          >
-            <option value="">Select Primary Role</option>
-            {options
-              .filter(option => primaryRoles.includes(option.value))
-              .map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-          </select>
+          <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            Primary Role *
+          </label>
+          <Select value={primaryRole || ""} onValueChange={onPrimaryRoleChange}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select Primary Role" />
+            </SelectTrigger>
+            <SelectContent>
+              {options
+                .filter(option => primaryRoles.includes(option.value))
+                .map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
           {primaryRole && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               🎯 Primary role determines main access level and permissions
             </p>
           )}
@@ -100,14 +108,16 @@ const RoleMultiSelect = React.forwardRef<HTMLDivElement, RoleMultiSelectProps>(
 
         {/* Additional Roles Selection */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Additional Roles (Optional)</label>
+          <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            Additional Roles (Optional)
+          </label>
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className="w-full justify-between min-h-10"
+                className="w-full justify-between min-h-10 h-10 border border-input bg-background hover:bg-accent hover:text-accent-foreground"
               >
                 <span className="truncate">
                   {selectedAdditionalRoles.length === 0
@@ -117,41 +127,50 @@ const RoleMultiSelect = React.forwardRef<HTMLDivElement, RoleMultiSelectProps>(
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-full p-0" align="start">
+            <PopoverContent className="w-full p-0" align="start" side="bottom">
               <Command>
                 <CommandInput placeholder="Search roles..." />
                 <CommandEmpty>No roles found.</CommandEmpty>
-                <CommandList>
-                  <CommandGroup heading="Additional Roles">
-                    {additionalRoles.map((option) => (
-                      <CommandItem
-                        key={option.value}
-                        onSelect={() => handleRoleSelect(option.value)}
-                        className="cursor-pointer"
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedRoles.includes(option.value) ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        {option.label}
-                      </CommandItem>
+                <CommandList className="max-h-60">
+                  {/* Group roles by their category */}
+                  {Array.from(new Set(additionalRoles.map(role => role.group)))
+                    .filter(group => group)
+                    .map((group) => (
+                      <CommandGroup key={group} heading={`${group} Roles`}>
+                        {additionalRoles
+                          .filter(option => option.group === group)
+                          .map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              onSelect={() => handleRoleSelect(option.value)}
+                              className="cursor-pointer"
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedRoles.includes(option.value) ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {option.label}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
                     ))}
-                  </CommandGroup>
                 </CommandList>
               </Command>
             </PopoverContent>
           </Popover>
-          <p className="text-xs text-gray-500">
-            ➕ Additional roles provide extra permissions and access
+          <p className="text-xs text-muted-foreground">
+            ➕ Additional roles provide extra permissions and access. You can search and select multiple roles.
           </p>
         </div>
 
         {/* Selected Roles Display */}
         {selectedOptions.length > 0 && (
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Assigned Roles Summary</label>
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              Assigned Roles Summary
+            </label>
             <div className="flex flex-wrap gap-2">
               {selectedOptions.map((option) => (
                 <Badge
@@ -159,8 +178,8 @@ const RoleMultiSelect = React.forwardRef<HTMLDivElement, RoleMultiSelectProps>(
                   variant={primaryRoles.includes(option.value) ? "default" : "secondary"}
                   className={cn(
                     "flex items-center gap-1 text-xs",
-                    primaryRoles.includes(option.value) && "bg-blue-100 text-blue-800 border-blue-200",
-                    !primaryRoles.includes(option.value) && "bg-gray-100 text-gray-700 border-gray-200"
+                    primaryRoles.includes(option.value) && "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20",
+                    !primaryRoles.includes(option.value) && "bg-muted text-muted-foreground border-border hover:bg-muted/80"
                   )}
                 >
                   {primaryRoles.includes(option.value) ? "🎯" : "➕"}
@@ -178,7 +197,7 @@ const RoleMultiSelect = React.forwardRef<HTMLDivElement, RoleMultiSelectProps>(
                 </Badge>
               ))}
             </div>
-            <div className="text-xs text-gray-600 mt-2">
+            <div className="text-xs text-muted-foreground mt-2">
               <strong>Approval Level:</strong> {primaryRole === 'admin' ? '2 (Full Access)' :
                                                primaryRole === 'supervisor' ? '1 (Division Level)' :
                                                primaryRole === 'pegawai' ? '0 (Basic Access)' : 'Not set'}
