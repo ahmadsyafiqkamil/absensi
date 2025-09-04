@@ -704,7 +704,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
           currentRoles={
             selectedEmployeeForRoles.roles?.active_roles.map(roleName => ({
               id: 0, // Will be populated in component
-              group: { id: 0, name: roleName },
+              role: { id: 0, name: roleName },
               is_primary: roleName === selectedEmployeeForRoles.roles?.primary_role,
               is_active: true
             })) || []
