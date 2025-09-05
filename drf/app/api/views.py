@@ -2643,10 +2643,10 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         if is_admin:
             if overtime_request.status in ['rejected']:
                 return Response(
-                    {"detail": "Pengajuan yang sudah ditolak tidak dapat disetujui"}, 
+                    {"detail": "Pengajuan yang sudah ditolak tidak dapat disetujui"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Admin approval goes straight to final approval
             overtime_request.status = 'approved'
             overtime_request.final_approved_by = user
@@ -2655,7 +2655,16 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             overtime_request.approved_at = dj_timezone.now()  # Legacy field
             overtime_request.rejection_reason = None
             overtime_request.save()
-            
+
+            # Generate and save DOCX document
+            try:
+                self._generate_and_save_docx(overtime_request)
+            except Exception as e:
+                # Log error but don't fail the approval
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to generate DOCX for overtime request {overtime_request.id}: {str(e)}")
+
             serializer = self.get_serializer(overtime_request)
             return Response({
                 "detail": "Pengajuan lembur berhasil disetujui (Final Approval)",
@@ -2683,7 +2692,16 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             overtime_request.approved_at = dj_timezone.now()  # Legacy field
             overtime_request.rejection_reason = None
             overtime_request.save()
-            
+
+            # Generate and save DOCX document
+            try:
+                self._generate_and_save_docx(overtime_request)
+            except Exception as e:
+                # Log error but don't fail the approval
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to generate DOCX for overtime request {overtime_request.id}: {str(e)}")
+
             serializer = self.get_serializer(overtime_request)
             return Response({
                 "detail": "Pengajuan lembur berhasil disetujui (Final Approval)",
@@ -2807,7 +2825,199 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 "detail": "Pengajuan lembur berhasil ditolak (Level 1 Rejection)",
                 "data": serializer.data
             })
-    
+
+    def _generate_and_save_docx(self, overtime_request):
+        """Generate and save DOCX document for approved overtime request"""
+        from .models import OvertimeDocument
+        import os
+        import tempfile
+        from django.core.files.base import ContentFile
+
+        try:
+            # Generate DOCX content using existing logic
+            docx_content = self._generate_docx_content(overtime_request)
+
+            # Create filename
+            filename = f"Surat_Perintah_Kerja_Lembur_{overtime_request.id}_{overtime_request.employee.user.username}_{overtime_request.final_approved_at.strftime('%Y%m%d_%H%M%S')}.docx"
+
+            # Create or update OvertimeDocument
+            doc, created = OvertimeDocument.objects.get_or_create(
+                overtime_request=overtime_request,
+                document_type='individual',
+                defaults={
+                    'status': 'generated',
+                }
+            )
+
+            # Save the DOCX file
+            doc.docx_file.save(filename, ContentFile(docx_content), save=True)
+            doc.status = 'generated'
+            doc.downloaded_at = None  # Reset download timestamp
+            doc.save()
+
+            # Update the overtime request reference
+            overtime_request.docx_document = doc
+            overtime_request.save(update_fields=['docx_document'])
+
+        except Exception as e:
+            # Create error record if generation fails
+            OvertimeDocument.objects.update_or_create(
+                overtime_request=overtime_request,
+                document_type='individual',
+                defaults={
+                    'status': 'error',
+                    'error_message': str(e),
+                }
+            )
+            raise
+
+    def _generate_docx_content(self, overtime_request):
+        """Generate DOCX content using existing template logic"""
+        # Import required libraries
+        from docx import Document
+        from docx.shared import Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.shared import OxmlElement, qn
+        from io import BytesIO
+        from django.utils import timezone
+        from django.conf import settings
+        import os
+        import locale
+
+        # Set locale for Indonesian formatting
+        try:
+            locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+        except:
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID')
+            except:
+                pass
+
+        # Get template path
+        template_path, template_name = self.get_template_path()
+
+        if not template_path:
+            raise Exception("Template overtime tidak ditemukan")
+
+        # Load template document
+        doc = Document(template_path)
+
+        # Function to replace text in paragraphs
+        def replace_text_in_paragraphs(paragraphs, old_text, new_text):
+            for paragraph in paragraphs:
+                for run in paragraph.runs:
+                    if old_text in run.text:
+                        run.text = run.text.replace(old_text, new_text)
+
+        # Function to replace text in tables
+        def replace_text_in_tables(tables, old_text, new_text):
+            for table in tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                if old_text in run.text:
+                                    run.text = run.text.replace(old_text, new_text)
+
+        # Get current date and time
+        current_date = dj_timezone.now()
+        current_year = current_date.strftime('%Y')
+        current_month = current_date.strftime('%B')
+        current_day = current_date.strftime('%d')
+
+        # Format overtime date
+        overtime_date = overtime_request.date_requested
+        overtime_date_formatted = overtime_date.strftime('%d %B %Y')
+
+        # Get employee information
+        employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
+        employee_nip = overtime_request.employee.nip or '-'
+        employee_position = overtime_request.employee.position.name if overtime_request.employee.position else '-'
+        employee_division = overtime_request.employee.division.name if overtime_request.employee.division else '-'
+
+        # Format NIP variations
+        nip_9_digit = employee_nip[:9] if employee_nip and len(employee_nip) >= 9 else employee_nip
+        nip_18_digit = employee_nip if employee_nip and len(employee_nip) >= 18 else (employee_nip + '0' * (18 - len(employee_nip))) if employee_nip else '-'
+
+        # Get approval information
+        def get_approver_name(user):
+            """Get approver name from employee.fullname with fallback to username"""
+            if not user:
+                return '-'
+            if hasattr(user, 'employee') and user.employee and user.employee.fullname:
+                return user.employee.fullname
+            full_name = user.get_full_name()
+            if full_name and full_name.strip():
+                return full_name
+            return user.username.title()
+
+        def get_approver_nip(user):
+            """Get approver NIP with fallback"""
+            if not user or not hasattr(user, 'employee') or not user.employee:
+                return '-'
+            return user.employee.nip or '-'
+
+        level1_approver = get_approver_name(overtime_request.level1_approved_by)
+        level1_approver_nip = get_approver_nip(overtime_request.level1_approved_by)
+        level1_approval_date = overtime_request.level1_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.level1_approved_at else '-'
+
+        final_approver = get_approver_name(overtime_request.final_approved_by)
+        final_approver_nip = get_approver_nip(overtime_request.final_approved_by)
+        final_approval_date = overtime_request.final_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.final_approved_at else '-'
+
+        # Format overtime amount
+        overtime_amount = f"{overtime_request.overtime_amount}"
+
+        # Define replacement mappings
+        replacements = {
+            # Document info
+            '{{NOMOR_DOKUMEN}}': f"{overtime_request.id}/SPKL/KJRI-DXB/{current_year}",
+            '{{TANGGAL_DOKUMEN}}': current_date.strftime('%d %B %Y'),
+            '{{TAHUN}}': current_year,
+            '{{BULAN}}': current_month,
+            '{{HARI}}': current_day,
+
+            # Employee info
+            '{{NAMA_PEGAWAI}}': employee_name,
+            '{{NIP_PEGAWAI}}': employee_nip,
+            '{{NIP}}': employee_nip,
+            '{{NIP_LENGKAP}}': nip_18_digit,
+            '{{NIP_18_DIGIT}}': nip_18_digit,
+            '{{NIP_9_DIGIT}}': nip_9_digit,
+            '{{JABATAN_PEGAWAI}}': employee_position,
+            '{{DIVISI_PEGAWAI}}': employee_division,
+
+            # Overtime details
+            '{{TANGGAL_LEMBUR}}': overtime_date_formatted,
+            '{{JAM_LEMBUR}}': f"{overtime_request.overtime_hours} jam",
+            '{{DESKRIPSI_PEKERJAAN}}': overtime_request.work_description,
+            '{{JUMLAH_GAJI_LEMBUR}}': overtime_amount,
+
+            # Approval info
+            '{{LEVEL1_APPROVER}}': level1_approver,
+            '{{LEVEL1_APPROVER_NIP}}': level1_approver_nip,
+            '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
+            '{{FINAL_APPROVER}}': final_approver,
+            '{{FINAL_APPROVER_NIP}}': final_approver_nip,
+            '{{FINAL_APPROVAL_DATE}}': final_approval_date,
+
+            # Company info
+            '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+            '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+            '{{LOKASI}}': 'Dubai',
+        }
+
+        # Apply replacements
+        for placeholder, value in replacements.items():
+            replace_text_in_paragraphs(doc.paragraphs, placeholder, value)
+            replace_text_in_tables(doc.tables, placeholder, value)
+
+        # Save to buffer and return content
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get overtime request summary statistics"""
@@ -3038,7 +3248,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                                         run.text = run.text.replace(old_text, new_text)
             
             # Get current date and time
-            current_date = timezone.now()
+            current_date = dj_timezone.now()
             current_year = current_date.strftime('%Y')
             current_month = current_date.strftime('%B')
             current_day = current_date.strftime('%d')
@@ -3294,403 +3504,220 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
-        """Download overtime request document using template"""
+        """Download overtime request document - uses stored file if available, otherwise generates new"""
         overtime_request = self.get_object()
-        
+
         # Only allow download for approved overtime requests
         if overtime_request.status != 'approved':
             return Response(
-                {"detail": "Hanya overtime yang sudah disetujui yang dapat didownload"}, 
+                {"detail": "Hanya overtime yang sudah disetujui yang dapat didownload"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
-            # Import required libraries
-            from docx import Document
-            from docx.shared import Inches
-            from docx.enum.text import WD_ALIGN_PARAGRAPH
-            from docx.oxml.shared import OxmlElement, qn
-            from io import BytesIO
-            from django.utils import timezone
-            from django.conf import settings
-            import os
-            import locale
-            
-            # Set locale for Indonesian formatting
-            try:
-                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
-            except:
+            # First, try to use stored DOCX file if available
+            if overtime_request.docx_document and overtime_request.docx_document.docx_file:
                 try:
-                    locale.setlocale(locale.LC_ALL, 'id_ID')
-                except:
-                    pass
-            
-            # Get template path dynamically
-            template_path, template_name = self.get_template_path()
-            
-            # Check if template exists
-            if not template_path:
-                return Response(
-                    {"detail": "Template overtime tidak ditemukan. Silakan upload template di admin settings."}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Load template document
-            doc = Document(template_path)
-            
-            # Function to replace text in paragraphs
-            def replace_text_in_paragraphs(paragraphs, old_text, new_text):
-                for paragraph in paragraphs:
-                    for run in paragraph.runs:
-                        if old_text in run.text:
-                            run.text = run.text.replace(old_text, new_text)
-            
-            # Function to replace text in tables
-            def replace_text_in_tables(tables, old_text, new_text):
-                for table in tables:
-                    for row in table.rows:
-                        for cell in row.cells:
-                            for paragraph in cell.paragraphs:
-                                for run in paragraph.runs:
-                                    if old_text in run.text:
-                                        run.text = run.text.replace(old_text, new_text)
-            
-            # Get current date and time
-            current_date = timezone.now()
-            current_year = current_date.strftime('%Y')
-            current_month = current_date.strftime('%B')
-            current_day = current_date.strftime('%d')
-            
-            # Format overtime date
-            overtime_date = overtime_request.date_requested
-            overtime_date_formatted = overtime_date.strftime('%d %B %Y')
-            
-            # Get employee information
-            employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
-            employee_nip = overtime_request.employee.nip or '-'
-            employee_position = overtime_request.employee.position.name if overtime_request.employee.position else '-'
-            employee_division = overtime_request.employee.division.name if overtime_request.employee.division else '-'
-            
-            # Format NIP variations
-            nip_9_digit = employee_nip[:9] if employee_nip and len(employee_nip) >= 9 else employee_nip
-            nip_18_digit = employee_nip if employee_nip and len(employee_nip) >= 18 else (employee_nip + '0' * (18 - len(employee_nip))) if employee_nip else '-'
-            
-            # Get approval information with better fallback
-            def get_approver_name(user):
-                """Get approver name from employee.fullname with fallback to username"""
-                if not user:
-                    return '-'
-                # Try to get name from employee.fullname first
-                if hasattr(user, 'employee') and user.employee and user.employee.fullname:
-                    return user.employee.fullname
-                # Fallback to user.get_full_name()
-                full_name = user.get_full_name()
-                if full_name and full_name.strip():
-                    return full_name
-                # Final fallback to username
-                return user.username.title()  # Capitalize username as fallback
-            
-            def get_approver_nip(user):
-                """Get approver NIP with fallback"""
-                if not user or not hasattr(user, 'employee') or not user.employee:
-                    return '-'
-                return user.employee.nip or '-'
-            
-            level1_approver = get_approver_name(overtime_request.level1_approved_by)
-            level1_approver_nip = get_approver_nip(overtime_request.level1_approved_by)
-            level1_approval_date = overtime_request.level1_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.level1_approved_at else '-'
-            
-            final_approver = get_approver_name(overtime_request.final_approved_by)
-            final_approver_nip = get_approver_nip(overtime_request.final_approved_by)
-            final_approval_date = overtime_request.final_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.final_approved_at else '-'
-            
-            # Debug: Print approval information (optional, can be removed in production)
-            # print(f"DEBUG APPROVAL INFO:")
-            # print(f"Level1 Approver: {level1_approver}")
-            # print(f"Level1 Approver NIP: {level1_approver_nip}")
-            # print(f"Level1 Approval Date: {level1_approval_date}")
-            # print(f"Final Approver: {final_approver}")
-            # print(f"Final Approver NIP: {final_approver_nip}")
-            # print(f"Final Approval Date: {final_approval_date}")
-            
-            # Format overtime amount
-            overtime_amount = f"{overtime_request.overtime_amount}"
-            
-            # Define replacement mappings
-            replacements = {
-                # Document info
-                '{{NOMOR_DOKUMEN}}': f"{overtime_request.id}/SPKL/KJRI-DXB/{current_year}",
-                '{{TANGGAL_DOKUMEN}}': current_date.strftime('%d %B %Y'),
-                '{{TAHUN}}': current_year,
-                '{{BULAN}}': current_month,
-                '{{HARI}}': current_day,
-                
-                # Employee info
-                '{{NAMA_PEGAWAI}}': employee_name,
-                '{{NIP_PEGAWAI}}': employee_nip,
-                '{{NIP}}': employee_nip,
-                '{{NIP_LENGKAP}}': nip_18_digit,
-                '{{NIP_18_DIGIT}}': nip_18_digit,
-                '{{NIP_9_DIGIT}}': nip_9_digit,
-                '{{JABATAN_PEGAWAI}}': employee_position,
-                '{{DIVISI_PEGAWAI}}': employee_division,
-                
-                # Overtime details
-                '{{TANGGAL_LEMBUR}}': overtime_date_formatted,
-                '{{JAM_LEMBUR}}': f"{overtime_request.overtime_hours} jam",
-                '{{DESKRIPSI_PEKERJAAN}}': overtime_request.work_description,
-                '{{JUMLAH_GAJI_LEMBUR}}': overtime_amount,
-                
-                # Approval info
-                '{{LEVEL1_APPROVER}}': level1_approver,
-                '{{LEVEL1_APPROVER_NIP}}': level1_approver_nip,
-                '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
-                '{{FINAL_APPROVER}}': final_approver,
-                '{{FINAL_APPROVER_NIP}}': final_approver_nip,
-                '{{FINAL_APPROVAL_DATE}}': final_approval_date,
-                
-                # Company info
-                '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
-                '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
-                '{{LOKASI}}': 'Dubai',
-            }
-            
-            # Replace text in paragraphs
-            replace_text_in_paragraphs(doc.paragraphs, '{{NOMOR_DOKUMEN}}', replacements['{{NOMOR_DOKUMEN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{TANGGAL_DOKUMEN}}', replacements['{{TANGGAL_DOKUMEN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{TAHUN}}', replacements['{{TAHUN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{BULAN}}', replacements['{{BULAN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{HARI}}', replacements['{{HARI}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NAMA_PEGAWAI}}', replacements['{{NAMA_PEGAWAI}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_PEGAWAI}}', replacements['{{NIP_PEGAWAI}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NIP}}', replacements['{{NIP}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_LENGKAP}}', replacements['{{NIP_LENGKAP}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_18_DIGIT}}', replacements['{{NIP_18_DIGIT}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NIP_9_DIGIT}}', replacements['{{NIP_9_DIGIT}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{JABATAN_PEGAWAI}}', replacements['{{JABATAN_PEGAWAI}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{DIVISI_PEGAWAI}}', replacements['{{DIVISI_PEGAWAI}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{TANGGAL_LEMBUR}}', replacements['{{TANGGAL_LEMBUR}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{JAM_LEMBUR}}', replacements['{{JAM_LEMBUR}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{DESKRIPSI_PEKERJAAN}}', replacements['{{DESKRIPSI_PEKERJAAN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{JUMLAH_GAJI_LEMBUR}}', replacements['{{JUMLAH_GAJI_LEMBUR}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{LEVEL1_APPROVER}}', replacements['{{LEVEL1_APPROVER}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{LEVEL1_APPROVER_NIP}}', replacements['{{LEVEL1_APPROVER_NIP}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{LEVEL1_APPROVAL_DATE}}', replacements['{{LEVEL1_APPROVAL_DATE}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{FINAL_APPROVER}}', replacements['{{FINAL_APPROVER}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{FINAL_APPROVER_NIP}}', replacements['{{FINAL_APPROVER_NIP}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{FINAL_APPROVAL_DATE}}', replacements['{{FINAL_APPROVAL_DATE}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{NAMA_PERUSAHAAN}}', replacements['{{NAMA_PERUSAHAAN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{ALAMAT_PERUSAHAAN}}', replacements['{{ALAMAT_PERUSAHAAN}}'])
-            replace_text_in_paragraphs(doc.paragraphs, '{{LOKASI}}', replacements['{{LOKASI}}'])
-            
-            # Replace text in tables
-            replace_text_in_tables(doc.tables, '{{NOMOR_DOKUMEN}}', replacements['{{NOMOR_DOKUMEN}}'])
-            replace_text_in_tables(doc.tables, '{{TANGGAL_DOKUMEN}}', replacements['{{TANGGAL_DOKUMEN}}'])
-            replace_text_in_tables(doc.tables, '{{TAHUN}}', replacements['{{TAHUN}}'])
-            replace_text_in_tables(doc.tables, '{{BULAN}}', replacements['{{BULAN}}'])
-            replace_text_in_tables(doc.tables, '{{HARI}}', replacements['{{HARI}}'])
-            replace_text_in_tables(doc.tables, '{{NAMA_PEGAWAI}}', replacements['{{NAMA_PEGAWAI}}'])
-            replace_text_in_tables(doc.tables, '{{NIP_PEGAWAI}}', replacements['{{NIP_PEGAWAI}}'])
-            replace_text_in_tables(doc.tables, '{{NIP}}', replacements['{{NIP}}'])
-            replace_text_in_tables(doc.tables, '{{NIP_LENGKAP}}', replacements['{{NIP_LENGKAP}}'])
-            replace_text_in_tables(doc.tables, '{{NIP_18_DIGIT}}', replacements['{{NIP_18_DIGIT}}'])
-            replace_text_in_tables(doc.tables, '{{NIP_9_DIGIT}}', replacements['{{NIP_9_DIGIT}}'])
-            replace_text_in_tables(doc.tables, '{{JABATAN_PEGAWAI}}', replacements['{{JABATAN_PEGAWAI}}'])
-            replace_text_in_tables(doc.tables, '{{DIVISI_PEGAWAI}}', replacements['{{DIVISI_PEGAWAI}}'])
-            replace_text_in_tables(doc.tables, '{{TANGGAL_LEMBUR}}', replacements['{{TANGGAL_LEMBUR}}'])
-            replace_text_in_tables(doc.tables, '{{JAM_LEMBUR}}', replacements['{{JAM_LEMBUR}}'])
-            replace_text_in_tables(doc.tables, '{{DESKRIPSI_PEKERJAAN}}', replacements['{{DESKRIPSI_PEKERJAAN}}'])
-            replace_text_in_tables(doc.tables, '{{JUMLAH_GAJI_LEMBUR}}', replacements['{{JUMLAH_GAJI_LEMBUR}}'])
-            replace_text_in_tables(doc.tables, '{{LEVEL1_APPROVER}}', replacements['{{LEVEL1_APPROVER}}'])
-            replace_text_in_tables(doc.tables, '{{LEVEL1_APPROVER_NIP}}', replacements['{{LEVEL1_APPROVER_NIP}}'])
-            replace_text_in_tables(doc.tables, '{{LEVEL1_APPROVAL_DATE}}', replacements['{{LEVEL1_APPROVAL_DATE}}'])
-            replace_text_in_tables(doc.tables, '{{FINAL_APPROVER}}', replacements['{{FINAL_APPROVER}}'])
-            replace_text_in_tables(doc.tables, '{{FINAL_APPROVER_NIP}}', replacements['{{FINAL_APPROVER_NIP}}'])
-            replace_text_in_tables(doc.tables, '{{FINAL_APPROVAL_DATE}}', replacements['{{FINAL_APPROVAL_DATE}}'])
-            replace_text_in_tables(doc.tables, '{{NAMA_PERUSAHAAN}}', replacements['{{NAMA_PERUSAHAAN}}'])
-            replace_text_in_tables(doc.tables, '{{ALAMAT_PERUSAHAAN}}', replacements['{{ALAMAT_PERUSAHAAN}}'])
-            replace_text_in_tables(doc.tables, '{{LOKASI}}', replacements['{{LOKASI}}'])
-            
-            # Save to buffer
-            buffer = BytesIO()
-            doc.save(buffer)
-            buffer.seek(0)
-            
-            # Return document response
-            from django.http import HttpResponse
-            response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-            response['Content-Disposition'] = f'attachment; filename="Surat_Perintah_Kerja_Lembur_{overtime_request.id}_{overtime_request.employee.user.username}.docx"'
-            return response
-            
+                    # Update download timestamp
+                    overtime_request.docx_document.downloaded_at = dj_timezone.now()
+                    overtime_request.docx_document.save(update_fields=['downloaded_at'])
+
+                    # Return stored file
+                    with open(overtime_request.docx_document.docx_file.path, 'rb') as f:
+                        file_content = f.read()
+
+                    from django.http import HttpResponse
+                    response = HttpResponse(file_content, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                    response['Content-Disposition'] = f'attachment; filename="{overtime_request.docx_document.docx_file.name.split("/")[-1]}"'
+                    return response
+
+                except (FileNotFoundError, OSError) as e:
+                    # File not found or corrupted, fall back to generating new one
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Stored DOCX file not found for overtime request {overtime_request.id}: {str(e)}")
+
+            # If no stored file or file is missing, generate new DOCX
+            # Generate and save the document first
+            self._generate_and_save_docx(overtime_request)
+
+            # Now return the newly generated file
+            if overtime_request.docx_document and overtime_request.docx_document.docx_file:
+                # Update download timestamp
+                overtime_request.docx_document.downloaded_at = dj_timezone.now()
+                overtime_request.docx_document.save(update_fields=['downloaded_at'])
+
+                with open(overtime_request.docx_document.docx_file.path, 'rb') as f:
+                    file_content = f.read()
+
+                from django.http import HttpResponse
+                response = HttpResponse(file_content, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                response['Content-Disposition'] = f'attachment; filename="{overtime_request.docx_document.docx_file.name.split("/")[-1]}"'
+                return response
+
+            # Fallback: generate on-the-fly if saving failed
+            return self._generate_docx_on_fly(overtime_request)
+
         except Exception as e:
             return Response(
-                {"detail": f"Gagal generate dokumen: {str(e)}"}, 
+                {"detail": f"Gagal generate dokumen: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def generate_overtime_docx(self, overtime_request):
-        """Generate DOCX document for individual overtime request"""
+    def _generate_docx_on_fly(self, overtime_request):
+        """Generate DOCX document on-the-fly (fallback method)"""
+        # Import required libraries
+        from docx import Document
+        from docx.shared import Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.shared import OxmlElement, qn
+        from io import BytesIO
+        # timezone already imported as dj_timezone at the top
+        from django.conf import settings
+        import os
+        import locale
+
+        # Set locale for Indonesian formatting
         try:
-            # Import required libraries
-            from docx import Document
-            from docx.shared import Inches
-            from docx.enum.text import WD_ALIGN_PARAGRAPH
-            from docx.oxml.shared import OxmlElement, qn
-            from io import BytesIO
-            from django.utils import timezone
-            from django.conf import settings
-            import os
-            import locale
-            import tempfile
-            
-            # Set locale for Indonesian formatting
+            locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+        except:
             try:
-                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+                locale.setlocale(locale.LC_ALL, 'id_ID')
             except:
-                try:
-                    locale.setlocale(locale.LC_ALL, 'id_ID')
-                except:
-                    pass
-            
-            # Get template path dynamically
-            template_path, template_name = self.get_template_path()
-            
-            # Check if template exists
-            if not template_path:
-                raise Exception("Template overtime tidak ditemukan. Silakan upload template di admin settings.")
-            
-            # Load template document
-            doc = Document(template_path)
-            
-            # Function to replace text in paragraphs
-            def replace_text_in_paragraphs(paragraphs, old_text, new_text):
-                for paragraph in paragraphs:
-                    for run in paragraph.runs:
-                        if old_text in run.text:
-                            run.text = run.text.replace(old_text, new_text)
-            
-            # Function to replace text in tables
-            def replace_text_in_tables(tables, old_text, new_text):
-                for table in tables:
-                    for row in table.rows:
-                        for cell in row.cells:
-                            for paragraph in cell.paragraphs:
-                                for run in paragraph.runs:
-                                    if old_text in run.text:
-                                        run.text = run.text.replace(old_text, new_text)
-            
-            # Get current date and time
-            current_date = timezone.now()
-            current_year = current_date.strftime('%Y')
-            current_month = current_date.strftime('%B')
-            current_day = current_date.strftime('%d')
-            
-            # Format overtime date
-            overtime_date = overtime_request.date_requested
-            overtime_date_formatted = overtime_date.strftime('%d %B %Y')
-            
-            # Get employee information
-            employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
-            employee_nip = overtime_request.employee.nip or '-'
-            employee_position = overtime_request.employee.position.name if overtime_request.employee.position else '-'
-            employee_division = overtime_request.employee.division.name if overtime_request.employee.division else '-'
-            
-            # Format NIP variations
-            nip_9_digit = employee_nip[:9] if employee_nip and len(employee_nip) >= 9 else employee_nip
-            nip_18_digit = employee_nip if employee_nip and len(employee_nip) >= 18 else (employee_nip + '0' * (18 - len(employee_nip))) if employee_nip else '-'
-            
-            # Get approval information with better fallback
-            def get_approver_name(user):
-                """Get approver name from employee.fullname with fallback to username"""
-                if not user:
-                    return '-'
-                # Try to get name from employee.fullname first
-                if hasattr(user, 'employee') and user.employee and user.employee.fullname:
-                    return user.employee.fullname
-                # Fallback to user.get_full_name()
-                full_name = user.get_full_name()
-                if full_name and full_name.strip():
-                    return full_name
-                # Final fallback to username
-                return user.username.title()  # Capitalize username as fallback
-            
-            def get_approver_nip(user):
-                """Get approver NIP with fallback"""
-                if not user:
-                    return '-'
-                if hasattr(user, 'employee') and user.employee and user.employee.nip:
-                    return user.employee.nip
+                pass
+
+        # Get template path dynamically
+        template_path, template_name = self.get_template_path()
+
+        # Check if template exists
+        if not template_path:
+            from django.http import HttpResponse
+            response = HttpResponse("Template overtime tidak ditemukan", status=404)
+            return response
+
+        # Load template document
+        doc = Document(template_path)
+
+        # Function to replace text in paragraphs
+        def replace_text_in_paragraphs(paragraphs, old_text, new_text):
+            for paragraph in paragraphs:
+                for run in paragraph.runs:
+                    if old_text in run.text:
+                        run.text = run.text.replace(old_text, new_text)
+
+        # Function to replace text in tables
+        def replace_text_in_tables(tables, old_text, new_text):
+            for table in tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                if old_text in run.text:
+                                    run.text = run.text.replace(old_text, new_text)
+
+        # Get current date and time
+        current_date = dj_timezone.now()
+        current_year = current_date.strftime('%Y')
+        current_month = current_date.strftime('%B')
+        current_day = current_date.strftime('%d')
+
+        # Format overtime date
+        overtime_date = overtime_request.date_requested
+        overtime_date_formatted = overtime_date.strftime('%d %B %Y')
+
+        # Get employee information
+        employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
+        employee_nip = overtime_request.employee.nip or '-'
+        employee_position = overtime_request.employee.position.name if overtime_request.employee.position else '-'
+        employee_division = overtime_request.employee.division.name if overtime_request.employee.division else '-'
+
+        # Format NIP variations
+        nip_9_digit = employee_nip[:9] if employee_nip and len(employee_nip) >= 9 else employee_nip
+        nip_18_digit = employee_nip if employee_nip and len(employee_nip) >= 18 else (employee_nip + '0' * (18 - len(employee_nip))) if employee_nip else '-'
+
+        # Get approval information
+        def get_approver_name(user):
+            """Get approver name from employee.fullname with fallback to username"""
+            if not user:
                 return '-'
-            
-            # Get approver information
-            level1_approver_name = get_approver_name(overtime_request.level1_approved_by)
-            level1_approver_nip = get_approver_nip(overtime_request.level1_approved_by)
-            final_approver_name = get_approver_name(overtime_request.final_approved_by)
-            final_approver_nip = get_approver_nip(overtime_request.final_approved_by)
-            
-            # Legacy fields for backward compatibility
-            legacy_approver_name = get_approver_name(overtime_request.approved_by)
-            legacy_approver_nip = get_approver_nip(overtime_request.approved_by)
-            
-            # Calculate overtime amount
-            overtime_amount = overtime_request.overtime_amount or 0
-            
-            # Prepare replacements dictionary
-            replacements = {
-                # Employee info
-                '{{NAMA_PEGAWAI}}': employee_name,
-                '{{NIP}}': employee_nip,
-                '{{DIVISI}}': employee_division,
-                '{{POSISI}}': employee_position,
-                '{{TANGGAL}}': overtime_date_formatted,
-                '{{JAM_LEMBUR}}': str(overtime_request.overtime_hours),
-                '{{DESKRIPSI_PEKERJAAN}}': overtime_request.work_description,
-                '{{JUMLAH_LEMBUR}}': f"Rp {overtime_amount:,.2f}".replace(',', '.'),
-                '{{TANGGAL_PENGAJUAN}}': overtime_request.created_at.strftime('%d %B %Y'),
-                '{{STATUS}}': dict(overtime_request.STATUS_CHOICES).get(overtime_request.status, overtime_request.status),
-                
-                # Level 1 Approver
-                '{{NAMA_PENYETUJU_1}}': level1_approver_name,
-                '{{NIP_PENYETUJU_1}}': level1_approver_nip,
-                '{{TANGGAL_PERSETUJUAN_1}}': overtime_request.level1_approved_at.strftime('%d %B %Y') if overtime_request.level1_approved_at else '-',
-                
-                # Final Approver
-                '{{NAMA_PENYETUJU_AKHIR}}': final_approver_name,
-                '{{NIP_PENYETUJU_AKHIR}}': final_approver_nip,
-                '{{TANGGAL_PERSETUJUAN_AKHIR}}': overtime_request.final_approved_at.strftime('%d %B %Y') if overtime_request.final_approved_at else '-',
-                
-                # Legacy fields for backward compatibility
-                '{{NAMA_PENYETUJU}}': final_approver_name,
-                '{{NIP_PENYETUJU}}': final_approver_nip,
-                '{{TANGGAL_PERSETUJUAN}}': overtime_request.final_approved_at.strftime('%d %B %Y') if overtime_request.final_approved_at else '-',
-                
-                # Document metadata
-                '{{TAHUN}}': current_year,
-                '{{BULAN}}': current_month,
-                '{{TANGGAL_HARI_INI}}': current_day,
-                '{{NOMOR_SURAT}}': f"SPL-{overtime_request.id:04d}/2025",
-                '{{TANGGAL_SURAT}}': current_date.strftime('%d %B %Y'),
-                
-                # Company info (placeholder - adjust as needed)
-                '{{NAMA_PERUSAHAAN}}': 'KJRI Dubai',
-                '{{ALAMAT_PERUSAHAAN}}': 'Dubai, United Arab Emirates',
-                '{{LOKASI}}': 'Dubai',
-            }
-            
-            # Replace all placeholders in document
-            for placeholder, value in replacements.items():
-                replace_text_in_paragraphs(doc.paragraphs, placeholder, value)
-                replace_text_in_tables(doc.tables, placeholder, value)
-            
-            # Save to temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
-            doc.save(temp_file.name)
-            temp_file.close()
-            
-            return temp_file
-            
-        except Exception as e:
-            raise Exception(f"Gagal generate DOCX: {str(e)}")
+            if hasattr(user, 'employee') and user.employee and user.employee.fullname:
+                return user.employee.fullname
+            full_name = user.get_full_name()
+            if full_name and full_name.strip():
+                return full_name
+            return user.username.title()
+
+        def get_approver_nip(user):
+            """Get approver NIP with fallback"""
+            if not user or not hasattr(user, 'employee') or not user.employee:
+                return '-'
+            return user.employee.nip or '-'
+
+        level1_approver = get_approver_name(overtime_request.level1_approved_by)
+        level1_approver_nip = get_approver_nip(overtime_request.level1_approved_by)
+        level1_approval_date = overtime_request.level1_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.level1_approved_at else '-'
+
+        final_approver = get_approver_name(overtime_request.final_approved_by)
+        final_approver_nip = get_approver_nip(overtime_request.final_approved_by)
+        final_approval_date = overtime_request.final_approved_at.strftime('%d %B %Y %H:%M') if overtime_request.final_approved_at else '-'
+
+        # Format overtime amount
+        overtime_amount = f"{overtime_request.overtime_amount}"
+
+        # Define replacement mappings
+        replacements = {
+            # Document info
+            '{{NOMOR_DOKUMEN}}': f"{overtime_request.id}/SPKL/KJRI-DXB/{current_year}",
+            '{{TANGGAL_DOKUMEN}}': current_date.strftime('%d %B %Y'),
+            '{{TAHUN}}': current_year,
+            '{{BULAN}}': current_month,
+            '{{HARI}}': current_day,
+
+            # Employee info
+            '{{NAMA_PEGAWAI}}': employee_name,
+            '{{NIP_PEGAWAI}}': employee_nip,
+            '{{NIP}}': employee_nip,
+            '{{NIP_LENGKAP}}': nip_18_digit,
+            '{{NIP_18_DIGIT}}': nip_18_digit,
+            '{{NIP_9_DIGIT}}': nip_9_digit,
+            '{{JABATAN_PEGAWAI}}': employee_position,
+            '{{DIVISI_PEGAWAI}}': employee_division,
+
+            # Overtime details
+            '{{TANGGAL_LEMBUR}}': overtime_date_formatted,
+            '{{JAM_LEMBUR}}': f"{overtime_request.overtime_hours} jam",
+            '{{DESKRIPSI_PEKERJAAN}}': overtime_request.work_description,
+            '{{JUMLAH_GAJI_LEMBUR}}': overtime_amount,
+
+            # Approval info
+            '{{LEVEL1_APPROVER}}': level1_approver,
+            '{{LEVEL1_APPROVER_NIP}}': level1_approver_nip,
+            '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
+            '{{FINAL_APPROVER}}': final_approver,
+            '{{FINAL_APPROVER_NIP}}': final_approver_nip,
+            '{{FINAL_APPROVAL_DATE}}': final_approval_date,
+
+            # Company info
+            '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+            '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+            '{{LOKASI}}': 'Dubai',
+        }
+
+        # Apply replacements
+        for placeholder, value in replacements.items():
+            replace_text_in_paragraphs(doc.paragraphs, placeholder, value)
+            replace_text_in_tables(doc.tables, placeholder, value)
+
+        # Save to buffer and return response
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+
+        from django.http import HttpResponse
+        response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        response['Content-Disposition'] = f'attachment; filename="Surat_Perintah_Kerja_Lembur_{overtime_request.id}_{overtime_request.employee.user.username}.docx"'
+        return response
+
 
     @action(detail=False, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
     def export_monthly_docx(self, request):
@@ -3788,46 +3815,365 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
+    def export_list_pdf(self, request):
+        """Export list of overtime requests to PDF"""
+        try:
+            print(f"Debug - export_list_pdf called")
+            print(f"Debug - User: {request.user.username}")
+            print(f"Debug - User groups: {[g.name for g in request.user.groups.all()]}")
+
+            # Get filter parameters
+            month = request.query_params.get('month')
+            status_filter = request.query_params.get('status')
+            employee_id = request.query_params.get('employee_id')
+
+            print(f"Debug - Filters: month={month}, status_filter={status_filter}, employee_id={employee_id}")
+
+            # Get queryset based on user role and filters
+            queryset = self.get_queryset()
+            print(f"Debug - Initial queryset count: {queryset.count()}")
+
+            # Apply filters
+            if month:
+                try:
+                    print(f"Debug - Applying month filter: {month}")
+                    year, month_num = month.split('-')
+                    year = int(year)
+                    month_num = int(month_num)
+                    start_date = datetime(year, month_num, 1).date()
+                    if month_num == 12:
+                        end_date = datetime(year + 1, 1, 1).date() - timedelta(days=1)
+                    else:
+                        end_date = datetime(year, month_num + 1, 1).date() - timedelta(days=1)
+                    print(f"Debug - Date range: {start_date} to {end_date}")
+                    queryset = queryset.filter(date_requested__range=[start_date, end_date])
+                    print(f"Debug - After month filter count: {queryset.count()}")
+                except ValueError:
+                    return Response(
+                        {"detail": "Format bulan tidak valid. Gunakan format YYYY-MM"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            if employee_id:
+                queryset = queryset.filter(employee_id=employee_id)
+            
+            # Get overtime requests
+            overtime_requests = queryset.order_by('-date_requested', '-created_at')
+            
+            if not overtime_requests.exists():
+                return Response(
+                    {"detail": "Tidak ada data pengajuan lembur yang ditemukan"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Debug: Check the data
+            print(f"Debug - Found {overtime_requests.count()} overtime requests")
+            for req in overtime_requests:
+                print(f"Debug - ID: {req.id}, Date: {req.date_requested}, Employee: {req.employee.fullname if req.employee else 'No Employee'}")
+                break
+            
+            # Debug: Check overtime_requests
+            print(f"Debug - Before PDF generation:")
+            print(f"Debug - overtime_requests count: {overtime_requests.count()}")
+            print(f"Debug - overtime_requests type: {type(overtime_requests)}")
+
+            # Generate PDF directly
+            pdf_response = self.create_overtime_list_pdf(overtime_requests, month)
+
+            return pdf_response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal generate export: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            
+            if status:
+                queryset = queryset.filter(status=status)
+            
+            if employee_id and request.user.is_superuser:
+                try:
+                    employee = Employee.objects.get(id=employee_id)
+                    queryset = queryset.filter(employee=employee)
+                except Employee.DoesNotExist:
+                    return Response(
+                        {"detail": "Employee tidak ditemukan"}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            
+            # Order by date
+            queryset = queryset.order_by('-date_requested')
+            
+            if not queryset.exists():
+                return Response(
+                    {"detail": "Tidak ada data pengajuan lembur yang sesuai dengan filter"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Generate PDF for list
+            pdf_response = self.generate_overtime_list_pdf(queryset, request.user)
+            
+            return pdf_response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal generate PDF: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'], permission_classes=[IsOvertimeRequestOwnerOrSupervisor])
+    def export_monthly_pdf(self, request):
+        """Export monthly overtime data directly to PDF (no DOCX conversion)"""
+        try:
+            # Get export parameters
+            month = request.query_params.get('month')  # Format: YYYY-MM
+            employee_id = request.query_params.get('employee_id')
+            
+            if not month:
+                return Response(
+                    {"detail": "Parameter month (YYYY-MM) diperlukan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate month format
+            try:
+                year, month_num = month.split('-')
+                year = int(year)
+                month_num = int(month_num)
+                if month_num < 1 or month_num > 12:
+                    raise ValueError
+            except ValueError:
+                return Response(
+                    {"detail": "Format month harus YYYY-MM (contoh: 2025-01)"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get employee (current user or specified employee)
+            if employee_id and request.user.is_superuser:
+                try:
+                    employee = Employee.objects.get(id=employee_id)
+                except Employee.DoesNotExist:
+                    return Response(
+                        {"detail": "Employee tidak ditemukan"}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                try:
+                    employee = request.user.employee
+                except:
+                    return Response(
+                        {"detail": "User tidak memiliki profil employee"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Get overtime data for the month
+            start_date = datetime.date(year, month_num, 1)
+            if month_num == 12:
+                end_date = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
+            else:
+                end_date = datetime.date(year, month_num + 1, 1) - datetime.timedelta(days=1)
+            
+            overtime_records = OvertimeRequest.objects.filter(
+                employee=employee,
+                date_requested__gte=start_date,
+                date_requested__lte=end_date
+            ).order_by('date_requested')
+            
+            if not overtime_records.exists():
+                return Response(
+                    {"detail": f"Tidak ada data overtime untuk periode {month}"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Debug: Check the data types
+            print(f"Debug - overtime_records count: {overtime_records.count()}")
+            for record in overtime_records:
+                print(f"Debug - record.date_requested type: {type(record.date_requested)}, value: {record.date_requested}")
+                print(f"Debug - record.overtime_hours type: {type(record.overtime_hours)}, value: {record.overtime_hours}")
+                print(f"Debug - record.overtime_amount type: {type(record.overtime_amount)}, value: {record.overtime_amount}")
+                break  # Just check first record
+            
+            # Generate PDF directly
+            pdf_response = self.generate_monthly_overtime_pdf(
+                overtime_records, 
+                employee, 
+                month, 
+                start_date, 
+                end_date
+            )
+            
+            return pdf_response
+            
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal generate PDF: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def export_pdf(self, request, pk=None):
-        """Export individual overtime request to PDF by converting DOCX"""
-        overtime_request = self.get_object()
-        
+        """
+        Export individual overtime request to PDF with improved workflow:
+        1. Generate DOCX if not exists
+        2. Save DOCX to media/overtime_docx and database
+        3. Convert DOCX to PDF using DOCX converter service
+        4. Save PDF to media/overtime_pdf and database
+        5. Return PDF for download
+        """
+        # Handle AnonymousUser for AllowAny permission
+        if request.user.is_anonymous:
+            try:
+                overtime_request = OvertimeRequest.objects.get(pk=pk)
+            except OvertimeRequest.DoesNotExist:
+                return Response(
+                    {"detail": "Overtime request tidak ditemukan."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            overtime_request = self.get_object()
+
         # Only allow export for approved overtime requests
         if overtime_request.status != 'approved':
             return Response(
-                {"detail": "Overtime request must be approved to export PDF."}, 
+                {"detail": "Overtime request must be approved to export PDF."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            # Generate DOCX first (reusing existing logic)
-            temp_docx = self.generate_overtime_docx(overtime_request)
-            
-            # Convert DOCX to PDF
-            pdf_file = self.convert_docx_to_pdf(temp_docx.name)
-            
-            # Prepare response
-            from django.http import FileResponse
-            response = FileResponse(
-                open(pdf_file, 'rb'), 
-                content_type='application/pdf',
-                as_attachment=True, 
-                filename=f"Surat_Perintah_Lembur_{overtime_request.employee.fullname}_{overtime_request.date_requested}.pdf"
-            )
-            
-            # Clean up temporary files
+            # Step 1 & 2: Generate and save DOCX if not exists
+            if not overtime_request.docx_document or not overtime_request.docx_document.docx_file:
+                # Generate and save DOCX
+                self._generate_and_save_docx(overtime_request)
+
+            # Verify DOCX exists after generation
+            if not overtime_request.docx_document or not overtime_request.docx_document.docx_file:
+                return Response(
+                    {"detail": "Gagal generate DOCX file."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Get the DOCX file path
+            docx_file_path = overtime_request.docx_document.docx_file.path
+
+            # Check if file exists on disk
             import os
-            os.unlink(temp_docx.name)
-            os.unlink(pdf_file)
-            
+            if not os.path.exists(docx_file_path):
+                # File doesn't exist, regenerate DOCX
+                print(f"DOCX file not found at {docx_file_path}, regenerating...")
+                self._generate_and_save_docx(overtime_request)
+
+                # Re-check after regeneration
+                if not overtime_request.docx_document or not overtime_request.docx_document.docx_file:
+                    return Response(
+                        {"detail": "Gagal regenerate DOCX file."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+                # Update file path after regeneration
+                docx_file_path = overtime_request.docx_document.docx_file.path
+
+                # Final check
+                if not os.path.exists(docx_file_path):
+                    return Response(
+                        {"detail": "File DOCX masih tidak ditemukan setelah regenerasi."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+            # Step 3 & 4: Convert DOCX to PDF using DOCX converter service
+            pdf_content = self._convert_docx_to_pdf_via_service(docx_file_path)
+
+            if not pdf_content:
+                return Response(
+                    {"detail": "Gagal convert DOCX ke PDF."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Step 5: Save PDF to database
+            from .models import OvertimeDocument
+            from django.core.files.base import ContentFile
+
+            # Update existing OvertimeDocument or create new one
+            doc = overtime_request.docx_document
+            if not doc:
+                doc = OvertimeDocument.objects.create(
+                    overtime_request=overtime_request,
+                    document_type='individual',
+                    status='converted'
+                )
+
+            # Create filename for PDF
+            pdf_filename = f"Surat_Perintah_Lembur_{overtime_request.employee.fullname}_{overtime_request.date_requested}.pdf"
+
+            # Save PDF file
+            doc.pdf_file.save(pdf_filename, ContentFile(pdf_content), save=True)
+            doc.status = 'converted'
+            doc.converted_at = dj_timezone.now()
+            doc.save()
+
+            # Update overtime request reference if needed
+            if not overtime_request.docx_document:
+                overtime_request.docx_document = doc
+                overtime_request.save(update_fields=['docx_document'])
+
+            # Step 6: Return PDF for download
+            from django.http import HttpResponse
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{pdf_filename}"'
+
             return response
-            
+
         except Exception as e:
             return Response(
-                {"detail": f"Gagal export PDF: {str(e)}"}, 
+                {"detail": f"Gagal export PDF: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    def _convert_docx_to_pdf_via_service(self, docx_file_path):
+        """
+        Convert DOCX to PDF using the DOCX converter service
+        Returns PDF content as bytes
+        """
+        import requests
+        import os
+        from django.conf import settings
+
+        try:
+            # Prepare the file for upload
+            with open(docx_file_path, 'rb') as f:
+                files = {'file': ('document.docx', f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
+
+                # Send POST request to DOCX converter service
+                # Use internal network URL for better performance
+                converter_url = "http://docx_converter:5000/convert"
+
+                data = {'method': 'file'}
+                response = requests.post(converter_url, files=files, data=data, timeout=60)
+
+                if response.status_code == 200:
+                    return response.content
+                else:
+                    # Log error for debugging
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"DOCX converter service error: {response.status_code} - {response.text}")
+                    return None
+
+        except requests.exceptions.RequestException as e:
+            # Log network error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"DOCX converter service network error: {str(e)}")
+            return None
+        except Exception as e:
+            # Log general error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"DOCX to PDF conversion error: {str(e)}")
+            return None
 
     def generate_monthly_export_docx(self, overtime_records, employee, month, start_date, end_date):
         """Generate monthly overtime export DOCX with dynamic table"""
@@ -3884,7 +4230,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                 final_approver = latest_approved.final_approved_by
             
             # Format dates
-            current_date = timezone.now()
+            current_date = dj_timezone.now()
             month_name = start_date.strftime('%B %Y')
             export_date = current_date.strftime('%d %B %Y')
             
@@ -4160,6 +4506,335 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Final fallback to username
         return user.username.title()  # Capitalize username as fallback
 
+    def create_overtime_list_pdf(self, overtime_requests, month=None):
+        """Generate simple PDF for list of overtime requests"""
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from io import BytesIO
+        from django.http import HttpResponse
+        import datetime
+
+        # Create buffer for PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+
+        # Get styles
+        styles = getSampleStyleSheet()
+
+        # Build content
+        story = []
+
+        # Title
+        title = Paragraph("DAFTAR PENGAJUAN LEMBUR", styles['Title'])
+        story.append(title)
+        story.append(Spacer(1, 20))
+
+         # Build data table from overtime_requests
+        table_data = [['No', 'Tanggal', 'Nama Pegawai', 'Jam Lembur', 'Status']]
+        for idx, request in enumerate(overtime_requests, 1):
+            employee_name = request.employee.fullname if request.employee and request.employee.fullname else "N/A"
+            date_str = request.date_requested.strftime('%d/%m/%Y') if request.date_requested else "N/A"
+            overtime_hours = f"{request.overtime_hours:.2f}" if request.overtime_hours else "0.00"
+            status_display = request.get_status_display() if hasattr(request, 'get_status_display') else request.status
+
+            table_data.append([
+                str(idx),
+                date_str,
+                employee_name,
+                overtime_hours,
+                status_display
+            ])
+
+        # Create table
+        main_table = Table(table_data, colWidths=[0.5*inch, 1*inch, 2*inch, 1*inch, 1*inch])
+        main_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+
+        story.append(main_table)
+        story.append(Spacer(1, 20))
+
+        # Footer
+        footer_text = f"Dicetak pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        footer = Paragraph(footer_text, styles['Normal'])
+        story.append(footer)
+
+        # Build PDF
+        doc.build(story)
+
+        # Get PDF content
+        buffer.seek(0)
+        pdf_content = buffer.getvalue()
+        buffer.close()
+
+        # Create response
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="daftar-pengajuan-lembur-{month or "all"}.pdf"'
+
+        return response
+
+    def convert_docx_to_pdf(self, docx_file_path):
+        """Convert DOCX file to PDF using reportlab (primary) or pypandoc (fallback)"""
+        import tempfile
+        import os
+
+        # Create temporary PDF file
+        pdf_temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        pdf_temp.close()
+
+        try:
+            # Primary method: Use reportlab (fast and reliable)
+            self._convert_docx_to_pdf_reportlab(docx_file_path, pdf_temp.name)
+
+            if os.path.exists(pdf_temp.name) and os.path.getsize(pdf_temp.name) > 0:
+                return pdf_temp.name
+            else:
+                raise Exception("PDF file tidak berhasil dibuat dengan reportlab")
+
+        except Exception as reportlab_error:
+            # Fallback: Use pypandoc if reportlab fails
+            try:
+                import pypandoc
+                pypandoc.convert_file(
+                    docx_file_path,
+                    'pdf',
+                    outputfile=pdf_temp.name,
+                    extra_args=[
+                        '--pdf-engine=pdflatex',
+                        '--variable', 'geometry:margin=2cm',
+                        '--variable', 'fontsize=10pt'
+                    ]
+                )
+                if os.path.exists(pdf_temp.name) and os.path.getsize(pdf_temp.name) > 0:
+                    return pdf_temp.name
+                else:
+                    raise Exception("PDF file tidak berhasil dibuat dengan pypandoc")
+            except Exception as pypandoc_error:
+                # Clean up temp file on error
+                if os.path.exists(pdf_temp.name):
+                    os.unlink(pdf_temp.name)
+                raise Exception(f"Error saat konversi DOCX ke PDF - Reportlab: {str(reportlab_error)}, Pypandoc: {str(pypandoc_error)}")
+
+
+    def _convert_docx_to_pdf_reportlab(self, docx_file_path, output_pdf_path):
+        """Convert DOCX to PDF using reportlab with advanced template matching"""
+        try:
+            from docx import Document
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch, cm
+            from reportlab.lib import colors
+            from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
+
+            # Load the DOCX document
+            doc = Document(docx_file_path)
+
+            # Create PDF document
+            pdf_doc = SimpleDocTemplate(
+                output_pdf_path,
+                pagesize=A4,
+                rightMargin=2*cm,
+                leftMargin=2*cm,
+                topMargin=2*cm,
+                bottomMargin=2*cm
+            )
+
+            # Get styles
+            styles = getSampleStyleSheet()
+
+            # Create custom styles
+            custom_styles = {
+                'Normal': styles['Normal'],
+                'Title': ParagraphStyle(
+                    'Title',
+                    parent=styles['Normal'],
+                    fontSize=16,
+                    spaceAfter=30,
+                    alignment=TA_CENTER,
+                    fontName='Helvetica-Bold'
+                ),
+                'Heading1': ParagraphStyle(
+                    'Heading1',
+                    parent=styles['Normal'],
+                    fontSize=14,
+                    spaceAfter=20,
+                    fontName='Helvetica-Bold'
+                ),
+                'Heading2': ParagraphStyle(
+                    'Heading2',
+                    parent=styles['Normal'],
+                    fontSize=12,
+                    spaceAfter=15,
+                    fontName='Helvetica-Bold'
+                ),
+                'Signature': ParagraphStyle(
+                    'Signature',
+                    parent=styles['Normal'],
+                    fontSize=10,
+                    alignment=TA_CENTER,
+                    spaceAfter=50
+                )
+            }
+
+            # Create story (content)
+            story = []
+
+            # Process each paragraph in the DOCX
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():  # Skip empty paragraphs
+                    # Create paragraph style based on DOCX formatting
+                    style = self._determine_paragraph_style(paragraph, custom_styles)
+
+                    # Format text with runs
+                    formatted_text = self._format_paragraph_text(paragraph)
+
+                    if formatted_text:
+                        p = Paragraph(formatted_text, style)
+                        story.append(p)
+                        story.append(Spacer(1, 0.2*cm))
+
+            # Process tables
+            for table in doc.tables:
+                table_data = []
+                for row in table.rows:
+                    row_data = []
+                    for cell in row.cells:
+                        cell_text = self._clean_cell_text(cell)
+                        row_data.append(cell_text)
+                    table_data.append(row_data)
+
+                if table_data:
+                    # Create table
+                    pdf_table = Table(table_data)
+                    table_style = self._create_table_style(table_data, len(table_data), len(table_data[0]) if table_data else 0)
+                    pdf_table.setStyle(table_style)
+
+                    story.append(pdf_table)
+                    story.append(Spacer(1, 0.5*cm))
+
+            # Build PDF
+            pdf_doc.build(story)
+
+        except Exception as e:
+            raise Exception(f"Error converting DOCX to PDF with reportlab: {str(e)}")
+
+    def _determine_paragraph_style(self, paragraph, custom_styles):
+        """Determine the appropriate style for a paragraph based on DOCX properties"""
+        try:
+            # Check for title-like paragraphs
+            if paragraph.style.name.startswith('Title') or 'title' in paragraph.text.lower():
+                return custom_styles['Title']
+
+            # Check for heading-like paragraphs
+            if paragraph.style.name.startswith('Heading'):
+                if '1' in paragraph.style.name:
+                    return custom_styles['Heading1']
+                else:
+                    return custom_styles['Heading2']
+
+            # Check for signature-like paragraphs
+            if any(keyword in paragraph.text.lower() for keyword in ['ttd', 'signature', 'dibuat', 'disetujui']):
+                return custom_styles['Signature']
+
+            # Default to normal style
+            return custom_styles['Normal']
+
+        except:
+            return custom_styles['Normal']
+
+    def _format_paragraph_text(self, paragraph):
+        """Format paragraph text with special characters and formatting"""
+        try:
+            text = paragraph.text
+
+            # Handle common Indonesian document formatting
+            text = text.replace(':', ' : ')
+            text = text.replace(';', ' ; ')
+
+            # Handle bullet points and numbering
+            if text.strip().startswith(('•', '-', '*', '1.', '2.', '3.')):
+                text = '&nbsp;&nbsp;&nbsp;&nbsp;' + text
+
+            return text
+
+        except:
+            return paragraph.text
+
+    def _clean_cell_text(self, cell_text):
+        """Clean and format cell text for table display"""
+        try:
+            # Remove extra whitespace
+            cleaned = ' '.join(cell_text.split())
+
+            # Handle empty cells
+            if not cleaned:
+                return '-'
+
+            # Truncate very long text
+            if len(cleaned) > 50:
+                cleaned = cleaned[:47] + '...'
+
+            return cleaned
+
+        except:
+            return cell_text if cell_text else '-'
+
+    def _create_table_style(self, table_data, rows, cols):
+        """Create enhanced table styling that matches DOCX template"""
+        try:
+            from reportlab.lib import colors
+
+            # Base table style
+            style = [
+                # Header row styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TOPPADDING', (0, 0), (-1, 0), 12),
+
+                # Data rows styling
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+                ('TOPPADDING', (0, 1), (-1, -1), 6),
+
+                # Grid lines
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+            ]
+
+            return TableStyle(style)
+
+        except:
+            # Return basic table style if custom styling fails
+            from reportlab.platypus import TableStyle
+            return TableStyle([
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ])
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4225,7 +4900,6 @@ def supervisor_approvals_summary(request):
         'can_approve_overtime_org_wide': is_org_wide_supervisor,
         'is_admin': user.is_superuser or user.groups.filter(name='admin').exists(),
     })
-
 
 # ============================================================================
 # MONTHLY SUMMARY REQUEST VIEWSET
@@ -4987,7 +5661,7 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
             final_approver = summary_request.final_approved_by
             
             # Format dates
-            current_date = timezone.now()
+            current_date = dj_timezone.now()
             month_name = datetime.strptime(period, '%Y-%m').strftime('%B %Y')
             export_date = current_date.strftime('%d %B %Y')
             
@@ -5740,6 +6414,447 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ])
 
+    def generate_overtime_list_pdf_simple(self, overtime_requests, month=None):
+        """Generate PDF for list of overtime requests"""
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib import colors
+            from reportlab.lib.units import inch
+            from io import BytesIO
+            from django.http import HttpResponse
+            import datetime
+            
+            # Create buffer for PDF
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+            
+            # Get styles
+            styles = getSampleStyleSheet()
+            
+            # Create custom styles
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+                alignment=TA_CENTER,
+                textColor=colors.darkblue
+            )
+            
+            header_style = ParagraphStyle(
+                'CustomHeader',
+                parent=styles['Heading2'],
+                fontSize=12,
+                spaceAfter=12,
+                alignment=TA_LEFT,
+                textColor=colors.darkblue
+            )
+            
+            # Build content
+            story = []
+            
+            # Title
+            title = Paragraph("DAFTAR PENGAJUAN LEMBUR", title_style)
+            story.append(title)
+            story.append(Spacer(1, 20))
+            
+            # Summary information
+            total_requests = overtime_requests.count()
+            total_hours = sum(float(req.overtime_hours) for req in overtime_requests)
+            total_amount = sum(float(req.overtime_amount) for req in overtime_requests)
+            
+            # Status summary
+            status_counts = {}
+            for req in overtime_requests:
+                status = req.get_status_display()
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # Summary table
+            summary_data = [
+                ['Total Pengajuan', str(total_requests)],
+                ['Total Jam Lembur', f"{total_hours:.2f} jam"],
+                ['Total Biaya Lembur', f"Rp {total_amount:,.2f}"],
+                ['Rata-rata per Pengajuan', f"{total_hours/total_requests:.2f} jam" if total_requests > 0 else "0 jam"]
+            ]
+            
+            # Add status breakdown
+            for status, count in status_counts.items():
+                summary_data.append([f"Status: {status}", str(count)])
+            
+            summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                ('TOPPADDING', (0, 0), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(summary_table)
+            story.append(Spacer(1, 20))
+            
+            # Main data table
+            table_data = [['No', 'Tanggal', 'Nama Pegawai', 'NIP', 'Jam Lembur', 'Status', 'Biaya (Rp)']]
+            
+            for idx, request in enumerate(overtime_requests, 1):
+                # Format date - handle both date and datetime objects
+                if hasattr(request.date_requested, 'strftime'):
+                    date_str = request.date_requested.strftime('%d/%m/%Y')
+                else:
+                    # If it's already a string or other format, convert to date first
+                    if isinstance(request.date_requested, str):
+                        date_obj = datetime.datetime.strptime(request.date_requested, '%Y-%m-%d').date()
+                    else:
+                        date_obj = request.date_requested
+                    date_str = date_obj.strftime('%d/%m/%Y')
+                
+                # Get employee info
+                employee_name = request.employee.fullname if request.employee else "N/A"
+                employee_nip = request.employee.nip if request.employee else "N/A"
+                
+                # Format overtime hours
+                hours_str = f"{request.overtime_hours:.2f}"
+                
+                # Get status display
+                status_display = request.get_status_display()
+                
+                # Format amount
+                amount_str = f"{request.overtime_amount:,.2f}"
+                
+                table_data.append([
+                    str(idx),
+                    date_str,
+                    employee_name,
+                    employee_nip,
+                    hours_str,
+                    status_display,
+                    amount_str
+                ])
+            
+            # Create table
+            table = Table(table_data, colWidths=[0.5*inch, 1*inch, 2*inch, 1.2*inch, 0.8*inch, 1.2*inch, 1.2*inch])
+            table.setStyle(self._create_table_style(table_data, len(table_data), len(table_data[0])))
+            
+            story.append(table)
+            
+            # Add footer with generation info
+            story.append(Spacer(1, 20))
+            footer_text = f"Dicetak pada: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            if month:
+                footer_text += f" | Periode: {month}"
+            
+            footer = Paragraph(footer_text, styles['Normal'])
+            story.append(footer)
+            
+            # Build PDF
+            doc.build(story)
+            
+            # Get PDF content
+            pdf_content = buffer.getvalue()
+            buffer.close()
+            
+            # Create response
+            response = HttpResponse(content_type='application/pdf')
+            filename = f"Daftar_Pengajuan_Lembur_{month or 'All'}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response.write(pdf_content)
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Error generating PDF: {str(e)}")
+
+    def generate_monthly_overtime_pdf(self, overtime_records, employee, month, start_date, end_date):
+        """Generate monthly overtime PDF directly using ReportLab (no DOCX conversion)"""
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch, cm
+            from reportlab.lib import colors
+            from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
+            from io import BytesIO
+            from django.utils import timezone
+            import locale
+            
+            # Set locale for Indonesian formatting
+            try:
+                locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'id_ID')
+                except:
+                    pass
+            
+            # Create PDF buffer
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(
+                buffer, 
+                pagesize=A4,
+                leftMargin=2*cm,
+                rightMargin=2*cm,
+                topMargin=2*cm,
+                bottomMargin=2*cm
+            )
+            
+            # Create custom styles
+            styles = getSampleStyleSheet()
+            
+            # Title style (matching DOCX template)
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Title'],
+                fontSize=16,
+                spaceAfter=20,
+                spaceBefore=0,
+                alignment=TA_CENTER,
+                fontName='Helvetica-Bold',
+                textColor=colors.black
+            )
+            
+            # Header style
+            header_style = ParagraphStyle(
+                'CustomHeader',
+                parent=styles['Heading1'],
+                fontSize=14,
+                spaceAfter=15,
+                spaceBefore=20,
+                alignment=TA_CENTER,
+                fontName='Helvetica-Bold',
+                textColor=colors.darkblue
+            )
+            
+            # Subheader style
+            subheader_style = ParagraphStyle(
+                'CustomSubheader',
+                parent=styles['Heading2'],
+                fontSize=12,
+                spaceAfter=10,
+                spaceBefore=15,
+                alignment=TA_LEFT,
+                fontName='Helvetica-Bold',
+                textColor=colors.darkblue
+            )
+            
+            # Normal style
+            normal_style = ParagraphStyle(
+                'CustomNormal',
+                parent=styles['Normal'],
+                fontSize=11,
+                spaceAfter=8,
+                alignment=TA_JUSTIFY,
+                fontName='Helvetica',
+                textColor=colors.black
+            )
+            
+            # Signature style
+            signature_style = ParagraphStyle(
+                'CustomSignature',
+                parent=styles['Normal'],
+                fontSize=11,
+                spaceAfter=20,
+                spaceBefore=30,
+                alignment=TA_RIGHT,
+                fontName='Helvetica',
+                textColor=colors.black
+            )
+            
+            # Build content
+            story = []
+            
+            # Title
+            title = Paragraph("DAFTAR PENGAJUAN LEMBUR", title_style)
+            story.append(title)
+            story.append(Spacer(1, 20))
+            
+            # Employee Information
+            employee_name = employee.fullname or employee.user.get_full_name() or employee.user.username
+            employee_nip = employee.nip or '-'
+            employee_position = employee.position.name if employee.position else '-'
+            employee_division = employee.division.name if employee.division else '-'
+            
+            # Format month name in Indonesian
+            month_names = [
+                'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+            ]
+            year, month_num = month.split('-')
+            month_name = month_names[int(month_num) - 1]
+            
+            # Employee info table
+            employee_info_data = [
+                ['Nama', ':', employee_name],
+                ['NIP', ':', employee_nip],
+                ['Jabatan', ':', employee_position],
+                ['Divisi', ':', employee_division],
+                ['Periode', ':', f"{month_name} {year}"],
+            ]
+            
+            employee_table = Table(employee_info_data, colWidths=[2*cm, 0.5*cm, 8*cm])
+            employee_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ]))
+            
+            story.append(employee_table)
+            story.append(Spacer(1, 20))
+            
+            # Summary Statistics
+            total_requests = overtime_records.count()
+            total_hours = sum(float(record.overtime_hours) for record in overtime_records)
+            total_amount = sum(float(record.overtime_amount) for record in overtime_records)
+            avg_hours = total_hours / total_requests if total_requests > 0 else 0
+            avg_amount = total_amount / total_requests if total_requests > 0 else 0
+            
+            summary_data = [
+                ['Total Pengajuan', ':', f"{total_requests} kali"],
+                ['Total Jam Lembur', ':', f"{total_hours:.2f} jam"],
+                ['Total Biaya Lembur', ':', f"Rp {total_amount:,.2f}"],
+                ['Rata-rata per Pengajuan', ':', f"{avg_hours:.2f} jam / Rp {avg_amount:,.2f}"],
+            ]
+            
+            summary_table = Table(summary_data, colWidths=[4*cm, 0.5*cm, 6*cm])
+            summary_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+            ]))
+            
+            story.append(summary_table)
+            story.append(Spacer(1, 20))
+            
+            # Detailed Overtime Records
+            if overtime_records.exists():
+                # Table header
+                table_data = [['No', 'Tanggal', 'Jam Lembur', 'Deskripsi Pekerjaan', 'Status', 'Jumlah (Rp)']]
+                
+                for idx, record in enumerate(overtime_records, 1):
+                    # Format date - handle both date and datetime objects
+                    if hasattr(record.date_requested, 'strftime'):
+                        date_str = record.date_requested.strftime('%d/%m/%Y')
+                    else:
+                        # If it's already a string or other format, convert to date first
+                        from datetime import datetime
+                        if isinstance(record.date_requested, str):
+                            date_obj = datetime.strptime(record.date_requested, '%Y-%m-%d').date()
+                        else:
+                            date_obj = record.date_requested
+                        date_str = date_obj.strftime('%d/%m/%Y')
+                    
+                    # Format hours
+                    hours_str = f"{record.overtime_hours:.2f} jam"
+                    
+                    # Format status
+                    status_map = {
+                        'pending': 'Menunggu',
+                        'level1_approved': 'Disetujui Level 1',
+                        'approved': 'Disetujui',
+                        'rejected': 'Ditolak'
+                    }
+                    status_str = status_map.get(record.status, record.status.title())
+                    
+                    # Format amount
+                    amount_str = f"Rp {record.overtime_amount:,.2f}"
+                    
+                    # Truncate description if too long
+                    description = record.work_description[:50] + '...' if len(record.work_description) > 50 else record.work_description
+                    
+                    table_data.append([
+                        str(idx),
+                        date_str,
+                        hours_str,
+                        description,
+                        status_str,
+                        amount_str
+                    ])
+                
+                # Create table
+                records_table = Table(table_data, colWidths=[1*cm, 2*cm, 2*cm, 6*cm, 2.5*cm, 2.5*cm])
+                records_table.setStyle(TableStyle([
+                    # Header styling
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('TOPPADDING', (0, 0), (-1, 0), 8),
+                    
+                    # Data rows styling
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+                    ('TOPPADDING', (0, 1), (-1, -1), 6),
+                    
+                    # Alignment
+                    ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # No
+                    ('ALIGN', (1, 1), (1, -1), 'CENTER'),  # Tanggal
+                    ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Jam Lembur
+                    ('ALIGN', (3, 1), (3, -1), 'LEFT'),    # Deskripsi
+                    ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Status
+                    ('ALIGN', (5, 1), (5, -1), 'RIGHT'),   # Jumlah
+                    
+                    # Grid
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    
+                    # Alternating row colors
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+                ]))
+                
+                story.append(records_table)
+                story.append(Spacer(1, 20))
+            
+            # Footer with date and signature
+            current_date = dj_timezone.now()
+            footer_text = f"Dibuat pada: {current_date.strftime('%d %B %Y')}"
+            footer = Paragraph(footer_text, normal_style)
+            story.append(footer)
+            
+            # Build PDF
+            doc.build(story)
+            buffer.seek(0)
+            
+            # Create response
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            filename = f"Laporan_Overtime_{employee.nip}_{month}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Gagal generate PDF: {str(e)}")
+
 
 # Group ViewSets
 class GroupViewSet(viewsets.ModelViewSet):
@@ -6480,10 +7595,11 @@ def attendance_correction_request(request):
             'correction_id': correction.id,
             'status': correction.status
         }, status=status.HTTP_201_CREATED)
-
+        
     except Exception as e:
         print(f"Error in attendance_correction_request: {str(e)}")
         return Response(
             {'detail': 'Internal server error'}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+

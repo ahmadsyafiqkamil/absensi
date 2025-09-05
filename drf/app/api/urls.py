@@ -114,6 +114,21 @@ urlpatterns += [
          views.OvertimeRequestViewSet.as_view({'get': 'export_monthly_docx'}), 
          name='overtime-export-monthly-docx'),
     
+    # Export monthly overtime to PDF (direct)
+    path('overtime-requests/export-monthly-pdf', 
+         views.OvertimeRequestViewSet.as_view({'get': 'export_monthly_pdf'}), 
+         name='overtime-export-monthly-pdf'),
+    
+    # Export list of overtime requests to PDF
+    path('overtime-requests/export-list-pdf',
+         views.OvertimeRequestViewSet.as_view({'get': 'export_list_pdf'}),
+         name='overtime-export-list-pdf'),
+
+    # Export individual overtime request to PDF
+    path('overtime-requests/<int:pk>/export-pdf',
+         views.OvertimeRequestViewSet.as_view({'get': 'export_pdf'}),
+         name='overtime-export-pdf'),
+
     # Monthly export template management
     path('overtime-requests/upload-monthly-export-template', 
          views.OvertimeRequestViewSet.as_view({'post': 'upload_monthly_export_template'}), 

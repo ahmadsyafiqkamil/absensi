@@ -167,7 +167,7 @@ export default function OvertimeRequestsManager() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -395,6 +395,67 @@ export default function OvertimeRequestsManager() {
     } catch (err) {
       console.error('Export PDF error:', err);
       setError(err instanceof Error ? err.message : 'Failed to export PDF');
+    } finally {
+      setDownloadingId(null); // Clear downloading state
+    }
+  };
+
+  const handleExportListPdf = async () => {
+    try {
+      setError(''); // Clear previous errors
+      setDownloadingId('list'); // Set downloading state for list
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (monthFilter) {
+        params.append('month', monthFilter);
+      }
+      // Note: status filter is not implemented in the backend yet
+      
+      const response = await fetch(`/api/overtime-requests/export-list-pdf?${params.toString()}`, {
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Accept': 'application/pdf',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to export list PDF: ${response.status} ${response.statusText}`);
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'daftar-pengajuan-lembur.pdf';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Show success message
+      setError(''); // Clear any previous errors
+      setSuccessMessage(`Daftar pengajuan lembur berhasil di-export: ${filename}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Export list PDF error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to export list PDF');
     } finally {
       setDownloadingId(null); // Clear downloading state
     }
@@ -871,20 +932,23 @@ export default function OvertimeRequestsManager() {
                   )}
                 </div>
 
-                {/* Export Filtered Data */}
+                {/* Export Filtered Data to PDF */}
                 {monthFilter && table.getFilteredRowModel().rows.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      // Export filtered data logic here
-                      const filteredData = table.getFilteredRowModel().rows.map(row => row.original);
-                      console.log('Exporting filtered data:', filteredData);
-                      // You can implement CSV export or other export functionality
-                    }}
-                    className="text-xs"
+                    onClick={handleExportListPdf}
+                    disabled={downloadingId === 'list'}
+                    className="text-xs bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
                   >
-                    📊 Export Data
+                    {downloadingId === 'list' ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-700 mr-1"></div>
+                        Exporting...
+                      </>
+                    ) : (
+                      '📑 Export PDF'
+                    )}
                   </Button>
                 )}
               </div>

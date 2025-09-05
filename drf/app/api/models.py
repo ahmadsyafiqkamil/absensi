@@ -411,7 +411,18 @@ class OvertimeRequest(models.Model):
         verbose_name="Overtime Amount",
         help_text="Calculated overtime pay amount"
     )
-    
+
+    # Document reference (for quick access to generated files)
+    docx_document = models.OneToOneField(
+        'OvertimeDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='overtime_request_ref',
+        verbose_name="Generated DOCX Document",
+        help_text="Reference to the generated DOCX document"
+    )
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -821,15 +832,15 @@ class GroupPermissionTemplate(models.Model):
         """Apply template permissions to a group"""
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
-        
+
         # Clear existing custom permissions for this group
         GroupPermission.objects.filter(group=group).delete()
-        
+
         # Create new permissions based on template
         for perm_data in self.permissions:
             perm_type = perm_data.get('type')
             perm_action = perm_data.get('action')
-            
+
             if perm_type and perm_action:
                 GroupPermission.objects.create(
                     group=group,
@@ -837,3 +848,86 @@ class GroupPermissionTemplate(models.Model):
                     permission_action=perm_action,
                     is_active=True
                 )
+
+
+class OvertimeDocument(models.Model):
+    """
+    Model untuk menyimpan dokumen DOCX dan PDF yang dihasilkan dari overtime requests
+    """
+    DOCUMENT_TYPE_CHOICES = [
+        ('individual', 'Individual Request'),
+        ('monthly', 'Monthly Summary'),
+    ]
+
+    STATUS_CHOICES = [
+        ('generated', 'Generated'),
+        ('converted', 'Converted to PDF'),
+        ('downloaded', 'Downloaded'),
+        ('error', 'Error'),
+    ]
+
+    overtime_request = models.ForeignKey(
+        'OvertimeRequest',
+        on_delete=models.CASCADE,
+        related_name='documents',
+        verbose_name="Overtime Request"
+    )
+
+    docx_file = models.FileField(
+        upload_to='overtime_docx/',
+        verbose_name='DOCX File',
+        null=True,
+        blank=True
+    )
+
+    pdf_file = models.FileField(
+        upload_to='overtime_pdf/',
+        verbose_name='PDF File',
+        null=True,
+        blank=True
+    )
+
+    document_type = models.CharField(
+        max_length=20,
+        choices=DOCUMENT_TYPE_CHOICES,
+        default='individual',
+        verbose_name='Document Type'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='generated',
+        verbose_name='Status'
+    )
+
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Error Message'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    converted_at = models.DateTimeField(null=True, blank=True)
+    downloaded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Overtime Document"
+        verbose_name_plural = "Overtime Documents"
+        ordering = ['-created_at']
+        unique_together = ('overtime_request', 'document_type')
+
+    def __str__(self):
+        return f"{self.document_type} - {self.overtime_request} - {self.status}"
+
+    def get_file_path(self):
+        """Get the actual file path for the DOCX file"""
+        if self.docx_file:
+            return self.docx_file.path
+        return None
+
+    def get_file_url(self):
+        """Get the URL for the DOCX file"""
+        if self.docx_file:
+            return self.docx_file.url
+        return None

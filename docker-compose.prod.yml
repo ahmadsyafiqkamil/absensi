@@ -177,6 +177,30 @@ services:
     profiles:
       - backup
 
+  # DOCX to PDF Converter Service
+  docx_converter:
+    image: beladevos/docx-pdf-converter-libreoffice:latest
+    platform: linux/amd64
+    container_name: absensi_docx_converter_prod
+    restart: unless-stopped
+    # Remove public port exposure for security (will be accessed via Caddy)
+    networks:
+      - absensi_network_prod
+    volumes:
+      - ./drf/app/media:/app/media  # Mount media directory for file processing
+      - ./template:/app/template   # Mount template directory if needed
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]  # Adjust health check endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   mysql_data_prod:
     driver: local

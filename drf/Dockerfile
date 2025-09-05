@@ -5,12 +5,16 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# System deps for mysqlclient
+# System deps for mysqlclient and document conversion
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
         default-libmysqlclient-dev \
         pkg-config \
+        pandoc \
+        texlive-latex-base \
+        texlive-latex-recommended \
+        texlive-fonts-recommended \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt

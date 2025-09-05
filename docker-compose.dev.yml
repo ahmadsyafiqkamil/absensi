@@ -71,9 +71,10 @@ services:
     volumes:
       - ./drf:/app
       - ./logs/dev/backend:/app/logs
-    command: python manage.py runserver 0.0.0.0:8000
+      - ./template:/app/app/template
+    command: python app/manage.py runserver 0.0.0.0:8000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -108,6 +109,28 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # DOCX to PDF Converter Service
+  docx_converter:
+    image: beladevos/docx-pdf-converter-libreoffice:latest
+    platform: linux/amd64
+    container_name: absensi_docx_converter_dev
+    restart: unless-stopped
+    ports:
+      - "3001:5000"  # Service runs on port 5000 internally
+    networks:
+      - absensi_network_dev
+    volumes:
+      - ./drf/app/media:/app/media  # Mount media directory for file processing
+      - ./template:/app/template   # Mount template directory if needed
+    environment:
+      - NODE_ENV=development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]  # Adjust health check endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   mysql_data_dev:
