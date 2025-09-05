@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ detail: 'Ukuran file maksimal 10MB' }, { status: 400 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = getBackendUrl()
     const url = `${backend}/api/overtime-requests/upload_template/`
     
     // Convert File to FormData for backend

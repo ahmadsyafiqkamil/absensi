@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/auth/me`, {
+    const meResponse = await fetch(`${getBackendUrl()}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -49,11 +50,12 @@ export async function POST(request: Request) {
     }
 
     // Call backend employee creation API (namespaced admin route)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees/`, {
+    const response = await fetch(`${getBackendUrl()}/api/admin/employees/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${accessToken}`,
+        'X-CSRFToken': (await cookies()).get('csrftoken')?.value || ''
       },
       body: JSON.stringify({
         user_id,
@@ -69,7 +71,13 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // If response is not JSON (e.g., HTML error page), create a generic error
+        errorData = { detail: `Server error: ${response.status} ${response.statusText}` };
+      }
       return NextResponse.json(errorData, { status: response.status });
     }
 
@@ -92,7 +100,7 @@ export async function GET() {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
     }
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+    const backendBase = getBackendUrl();
 
     // Verify admin
     const meResponse = await fetch(`${backendBase}/api/auth/me`, {

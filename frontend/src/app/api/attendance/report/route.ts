@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: Request) {
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     const queryString = queryParams.toString()
     const url = `api/attendance/report${queryString ? `?${queryString}` : ''}`
     
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/${url}`, {
+    const response = await fetch(`${getBackendUrl()}/${url}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

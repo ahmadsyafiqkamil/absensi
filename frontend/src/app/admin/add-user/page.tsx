@@ -122,6 +122,8 @@ export default function AddUserPage() {
     setSuccess("");
 
     try {
+      // Ensure CSRF token is available
+      await fetch('/api/csrf-token');
       // First, provision the user
       const userResponse = await fetch('/api/admin/users/provision', {
         method: 'POST',

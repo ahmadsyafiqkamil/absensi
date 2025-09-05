@@ -3,6 +3,7 @@ import Header from '@/components/Header';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import EmployeesTable from '@/components/tables/EmployeesTable';
+import { getBackendUrl } from '@/lib/api-utils';
 
 type EmployeeRow = {
   id: number;
@@ -27,7 +28,7 @@ type PaginatedEmployees = {
 async function getEmployees(page: number, pageSize: number): Promise<PaginatedEmployees> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+  const backend = getBackendUrl()
   const url = new URL(`${backend}/api/employees/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))

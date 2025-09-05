@@ -90,7 +90,7 @@ from datetime import datetime, timedelta
 from django.db import IntegrityError
 from django.db import transaction
 from django.middleware.csrf import get_token
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db.models import Q
 
@@ -297,6 +297,7 @@ def users_list(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @authentication_classes([])
+@csrf_exempt
 def provision_user(request):
     data = request.data if hasattr(request, 'data') else {}
     username = data.get('username')
@@ -425,6 +426,7 @@ class AdminPositionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdmin]
     pagination_class = DefaultPagination
 
+@method_decorator(csrf_exempt, name='dispatch')
 class AdminEmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.select_related('user', 'division', 'position').all()
     serializer_class = EmployeeAdminSerializer
