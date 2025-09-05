@@ -11,14 +11,29 @@ services:
       MYSQL_DATABASE: absensi_db
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "3306:3306"
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    # Remove public port exposure for security
     volumes:
       - mysql_data_prod:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/conf.d:/etc/mysql/conf.d:ro
     networks:
       - absensi_network_prod
-    command: --default-authentication-plugin=mysql_native_password
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=1G
+      - --max-connections=200
+      - --query-cache-size=256M
+      - --query-cache-type=1
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # phpMyAdmin (Optional for production)
   phpmyadmin:
@@ -56,15 +71,24 @@ services:
       - MYSQL_DATABASE=absensi_db
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - CORS_ORIGIN_FRONTEND=${NEXT_PUBLIC_BACKEND_URL}
-    ports:
-      - "8000:8000"
+      - CORS_ALLOWED_ORIGINS=${BACKEND_CORS_ORIGINS}
+      - DJANGO_SETTINGS_MODULE=core.settings
+    # Remove public port exposure for security (will be accessed via Caddy)
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - absensi_network_prod
     volumes:
-      - ./logs:/app/logs
+      - ./logs/backend:/app/logs
+      - ./drf/app/media:/app/media
+      - ./drf/app/staticfiles:/app/staticfiles
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Frontend Next.js (Production)
   frontend:
@@ -76,12 +100,21 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
       - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
-    ports:
-      - "3000:3000"
+      - NODE_ENV=production
+    # Remove public port exposure for security (will be accessed via Caddy)
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - absensi_network_prod
+    volumes:
+      - ./logs/frontend:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Reverse proxy with automatic HTTPS (Let's Encrypt) for production
   caddy:
@@ -96,13 +129,53 @@ services:
       - API_DOMAIN=${API_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile.prod:ro
       - caddy_data_prod:/data
       - caddy_config_prod:/config
+      - ./logs/caddy:/var/log/caddy
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     networks:
       - absensi_network_prod
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Database Backup Service
+  backup:
+    image: alpine:latest
+    container_name: absensi_backup_prod
+    restart: unless-stopped
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=absensi_db
+    volumes:
+      - ./backups:/backups
+      - mysql_data_prod:/var/lib/mysql:ro
+    networks:
+      - absensi_network_prod
+    command: >
+      sh -c "
+        apk add --no-cache mysql-client gzip &&
+        mkdir -p /backups &&
+        while true; do
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S) &&
+          mysqldump -h mysql -u root -p${MYSQL_ROOT_PASSWORD} absensi_db > /backups/backup_${TIMESTAMP}.sql &&
+          gzip /backups/backup_${TIMESTAMP}.sql &&
+          find /backups -name 'backup_*.sql.gz' -mtime +7 -delete &&
+          sleep 86400
+        done
+      "
+    profiles:
+      - backup
 
 volumes:
   mysql_data_prod:

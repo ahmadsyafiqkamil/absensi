@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # MySQL Database
+  # MySQL Database for development
   mysql:
     image: mysql:8.0
     container_name: absensi_mysql_dev
@@ -12,16 +12,21 @@ services:
       MYSQL_USER: absensi_user
       MYSQL_PASSWORD: absensi_password
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - mysql_data_dev:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d
-      - ./mysql/migrations:/migrations
     networks:
       - absensi_network_dev
     command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-  # phpMyAdmin
+  # phpMyAdmin for development
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
     container_name: absensi_phpmyadmin_dev
@@ -39,7 +44,7 @@ services:
     networks:
       - absensi_network_dev
 
-  # Backend DRF (Development)
+  # Backend DRF for development
   backend:
     build:
       context: ./drf
@@ -49,25 +54,32 @@ services:
     environment:
       - DJANGO_DEBUG=1
       - DJANGO_SECRET_KEY=dev-secret-key-change-in-production
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,absensi.localhost,api.absensi.localhost
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,host.docker.internal
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=absensi_db
       - MYSQL_USER=absensi_user
       - MYSQL_PASSWORD=absensi_password
-      - CORS_ORIGIN_FRONTEND=http://localhost:3000,https://absensi.localhost,https://api.absensi.localhost
+      - CORS_ORIGIN_FRONTEND=http://localhost:3000,http://frontend:3000
     ports:
       - "8000:8000"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - absensi_network_dev
     volumes:
-      - ./drf/app:/app
-      - ./template:/app/template
-    command: ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+      - ./drf:/app
+      - ./logs/dev/backend:/app/logs
+    command: python manage.py runserver 0.0.0.0:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Frontend Next.js (Development) - Alternative with Docker DNS
+  # Frontend Next.js for development
   frontend:
     build:
       context: ./frontend
@@ -75,63 +87,30 @@ services:
     container_name: absensi_frontend_dev
     restart: unless-stopped
     environment:
-      # Use Docker internal networking for container-to-container communication
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
-      # Internal Docker networking (for container-to-container)
-      - BACKEND_URL=http://backend:8000
-      # HeroUI specific environment variables
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
       - NODE_ENV=development
-      - NEXT_TELEMETRY_DISABLED=1
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - absensi_network_dev
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
-    # Extra hosts for domain resolution
-    extra_hosts:
-      - "absensi.localhost:127.0.0.1"
-      - "api.absensi.localhost:127.0.0.1"
-    # Health check for frontend
+      - ./logs/dev/frontend:/app/logs
+    command: npm run dev
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  # Reverse proxy for local HTTPS (self-signed via Caddy internal CA)
-  caddy:
-    image: caddy:2
-    container_name: absensi_caddy_dev
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - FRONTEND_DOMAIN_DEV=absensi.localhost
-      - API_DOMAIN_DEV=api.absensi.localhost
-    volumes:
-      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
-      - caddy_data_dev:/data
-      - caddy_config_dev:/config
-    depends_on:
-      - frontend
-      - backend
-    networks:
-      - absensi_network_dev
-
 volumes:
   mysql_data_dev:
-    driver: local
-  caddy_data_dev:
-    driver: local
-  caddy_config_dev:
     driver: local
 
 networks:
