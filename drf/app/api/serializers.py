@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, GroupPermission, GroupPermissionTemplate
 
 
 # ============================================================================
@@ -843,31 +843,27 @@ class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
 # MONTHLY SUMMARY REQUEST SERIALIZERS
 # ============================================================================
 
-class MonthlySummaryRequestAdminSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestAdminSerializer(serializers.ModelSerializer):
     """
-    Admin serializer for monthly summary requests - full access
+    Admin serializer for overtime summary requests - full access
     """
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
-    
+
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "id",
             "employee",
             "user",
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
+            "include_overtime_details",
+            "include_overtime_summary",
+            "include_approver_info",
             "status",
             "level1_approved_by",
             "level1_approved_at",
@@ -881,31 +877,27 @@ class MonthlySummaryRequestAdminSerializer(serializers.ModelSerializer):
         ]
 
 
-class MonthlySummaryRequestSupervisorSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestSupervisorSerializer(serializers.ModelSerializer):
     """
-    Supervisor serializer for monthly summary requests - can approve/reject
+    Supervisor serializer for overtime summary requests - can approve/reject
     """
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
-    
+
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "id",
             "employee",
             "user",
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
+            "include_overtime_details",
+            "include_overtime_summary",
+            "include_approver_info",
             "status",
             "level1_approved_by",
             "level1_approved_at",
@@ -919,31 +911,27 @@ class MonthlySummaryRequestSupervisorSerializer(serializers.ModelSerializer):
         ]
 
 
-class MonthlySummaryRequestEmployeeSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestEmployeeSerializer(serializers.ModelSerializer):
     """
-    Employee serializer for monthly summary requests - can create and view own requests
+    Employee serializer for overtime summary requests - can create and view own requests
     """
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
-    
+
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "id",
             "employee",
             "user",
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
+            "include_overtime_details",
+            "include_overtime_summary",
+            "include_approver_info",
             "status",
             "level1_approved_by",
             "level1_approved_at",
@@ -971,25 +959,20 @@ class MonthlySummaryRequestEmployeeSerializer(serializers.ModelSerializer):
         ]
 
 
-class MonthlySummaryRequestCreateSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating monthly summary requests by employees
+    Serializer for creating overtime summary requests by employees
+    - Only requires 3 fields: period, title, description
+    - Automatically sets overtime data inclusion
     """
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
         ]
-    
+
     def validate_request_period(self, value):
         """Validate request period format (YYYY-MM)"""
         from datetime import datetime
@@ -998,13 +981,16 @@ class MonthlySummaryRequestCreateSerializer(serializers.ModelSerializer):
         except ValueError:
             raise serializers.ValidationError("Format periode harus YYYY-MM (contoh: 2024-01)")
         return value
-    
-    def validate_expected_completion_date(self, value):
-        """Validate expected completion date is not in the past"""
-        from datetime import date
-        if value and value < date.today():
-            raise serializers.ValidationError("Tanggal target selesai tidak boleh di masa lalu")
-        return value
+
+    def create(self, validated_data):
+        """Override create to automatically set overtime data fields"""
+        # Automatically set overtime data inclusion
+        validated_data.update({
+            'include_overtime_details': True,
+            'include_overtime_summary': True,
+            'include_approver_info': True,
+        })
+        return super().create(validated_data)
 
 
 # ============================================================================

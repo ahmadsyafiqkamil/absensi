@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { authFetch } from '@/lib/authFetch';
+import { getBackendUrl } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -39,7 +40,7 @@ type Employee = {
   } | null;
 };
 
-type MonthlySummaryRequest = {
+type OvertimeSummaryRequest = {
   id: number;
   employee: Employee;
   user: {
@@ -78,11 +79,11 @@ type MonthlySummaryRequest = {
   updated_at: string;
 };
 
-type MonthlySummaryRequestsResponse = {
+type OvertimeSummaryRequestsResponse = {
   count: number;
   next: string | null;
   previous: string | null;
-  results: MonthlySummaryRequest[];
+  results: OvertimeSummaryRequest[];
 };
 
 function formatDate(dateString: string): string {
@@ -174,19 +175,19 @@ function getReportTypeText(reportType: string): string {
   }
 }
 
-const columnHelper = createColumnHelper<MonthlySummaryRequest>();
+const columnHelper = createColumnHelper<OvertimeSummaryRequest>();
 
-interface MonthlySummaryRequestsTableProps {
+interface OvertimeSummaryRequestsTableProps {
   onRefresh?: () => void;
 }
 
-export default function MonthlySummaryRequestsTable({ onRefresh }: MonthlySummaryRequestsTableProps) {
-  const [data, setData] = useState<MonthlySummaryRequest[]>([]);
+export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSummaryRequestsTableProps) {
+  const [data, setData] = useState<OvertimeSummaryRequest[]>([]);
   const [divisions, setDivisions] = useState<{id: number, name: string}[]>([]);
   const [supervisorInfo, setSupervisorInfo] = useState<{isOrgWide: boolean, isAdmin: boolean} | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRequest, setSelectedRequest] = useState<MonthlySummaryRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<OvertimeSummaryRequest | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -434,15 +435,15 @@ export default function MonthlySummaryRequestsTable({ onRefresh }: MonthlySummar
       setError(null);
       
       // Fetch data individually to avoid Promise.all issues
-      const monthlySummaryResponse = await authFetch('/api/supervisor/monthly-summary-requests/');
-      const divisionsResponse = await authFetch('/api/supervisor/divisions/');
-      const supervisorResponse = await authFetch('/api/supervisor/approvals/summary');
+      const monthlySummaryResponse = await authFetch(`${getBackendUrl()}/api/supervisor/overtime-summary-requests/`);
+      const divisionsResponse = await authFetch(`${getBackendUrl()}/api/supervisor/divisions/`);
+      const supervisorResponse = await authFetch(`${getBackendUrl()}/api/supervisor/approvals/summary`);
 
       if (!monthlySummaryResponse.ok) {
         throw new Error('Failed to fetch monthly summary requests');
       }
 
-      const monthlySummaryData: MonthlySummaryRequestsResponse = await monthlySummaryResponse.json();
+      const monthlySummaryData: OvertimeSummaryRequestsResponse = await monthlySummaryResponse.json();
       setData(monthlySummaryData.results);
 
       // Fetch supervisor info (optional, for determining role)
@@ -496,7 +497,7 @@ export default function MonthlySummaryRequestsTable({ onRefresh }: MonthlySummar
 
     setProcessing(true);
     try {
-      const endpoint = `/api/supervisor/monthly-summary-requests/${selectedRequest.id}/${actionType}/`;
+      const endpoint = `${getBackendUrl()}/api/supervisor/overtime-summary-requests/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
 
       const response = await authFetch(endpoint, {
@@ -528,7 +529,7 @@ export default function MonthlySummaryRequestsTable({ onRefresh }: MonthlySummar
     }
   };
 
-  const openActionModal = (request: MonthlySummaryRequest, action: 'approve' | 'reject') => {
+  const openActionModal = (request: OvertimeSummaryRequest, action: 'approve' | 'reject') => {
     setSelectedRequest(request);
     setActionType(action);
     setRejectionReason('');

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, GroupPermission, GroupPermissionTemplate
 
 # Unregister the default Group admin and register our custom one
 admin.site.unregister(Group)
@@ -199,22 +199,19 @@ class OvertimeRequestAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
-@admin.register(MonthlySummaryRequest)
-class MonthlySummaryRequestAdmin(admin.ModelAdmin):
-    list_display = ("id", "employee", "request_period", "report_type", "status", "priority", "created_at")
-    list_filter = ("status", "report_type", "request_period", "priority", "created_at")
+@admin.register(OvertimeSummaryRequest)
+class OvertimeSummaryRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "employee", "request_period", "status", "created_at")
+    list_filter = ("status", "request_period", "created_at")
     search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "request_title")
     readonly_fields = ("created_at", "updated_at")
-    
+
     fieldsets = (
         ('Request Information', {
-            'fields': ('employee', 'user', 'request_period', 'report_type', 'request_title', 'request_description')
+            'fields': ('employee', 'user', 'request_period', 'request_title', 'request_description')
         }),
         ('Data Scope', {
-            'fields': ('include_attendance', 'include_overtime', 'include_corrections', 'include_summary_stats')
-        }),
-        ('Priority & Timeline', {
-            'fields': ('priority', 'expected_completion_date')
+            'fields': ('include_overtime_details', 'include_overtime_summary', 'include_approver_info')
         }),
         ('Status and Approval', {
             'fields': ('status', 'level1_approved_by', 'level1_approved_at', 'final_approved_by', 'final_approved_at', 'rejection_reason')
@@ -226,7 +223,7 @@ class MonthlySummaryRequestAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
-    
+
     def save_model(self, request, obj, form, change):
         # Auto-set approvers when status changes
         if obj.status == 'level1_approved' and not obj.level1_approved_by:

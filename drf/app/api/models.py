@@ -472,10 +472,10 @@ class OvertimeRequest(models.Model):
         ordering = ['-created_at']
 
 
-class MonthlySummaryRequest(models.Model):
+class OvertimeSummaryRequest(models.Model):
     """
-    Model untuk pengajuan rekap bulanan dengan approval 2 level.
-    Memungkinkan audit trail dan monitoring pengajuan laporan.
+    Model untuk pengajuan rekap lembur bulanan dengan approval 2 level.
+    Fokus pada rekap data lembur karyawan dengan audit trail lengkap.
     """
     REQUEST_STATUS_CHOICES = [
         ('pending', 'Menunggu Approval'),
@@ -485,93 +485,57 @@ class MonthlySummaryRequest(models.Model):
         ('completed', 'Selesai'),
         ('cancelled', 'Dibatalkan'),
     ]
-    
+
     employee = models.ForeignKey(
         'Employee',
         on_delete=models.CASCADE,
-        related_name='overtime_exports',
+        related_name='overtime_summary_requests',
         verbose_name="Employee"
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='overtime_exports',
+        related_name='overtime_summary_requests',
         verbose_name="User Requesting Export"
     )
-    
-    # Request details
+
+    # Request details - fokus pada rekap lembur
     request_period = models.CharField(
         max_length=7,
         verbose_name="Periode Laporan",
         help_text="Format: YYYY-MM (e.g., 2024-01)"
     )
-    report_type = models.CharField(
-        max_length=20,
-        choices=[
-            ('monthly_summary', 'Rekap Bulanan'),
-            ('attendance_summary', 'Rekap Absensi'),
-            ('overtime_summary', 'Rekap Lembur'),
-            ('custom_report', 'Laporan Kustom'),
-        ],
-        default='monthly_summary',
-        verbose_name="Jenis Laporan"
-    )
-    
-    # Request details (untuk pengajuan rekap bulanan)
+
+    # Request details untuk rekap lembur
     request_title = models.CharField(
         max_length=200,
-        verbose_name="Judul Laporan",
-        help_text="Judul laporan yang diminta (e.g., 'Rekap Absensi Januari 2024')",
+        verbose_name="Judul Laporan Lembur",
+        help_text="Judul laporan rekap lembur (e.g., 'Rekap Lembur Januari 2024')",
         null=True,
         blank=True
     )
     request_description = models.TextField(
-        verbose_name="Deskripsi Laporan",
-        help_text="Deskripsi detail laporan yang diminta",
+        verbose_name="Deskripsi Pengajuan Lembur",
+        help_text="Deskripsi detail pengajuan rekap lembur",
         null=True,
         blank=True
     )
-    
-    # Data scope untuk rekap bulanan
-    include_attendance = models.BooleanField(
+
+    # Data scope - fokus pada data lembur
+    include_overtime_details = models.BooleanField(
         default=True,
-        verbose_name="Include Attendance Data",
-        help_text="Apakah data absensi harian dimasukkan dalam rekap"
+        verbose_name="Include Overtime Details",
+        help_text="Apakah detail lembur per hari dimasukkan dalam rekap"
     )
-    include_overtime = models.BooleanField(
+    include_overtime_summary = models.BooleanField(
         default=True,
-        verbose_name="Include Overtime Data",
-        help_text="Apakah data lembur dimasukkan dalam rekap"
+        verbose_name="Include Overtime Summary",
+        help_text="Apakah ringkasan statistik lembur dimasukkan dalam rekap"
     )
-    include_corrections = models.BooleanField(
-        default=False,
-        verbose_name="Include Corrections Data",
-        help_text="Apakah data perbaikan absensi dimasukkan dalam rekap"
-    )
-    include_summary_stats = models.BooleanField(
+    include_approver_info = models.BooleanField(
         default=True,
-        verbose_name="Include Summary Statistics",
-        help_text="Apakah statistik ringkasan dimasukkan dalam rekap"
-    )
-    
-    # Additional request details
-    priority = models.CharField(
-        max_length=20,
-        choices=[
-            ('low', 'Rendah'),
-            ('medium', 'Sedang'),
-            ('high', 'Tinggi'),
-            ('urgent', 'Urgent'),
-        ],
-        default='medium',
-        verbose_name="Prioritas"
-    )
-    
-    expected_completion_date = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="Tanggal Target Selesai",
-        help_text="Tanggal target penyelesaian laporan"
+        verbose_name="Include Approver Information",
+        help_text="Apakah informasi approver dimasukkan dalam rekap"
     )
     
     # Status and approval
@@ -581,14 +545,14 @@ class MonthlySummaryRequest(models.Model):
         default='pending',
         verbose_name="Status"
     )
-    
+
     # Level 1 approval (division supervisor)
     level1_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='level1_approved_summary_requests',
+        related_name='level1_approved_overtime_summary_requests',
         verbose_name="Level 1 Disetujui Oleh"
     )
     level1_approved_at = models.DateTimeField(
@@ -596,14 +560,14 @@ class MonthlySummaryRequest(models.Model):
         blank=True,
         verbose_name="Level 1 Disetujui Pada"
     )
-    
+
     # Final approval (organization-wide supervisor)
     final_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='final_approved_summary_requests',
+        related_name='final_approved_overtime_summary_requests',
         verbose_name="Final Disetujui Oleh"
     )
     final_approved_at = models.DateTimeField(
@@ -611,13 +575,13 @@ class MonthlySummaryRequest(models.Model):
         blank=True,
         verbose_name="Final Disetujui Pada"
     )
-    
+
     rejection_reason = models.TextField(
         null=True,
         blank=True,
         verbose_name="Alasan Penolakan"
     )
-    
+
     # Request result
     completed_at = models.DateTimeField(
         null=True,
@@ -629,19 +593,19 @@ class MonthlySummaryRequest(models.Model):
         blank=True,
         verbose_name="Catatan Penyelesaian"
     )
-    
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"Pengajuan Rekap - {self.employee.user.username} - {self.request_period} - {self.get_report_type_display()}"
-    
+        return f"Pengajuan Rekap Lembur - {self.employee.user.username} - {self.request_period}"
+
     def get_request_title_display(self):
-        """Get display title for the request"""
+        """Get display title for the overtime summary request"""
         if self.request_title:
             return self.request_title
-        return f"Rekap {self.get_report_type_display()} - {self.request_period}"
+        return f"Rekap Lembur {self.request_period}"
     
     def can_be_approved_by(self, user):
         """Check if user can approve this summary request"""
@@ -692,10 +656,10 @@ class MonthlySummaryRequest(models.Model):
         return False
     
     class Meta:
-        verbose_name = "Pengajuan Rekap Bulanan"
-        verbose_name_plural = "Pengajuan Rekap Bulanan"
+        verbose_name = "Pengajuan Rekap Lembur Bulanan"
+        verbose_name_plural = "Pengajuan Rekap Lembur Bulanan"
         ordering = ['-created_at']
-        unique_together = ("employee", "request_period", "report_type")
+        unique_together = ("employee", "request_period")
 
 
 class GroupPermission(models.Model):
@@ -720,7 +684,7 @@ class GroupPermission(models.Model):
         ('user', 'User Management'),
         ('holiday', 'Holiday Management'),
         ('worksettings', 'Work Settings Management'),
-        ('monthlysummaryrequest', 'Monthly Summary Request Management'),
+        ('overtimesummaryrequest', 'Overtime Summary Request Management'),
         ('overtimerequest', 'Overtime Request Management'),
         ('overtimeexporthistory', 'Overtime Export History Management'),
         ('attendancecorrection', 'Attendance Correction Management'),

@@ -69,10 +69,10 @@ services:
     networks:
       - absensi_network_dev
     volumes:
-      - ./drf:/app
+      - ./drf/app:/app
       - ./logs/dev/backend:/app/logs
       - ./template:/app/app/template
-    command: python app/manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

@@ -10,7 +10,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import serializers
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, GroupPermission, GroupPermissionTemplate
 from .serializers import (
     DivisionSerializer,
     PositionSerializer,
@@ -39,10 +39,10 @@ from .serializers import (
     OvertimeRequestEmployeeSerializer,
     OvertimeRequestCreateSerializer,
     # Monthly summary request serializers
-    MonthlySummaryRequestAdminSerializer,
-    MonthlySummaryRequestSupervisorSerializer,
-    MonthlySummaryRequestEmployeeSerializer,
-    MonthlySummaryRequestCreateSerializer,
+    OvertimeSummaryRequestAdminSerializer,
+    OvertimeSummaryRequestSupervisorSerializer,
+    OvertimeSummaryRequestEmployeeSerializer,
+    OvertimeSummaryRequestCreateSerializer,
     GroupSerializer,
     GroupCreateSerializer,
     GroupUpdateSerializer,
@@ -4905,7 +4905,7 @@ def supervisor_approvals_summary(request):
 # MONTHLY SUMMARY REQUEST VIEWSET
 # ============================================================================
 
-class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
+class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing monthly summary requests with role-based access control
     """
@@ -4918,7 +4918,7 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         
         # Admin can see all requests
         if user.is_superuser or user.groups.filter(name='admin').exists():
-            return MonthlySummaryRequest.objects.all().select_related(
+            return OvertimeSummaryRequest.objects.all().select_related(
                 'user', 'employee', 'level1_approved_by', 'final_approved_by'
             )
         
@@ -4934,23 +4934,23 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
                     # Check if supervisor has org-wide approval permission
                     if ApprovalChecker.can_approve_overtime_org_wide(user):
                         # Org-wide supervisors can see all requests
-                        return MonthlySummaryRequest.objects.all().select_related(
+                        return OvertimeSummaryRequest.objects.all().select_related(
                             'user', 'employee', 'level1_approved_by', 'final_approved_by'
                         )
                     else:
                         # Division supervisors can only see requests from their division
-                        return MonthlySummaryRequest.objects.filter(
+                        return OvertimeSummaryRequest.objects.filter(
                             employee__division=supervisor_employee.division
                         ).select_related('user', 'employee', 'level1_approved_by', 'final_approved_by')
                 except:
-                    return MonthlySummaryRequest.objects.none()
+                    return OvertimeSummaryRequest.objects.none()
             else:
                 # No supervisor capabilities - can only see own requests
-                return MonthlySummaryRequest.objects.filter(user=user).select_related(
+                return OvertimeSummaryRequest.objects.filter(user=user).select_related(
                     'user', 'employee', 'level1_approved_by', 'final_approved_by'
                 )
         
-        return MonthlySummaryRequest.objects.none()
+        return OvertimeSummaryRequest.objects.none()
     
     def get_serializer_class(self):
         """Return appropriate serializer based on user role and action"""
@@ -4958,20 +4958,20 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         
         # For create action, use create serializer
         if self.action == 'create':
-            return MonthlySummaryRequestCreateSerializer
+            return OvertimeSummaryRequestCreateSerializer
         
         # Role-based serializers for other actions
         if user.is_superuser or user.groups.filter(name='admin').exists():
-            return MonthlySummaryRequestAdminSerializer
+            return OvertimeSummaryRequestAdminSerializer
         
         # Use position-based approval checking for supervisor capabilities
         from .utils import ApprovalChecker
         approval_level = ApprovalChecker.get_user_approval_level(user)
         
         if approval_level >= 1:
-            return MonthlySummaryRequestSupervisorSerializer
+            return OvertimeSummaryRequestSupervisorSerializer
         else:
-            return MonthlySummaryRequestEmployeeSerializer
+            return OvertimeSummaryRequestEmployeeSerializer
     
     def perform_create(self, serializer):
         """Auto-set user and employee when creating request"""

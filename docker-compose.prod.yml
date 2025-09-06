@@ -81,7 +81,9 @@ services:
       - absensi_network_prod
     volumes:
       - ./logs/backend:/app/logs
+      - ./drf/app:/app
       - ./drf/app/media:/app/media
+      - ./drf/app/template:/app/template
       - ./drf/app/staticfiles:/app/staticfiles
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]

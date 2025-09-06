@@ -43,7 +43,7 @@ router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
 router.register(r'attendance', views.AttendanceViewSet, basename='attendance')
 router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='attendance-correction')
 router.register(r'overtime-requests', views.OvertimeRequestViewSet, basename='overtime-request')
-router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='monthly-summary-request')
+router.register(r'overtime-summary-requests', views.OvertimeSummaryRequestViewSet, basename='overtime-summary-request')
 
 # Role-specific routers
 admin_router = DefaultRouter()
@@ -57,7 +57,7 @@ admin_router.register(r'permission-templates', views.GroupPermissionTemplateView
 admin_router.register(r'permission-management', views.PermissionManagementViewSet, basename='admin-permission-management')
 admin_router.register(r'settings/work', views.AdminWorkSettingsViewSet, basename='admin-work-settings')
 admin_router.register(r'settings/holidays', views.AdminHolidayViewSet, basename='admin-holiday')
-admin_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='admin-monthly-summary-request')
+admin_router.register(r'overtime-summary-requests', views.OvertimeSummaryRequestViewSet, basename='admin-overtime-summary-request')
 
 supervisor_router = DefaultRouter()
 supervisor_router.register(r'divisions', views.SupervisorDivisionViewSet, basename='supervisor-division')
@@ -66,7 +66,7 @@ supervisor_router.register(r'employees', views.SupervisorEmployeeViewSet, basena
 supervisor_router.register(r'groups', views.SupervisorGroupViewSet, basename='supervisor-group')
 supervisor_router.register(r'settings/work', views.SupervisorWorkSettingsViewSet, basename='supervisor-work-settings')
 supervisor_router.register(r'settings/holidays', views.SupervisorHolidayViewSet, basename='supervisor-holiday')
-supervisor_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='supervisor-monthly-summary-request')
+supervisor_router.register(r'overtime-summary-requests', views.OvertimeSummaryRequestViewSet, basename='supervisor-overtime-summary-request')
 # Map attendance corrections under supervisor prefix (scoped by ViewSet logic)
 supervisor_router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='supervisor-attendance-correction')
 
@@ -80,7 +80,7 @@ employee_router.register(r'settings/holidays', views.EmployeeHolidayViewSet, bas
 employee_router.register(r'attendance', views.AttendanceViewSet, basename='employee-attendance')
 # Map my attendance corrections under employee prefix
 employee_router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='employee-attendance-correction')
-employee_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='employee-monthly-summary-request')
+employee_router.register(r'overtime-summary-requests', views.OvertimeSummaryRequestViewSet, basename='employee-overtime-summary-request')
 
 urlpatterns += [
     path('', include(router.urls)),
