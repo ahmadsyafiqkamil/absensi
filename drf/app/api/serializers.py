@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, OvertimeSummaryDocument, GroupPermission, GroupPermissionTemplate
 
 
 # ============================================================================
@@ -843,6 +843,42 @@ class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
 # MONTHLY SUMMARY REQUEST SERIALIZERS
 # ============================================================================
 
+class OvertimeSummaryDocumentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for OvertimeSummaryDocument
+    """
+    docx_file_url = serializers.SerializerMethodField()
+    pdf_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OvertimeSummaryDocument
+        fields = [
+            "id",
+            "overtime_summary_request",
+            "docx_file",
+            "pdf_file",
+            "document_type",
+            "status",
+            "error_message",
+            "docx_file_url",
+            "pdf_file_url",
+            "created_at",
+            "converted_at",
+            "downloaded_at",
+        ]
+        read_only_fields = ["id", "created_at", "converted_at", "downloaded_at"]
+
+    def get_docx_file_url(self, obj):
+        if obj.docx_file:
+            return obj.get_docx_file_url()
+        return None
+
+    def get_pdf_file_url(self, obj):
+        if obj.pdf_file:
+            return obj.get_pdf_file_url()
+        return None
+
+
 class OvertimeSummaryRequestAdminSerializer(serializers.ModelSerializer):
     """
     Admin serializer for overtime summary requests - full access
@@ -851,6 +887,7 @@ class OvertimeSummaryRequestAdminSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
+    docx_document = OvertimeSummaryDocumentSerializer(read_only=True)
 
     class Meta:
         model = OvertimeSummaryRequest
@@ -872,6 +909,7 @@ class OvertimeSummaryRequestAdminSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "completed_at",
             "completion_notes",
+            "docx_document",
             "created_at",
             "updated_at",
         ]
@@ -885,6 +923,7 @@ class OvertimeSummaryRequestSupervisorSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
+    docx_document = OvertimeSummaryDocumentSerializer(read_only=True)
 
     class Meta:
         model = OvertimeSummaryRequest
@@ -906,6 +945,7 @@ class OvertimeSummaryRequestSupervisorSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "completed_at",
             "completion_notes",
+            "docx_document",
             "created_at",
             "updated_at",
         ]
@@ -919,6 +959,7 @@ class OvertimeSummaryRequestEmployeeSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
+    docx_document = OvertimeSummaryDocumentSerializer(read_only=True)
 
     class Meta:
         model = OvertimeSummaryRequest
@@ -940,6 +981,7 @@ class OvertimeSummaryRequestEmployeeSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "completed_at",
             "completion_notes",
+            "docx_document",
             "created_at",
             "updated_at",
         ]

@@ -2838,7 +2838,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             docx_content = self._generate_docx_content(overtime_request)
 
             # Create filename
-            filename = f"Surat_Perintah_Kerja_Lembur_{overtime_request.id}_{overtime_request.employee.user.username}_{overtime_request.final_approved_at.strftime('%Y%m%d_%H%M%S')}.docx"
+            timestamp = overtime_request.final_approved_at.strftime('%Y%m%d_%H%M%S') if overtime_request.final_approved_at else dj_timezone.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"Surat_Perintah_Kerja_Lembur_{overtime_request.id}_{overtime_request.employee.user.username}_{timestamp}.docx"
 
             # Create or update OvertimeDocument
             doc, created = OvertimeDocument.objects.get_or_create(
@@ -2927,7 +2928,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
 
         # Format overtime date
         overtime_date = overtime_request.date_requested
-        overtime_date_formatted = overtime_date.strftime('%d %B %Y')
+        overtime_date_formatted = overtime_date.strftime('%d %B %Y') if overtime_date else '-'
 
         # Get employee information
         employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
@@ -3623,7 +3624,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
 
         # Format overtime date
         overtime_date = overtime_request.date_requested
-        overtime_date_formatted = overtime_date.strftime('%d %B %Y')
+        overtime_date_formatted = overtime_date.strftime('%d %B %Y') if overtime_date else '-'
 
         # Get employee information
         employee_name = overtime_request.employee.fullname or overtime_request.employee.user.get_full_name() or overtime_request.employee.user.username
@@ -4319,9 +4320,9 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         # Add data rows
         for i, record in enumerate(overtime_records, 1):
             row = table.add_row()
-            
+
             # Format data
-            date_str = record.date_requested.strftime('%d/%m/%Y')
+            date_str = record.date_requested.strftime('%d/%m/%Y') if record.date_requested else "N/A"
             hours_str = f"{float(record.overtime_hours):.1f} jam"
             
             # Truncate description
@@ -5230,14 +5231,13 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                 'request_info': {
                     'id': summary_request.id,
                     'period': summary_request.request_period,
-                    'report_type': summary_request.report_type,
+                    'report_type': 'monthly_overtime_summary',
                     'request_title': summary_request.request_title,
                     'request_description': summary_request.request_description,
                     'data_scope': {
-                        'include_attendance': summary_request.include_attendance,
-                        'include_overtime': summary_request.include_overtime,
-                        'include_corrections': summary_request.include_corrections,
-                        'include_summary_stats': summary_request.include_summary_stats,
+                        'include_overtime_details': summary_request.include_overtime_details,
+                        'include_overtime_summary': summary_request.include_overtime_summary,
+                        'include_approver_info': summary_request.include_approver_info,
                     }
                 },
                 'employee_info': {
@@ -5296,28 +5296,44 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Generate DOCX document using existing template system
-            docx_file = self.generate_monthly_summary_docx(
+            # Try to use stored DOCX file first
+            if summary_request.docx_document and summary_request.docx_document.docx_file:
+                try:
+                    # Update download timestamp
+                    summary_request.docx_document.downloaded_at = dj_timezone.now()
+                    summary_request.docx_document.save(update_fields=['downloaded_at'])
+
+                    # Return stored file
+                    from django.http import HttpResponse
+                    with open(summary_request.docx_document.docx_file.path, 'rb') as f:
+                        file_content = f.read()
+
+                    response = HttpResponse(file_content, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                    response['Content-Disposition'] = f'attachment; filename="{summary_request.docx_document.docx_file.name.split("/")[-1]}"'
+                    return response
+
+                except (FileNotFoundError, OSError) as e:
+                    # File not found or corrupted, fall back to generating new one
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Stored DOCX file not found for summary request {summary_request.id}: {str(e)}")
+
+            # Generate new DOCX document and save it
+            docx_file_path = self.generate_monthly_summary_docx(
                 summary_request,
                 overtime_data,
                 summary_request.request_period
             )
-            
+
             # Return file response
-            from django.http import FileResponse
-            import os
-            
+            from django.http import HttpResponse
+            with open(docx_file_path, 'rb') as f:
+                file_content = f.read()
+
             filename = f"Rekap_Lembur_Bulanan_{summary_request.employee.nip}_{summary_request.request_period}.docx"
-            
-            response = FileResponse(
-                open(docx_file, 'rb'),
-                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
+            response = HttpResponse(file_content, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            # Clean up temporary file
-            os.unlink(docx_file)
-            
+
             return response
             
         except Exception as e:
@@ -5358,32 +5374,76 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Generate DOCX document first using existing template system
-            docx_file = self.generate_monthly_summary_docx(
-                summary_request,
-                overtime_data,
-                summary_request.request_period
-            )
-            
-            # Convert DOCX to PDF
-            pdf_file = self.convert_docx_to_pdf(docx_file)
-            
-            # Return PDF file response
-            from django.http import FileResponse
+            # Try to use stored PDF file first
+            if (summary_request.docx_document and
+                summary_request.docx_document.pdf_file):
+                try:
+                    # Update download timestamp
+                    summary_request.docx_document.downloaded_at = dj_timezone.now()
+                    summary_request.docx_document.save(update_fields=['downloaded_at'])
+
+                    # Return stored PDF file
+                    from django.http import HttpResponse
+                    with open(summary_request.docx_document.pdf_file.path, 'rb') as f:
+                        file_content = f.read()
+
+                    response = HttpResponse(file_content, content_type='application/pdf')
+                    response['Content-Disposition'] = f'attachment; filename="{summary_request.docx_document.pdf_file.name.split("/")[-1]}"'
+                    return response
+
+                except (FileNotFoundError, OSError) as e:
+                    # File not found or corrupted, fall back to generating new one
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Stored PDF file not found for summary request {summary_request.id}: {str(e)}")
+
+            # Get DOCX file path (generate if needed)
+            if summary_request.docx_document and summary_request.docx_document.docx_file:
+                docx_file_path = summary_request.docx_document.docx_file.path
+            else:
+                # Generate new DOCX document
+                docx_file_path = self.generate_monthly_summary_docx(
+                    summary_request,
+                    overtime_data,
+                    summary_request.request_period
+                )
+
+            # Check if file exists on disk
             import os
-            
+            if not os.path.exists(docx_file_path):
+                return Response(
+                    {"detail": f"File DOCX tidak ditemukan: {docx_file_path}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Step 2: Convert DOCX to PDF using the same service as individual overtime
+            pdf_content = self._convert_docx_to_pdf_via_service(docx_file_path)
+
+            if not pdf_content:
+                return Response(
+                    {"detail": "Gagal convert DOCX ke PDF menggunakan service converter."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Step 3: Save PDF to database if we have a document record
+            if summary_request.docx_document:
+                from django.core.files.base import ContentFile
+                pdf_filename = f"rekap_lembur_{summary_request.employee.nip}_{summary_request.request_period}.pdf"
+                summary_request.docx_document.pdf_file.save(pdf_filename, ContentFile(pdf_content))
+                summary_request.docx_document.status = 'converted'
+                summary_request.docx_document.converted_at = dj_timezone.now()
+                summary_request.docx_document.save()
+
+                # Update download timestamp
+                summary_request.docx_document.downloaded_at = dj_timezone.now()
+                summary_request.docx_document.save(update_fields=['downloaded_at'])
+
+            # Step 4: Return PDF file response
+            from django.http import HttpResponse
             filename = f"Rekap_Lembur_Bulanan_{summary_request.employee.nip}_{summary_request.request_period}.pdf"
-            
-            response = FileResponse(
-                open(pdf_file, 'rb'),
-                content_type='application/pdf'
-            )
+            response = HttpResponse(pdf_content, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            # Clean up temporary files
-            os.unlink(docx_file)
-            os.unlink(pdf_file)
-            
+
             return response
             
         except Exception as e:
@@ -5448,6 +5508,8 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
             # Detailed breakdown by date
             overtime_by_date = {}
             for overtime in overtime_data:
+                if not overtime.date_requested:
+                    continue  # Skip records with null date_requested
                 date_str = overtime.date_requested.strftime('%Y-%m-%d')
                 if date_str not in overtime_by_date:
                     overtime_by_date[date_str] = {
@@ -5651,7 +5713,14 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                 doc = Document(template_path)
             
             # Calculate summary data
-            total_days = overtime_data.count()
+            try:
+                # Try as QuerySet first
+                total_days = overtime_data.count()
+                print(f"✓ Using QuerySet count: {total_days}")
+            except (AttributeError, TypeError):
+                # It's a list or other iterable
+                total_days = len(overtime_data)
+                print(f"✓ Using list len: {total_days}")
             total_hours = sum(float(record.overtime_hours) for record in overtime_data)
             total_amount = sum(float(record.overtime_amount) for record in overtime_data)
             avg_per_day = total_hours / total_days if total_days > 0 else 0
@@ -5668,85 +5737,117 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
             # Format approval dates
             level1_approval_date = summary_request.level1_approved_at.strftime('%d %B %Y') if summary_request.level1_approved_at else '-'
             final_approval_date = summary_request.final_approved_at.strftime('%d %B %Y') if summary_request.final_approved_at else '-'
-            
+
             # Define replacement mappings
             replacements = {
-                # Header info
-                '{{PERIODE_EXPORT}}': month_name,
-                '{{TANGGAL_EXPORT}}': export_date,
-                '{{NOMOR_EXPORT}}': f"REKAP-{period.replace('-', '')}/2025",
-                
-                # Summary data
-                '{{TOTAL_HARI_LEMBUR}}': f"{total_days} hari",
-                '{{TOTAL_JAM_LEMBUR}}': f"{total_hours:.1f} jam",
-                '{{TOTAL_GAJI_LEMBUR}}': f"{total_amount:.2f} AED",
-                '{{RATA_RATA_PER_HARI}}': f"{avg_per_day:.1f} jam",
-                
-                # Employee info
-                '{{NAMA_PEGAWAI}}': summary_request.employee.fullname or summary_request.employee.user.get_full_name() or summary_request.employee.user.username,
-                '{{NIP_PEGAWAI}}': summary_request.employee.nip or '-',
-                '{{DIVISI_PEGAWAI}}': summary_request.employee.division.name if summary_request.employee.division else '-',
-                '{{JABATAN_PEGAWAI}}': summary_request.employee.position.name if summary_request.employee.position else '-',
-                
-                # Approval info
-                '{{LEVEL1_APPROVER}}': level1_approver.username if level1_approver else '-',
-                '{{LEVEL1_APPROVER_NIP}}': level1_approver.employee.nip if level1_approver and hasattr(level1_approver, 'employee') and level1_approver.employee else '-',
-                '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
-                '{{FINAL_APPROVER}}': final_approver.username if final_approver else '-',
-                '{{FINAL_APPROVER_NIP}}': final_approver.employee.nip if final_approver and hasattr(final_approver, 'employee') and final_approver.employee else '-',
-                '{{FINAL_APPROVAL_DATE}}': final_approval_date,
-                '{{TANGGAL_APPROVAL}}': export_date,
-                
-                # Company info
-                '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
-                '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
-                '{{LOKASI}}': 'Dubai',
-                
-                # Special placeholders (will be replaced with actual content)
-                '{{TABEL_OVERTIME}}': '[TABEL_OVERTIME_WILL_BE_REPLACED]',  # Placeholder for overtime table
-            }
-            
+            # Header info
+            '{{PERIODE_EXPORT}}': month_name,
+            '{{TANGGAL_EXPORT}}': export_date,
+            '{{NOMOR_EXPORT}}': f"REKAP-{period.replace('-', '')}/2025",
+
+            # Summary data
+            '{{TOTAL_HARI_LEMBUR}}': f"{total_days} hari",
+            '{{TOTAL_JAM_LEMBUR}}': f"{total_hours:.1f} jam",
+            '{{TOTAL_GAJI_LEMBUR}}': f"{total_amount:.2f} AED",
+            '{{RATA_RATA_PER_HARI}}': f"{avg_per_day:.1f} jam",
+
+            # Employee info
+            '{{NAMA_PEGAWAI}}': summary_request.employee.fullname or summary_request.employee.user.get_full_name() or summary_request.employee.user.username,
+            '{{NIP_PEGAWAI}}': summary_request.employee.nip or '-',
+            '{{DIVISI_PEGAWAI}}': summary_request.employee.division.name if summary_request.employee.division else 'Konsuler',
+            '{{JABATAN_PEGAWAI}}': summary_request.employee.position.name if summary_request.employee.position else 'Staff Konsuler',
+
+            # Approval info
+            '{{LEVEL1_APPROVER}}': level1_approver.username if level1_approver else 'Supervisor',
+            '{{LEVEL1_APPROVER_NIP}}': level1_approver.employee.nip if level1_approver and hasattr(level1_approver, 'employee') and level1_approver.employee else 'SUP001',
+            '{{LEVEL1_APPROVAL_DATE}}': level1_approval_date,
+            '{{FINAL_APPROVER}}': final_approver.username if final_approver else 'Manager',
+            '{{FINAL_APPROVER_NIP}}': final_approver.employee.nip if final_approver and hasattr(final_approver, 'employee') and final_approver.employee else 'MGR001',
+            '{{FINAL_APPROVAL_DATE}}': final_approval_date,
+            '{{TANGGAL_APPROVAL}}': export_date,
+
+            # Company info
+            '{{NAMA_PERUSAHAAN}}': 'KJRI DUBAI',
+            '{{ALAMAT_PERUSAHAAN}}': 'KONSULAT JENDERAL REPUBLIK INDONESIA DI DUBAI',
+            '{{LOKASI}}': 'Dubai',
+
+            # Special placeholders - convert {{TABEL_OVERTIME}} to marker for table insertion
+            '{{TABEL_OVERTIME}}': '[TABEL_OVERTIME_WILL_BE_REPLACED]'
+        }
+
             # Replace placeholders in document
-            self.replace_placeholders_in_document(doc, replacements)
-            
+            self.replace_placeholders_in_document(doc, replacements, overtime_data, total_hours, total_amount)
+
             # If no template exists, create basic structure
             if not template_path:
                 self.create_basic_monthly_summary_structure(doc, replacements)
-            
-            # Add overtime table to document
-            self.add_overtime_table_to_document(doc, overtime_data, total_hours, total_amount)
-            
-            # Save to temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
-            doc.save(temp_file.name)
-            temp_file.close()
-            
-            return temp_file.name
+
+            # Note: Overtime table will be added via {{TABEL_OVERTIME}} placeholder replacement
+            # Table insertion is now handled by replace_placeholders_in_document -> replace_tabel_overtime_placeholder
+
+            # Save to OvertimeSummaryDocument model
+            from .models import OvertimeSummaryDocument
+            from django.core.files.base import ContentFile
+            import io
+
+            # Create document record
+            docx_buffer = io.BytesIO()
+            doc.save(docx_buffer)
+            docx_buffer.seek(0)
+
+            # Create or update OvertimeSummaryDocument
+            docx_document, created = OvertimeSummaryDocument.objects.get_or_create(
+                overtime_summary_request=summary_request,
+                document_type='monthly_summary',
+                defaults={
+                    'status': 'generated',
+                }
+            )
+
+            # Save DOCX file
+            filename = f"rekap_lembur_{summary_request.employee.nip}_{period}.docx"
+            docx_document.docx_file.save(filename, ContentFile(docx_buffer.getvalue()))
+            docx_document.save()
+
+            # Update summary request with document reference
+            summary_request.docx_document = docx_document
+            summary_request.save(update_fields=['docx_document'])
+
+            return docx_document.docx_file.path
             
         except Exception as e:
             raise Exception(f"Gagal generate DOCX monthly summary: {str(e)}")
+
+    def create_table_monthly_overtime(self, doc, overtime_data, total_hours, total_amount):
+        pass
 
     def get_monthly_export_template_path(self):
         """Get the path to the active monthly export template"""
         import os
         from django.conf import settings
-        
+
         template_dir = os.path.join(settings.BASE_DIR, 'template')
-        
-        # Priority order for monthly export template files
+
+        # Force use specific template: template_rekap_lembur.docx
+        template_name = 'template_rekap_lembur.docx'
+        template_path = os.path.join(template_dir, template_name)
+
+        if os.path.exists(template_path):
+            return template_path, template_name
+
+        # If specific template not found, try fallback templates
         priority_names = [
-            'template_rekap_lembur.docx',                   # Primary monthly export template (valid)
             'template_SURAT_PERINTAH_KERJA_LEMBUR.docx',    # Fallback 1 (valid)
             'template_monthly_overtime_export.docx',         # Fallback 2 (small file, may be corrupt)
         ]
-        
+
         # Check each priority template
-        for template_name in priority_names:
-            template_path = os.path.join(template_dir, template_name)
+        for fallback_template_name in priority_names:
+            template_path = os.path.join(template_dir, fallback_template_name)
             if os.path.exists(template_path):
-                return template_path, template_name
-        
-        # If no priority template found, return None
+                return template_path, fallback_template_name
+
+        # If no template found, return None
         return None, None
 
     def create_basic_monthly_summary_structure(self, doc, replacements):
@@ -5841,7 +5942,7 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                 'error': f"Gagal generate corrections summary: {str(e)}"
             }
 
-    def replace_placeholders_in_document(self, doc, replacements):
+    def replace_placeholders_in_document(self, doc, replacements, overtime_data=None, total_hours=None, total_amount=None):
         """Replace placeholders in document with actual values"""
         try:
             # Replace in paragraphs
@@ -5849,7 +5950,7 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                 for placeholder, value in replacements.items():
                     if placeholder in paragraph.text:
                         paragraph.text = paragraph.text.replace(placeholder, str(value))
-            
+
             # Replace in tables
             for table in doc.tables:
                 for row in table.rows:
@@ -5858,45 +5959,116 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                             for placeholder, value in replacements.items():
                                 if placeholder in paragraph.text:
                                     paragraph.text = paragraph.text.replace(placeholder, str(value))
-            
+
             # Special handling for {{TABEL_OVERTIME}} placeholder
-            if '{{TABEL_OVERTIME}}' in replacements:
-                self.replace_tabel_overtime_placeholder(doc, overtime_data, total_hours, total_amount)
-                
+            if overtime_data is not None:
+                # Check if placeholder exists in document (either the original or the marker)
+                has_placeholder = False
+                for paragraph in doc.paragraphs:
+                    if ('[TABEL_OVERTIME_WILL_BE_REPLACED]' in paragraph.text or
+                        '{{TABEL_OVERTIME}}' in paragraph.text or
+                        'tabel_overtime' in paragraph.text.lower()):
+                        has_placeholder = True
+                        break
+                if not has_placeholder:
+                    for table in doc.tables:
+                        for row in table.rows:
+                            for cell in row.cells:
+                                for paragraph in cell.paragraphs:
+                                    if ('[TABEL_OVERTIME_WILL_BE_REPLACED]' in paragraph.text or
+                                        '{{TABEL_OVERTIME}}' in paragraph.text or
+                                        'tabel_overtime' in paragraph.text.lower()):
+                                        has_placeholder = True
+                                        break
+                                if has_placeholder:
+                                    break
+                            if has_placeholder:
+                                break
+
+                if has_placeholder:
+                    print("✓ Found TABEL_OVERTIME placeholder, processing table replacement")
+                    self.replace_tabel_overtime_placeholder(doc, overtime_data, total_hours, total_amount)
+                else:
+                    print("⚠ No TABEL_OVERTIME placeholder found, appending table to end")
+                    # If no placeholder found, still add the table at the end as fallback
+                    self.add_overtime_table_to_document(doc, overtime_data, total_hours, total_amount)
+
         except Exception as e:
             print(f"Warning: Could not replace all placeholders: {str(e)}")
 
     def replace_tabel_overtime_placeholder(self, doc, overtime_data, total_hours, total_amount):
-        """Replace {{TABEL_OVERTIME}} placeholder with actual overtime table"""
+        """Replace [TABEL_OVERTIME_WILL_BE_REPLACED] or {{TABEL_OVERTIME}} with actual overtime table at the same position"""
         try:
+            from docx.shared import Pt
+
             # Find paragraphs containing the placeholder and replace with table
+            placeholder_found = False
+
+            # Look for [TABEL_OVERTIME_WILL_BE_REPLACED] first
             for paragraph in doc.paragraphs:
-                if '{{TABEL_OVERTIME}}' in paragraph.text:
-                    # Clear the paragraph
+                if '[TABEL_OVERTIME_WILL_BE_REPLACED]' in paragraph.text:
+                    # Clear the placeholder paragraph
                     paragraph.clear()
+
                     # Add heading for overtime table
                     heading = paragraph.add_run('Detail Pengajuan Overtime')
                     heading.bold = True
                     heading.font.size = Pt(14)
+                    placeholder_found = True
                     break
-            
-            # Find tables containing the placeholder and replace with actual data
-            for table in doc.tables:
-                for row in table.rows:
-                    for cell in row.cells:
-                        for paragraph in cell.paragraphs:
-                            if '{{TABEL_OVERTIME}}' in paragraph.text:
-                                # Clear the cell content
-                                paragraph.clear()
-                                # Add note that table will be inserted
-                                paragraph.add_run('Tabel overtime akan di-insert di bawah ini')
+
+            # If not found, look for {{TABEL_OVERTIME}} placeholder
+            if not placeholder_found:
+                for paragraph in doc.paragraphs:
+                    if '{{TABEL_OVERTIME}}' in paragraph.text or 'tabel_overtime' in paragraph.text.lower():
+                        # Clear the placeholder paragraph
+                        paragraph.clear()
+
+                        # Add heading for overtime table
+                        heading = paragraph.add_run('Detail Pengajuan Overtime')
+                        heading.bold = True
+                        heading.font.size = Pt(14)
+                        placeholder_found = True
+                        break
+
+            # Also check in tables for the placeholder
+            if not placeholder_found:
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                if ('[TABEL_OVERTIME_WILL_BE_REPLACED]' in paragraph.text or
+                                    '{{TABEL_OVERTIME}}' in paragraph.text or
+                                    'tabel_overtime' in paragraph.text.lower()):
+                                    # Clear the placeholder paragraph
+                                    paragraph.clear()
+
+                                    # Add heading for overtime table
+                                    heading = paragraph.add_run('Detail Pengajuan Overtime')
+                                    heading.bold = True
+                                    heading.font.size = Pt(14)
+                                    placeholder_found = True
+                                    break
+                            if placeholder_found:
                                 break
-            
-            # Insert the actual overtime table after the placeholder
-            self.insert_overtime_table_after_placeholder(doc, overtime_data, total_hours, total_amount)
-                                
+                        if placeholder_found:
+                            break
+
+            # Create the overtime table
+            print("✓ Found placeholder, adding overtime table to document")
+            # The table will be added to the document and will appear after the template content
+            self.add_overtime_table_to_document(doc, overtime_data, total_hours, total_amount)
+
+            print("✓ Processed overtime table replacement")
+
         except Exception as e:
-            print(f"Warning: Could not replace {{TABEL_OVERTIME}} placeholder: {str(e)}")
+            print(f"Warning: Could not replace placeholder: {str(e)}")
+            # Fallback to append method
+            try:
+                self.add_overtime_table_to_document(doc, overtime_data, total_hours, total_amount)
+            except Exception as fallback_e:
+                print(f"Warning: Fallback also failed: {str(fallback_e)}")
+
 
     def insert_overtime_table_after_placeholder(self, doc, overtime_data, total_hours, total_amount):
         """Insert overtime table after finding {{TABEL_OVERTIME}} placeholder"""
@@ -5910,17 +6082,17 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
             
             # Look for paragraphs containing the placeholder
             for i, paragraph in enumerate(doc.paragraphs):
-                if '{{TABEL_OVERTIME}}' in paragraph.text or 'Tabel overtime akan di-insert di bawah ini' in paragraph.text:
+                if '[TABEL_OVERTIME_WILL_BE_REPLACED]' in paragraph.text or 'Tabel overtime akan di-insert di bawah ini' in paragraph.text:
                     insert_position = i
                     break
-            
+
             # Look for tables containing the placeholder
             if insert_position is None:
                 for i, table in enumerate(doc.tables):
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
-                                if '{{TABEL_OVERTIME}}' in paragraph.text or 'Tabel overtime akan di-insert di bawah ini' in paragraph.text:
+                                if '[TABEL_OVERTIME_WILL_BE_REPLACED]' in paragraph.text or 'Tabel overtime akan di-insert di bawah ini' in paragraph.text:
                                     # Find the paragraph after this table
                                     table_index = doc.element.index(table.element)
                                     insert_position = table_index + 1
@@ -5964,7 +6136,7 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
                     row = table.add_row()
                     
                     # Format data
-                    date_str = record.date_requested.strftime('%d/%m/%Y')
+                    date_str = record.date_requested.strftime('%d/%m/%Y') if record.date_requested else "N/A"
                     hours_str = f"{float(record.overtime_hours):.1f} jam"
                     
                     # Truncate description
@@ -6031,7 +6203,7 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         
         # Add heading
-        doc.add_heading('Detail Pengajuan Overtime', level=2)
+        # doc.add_heading('Detail Pengajuan Overtime', level=2)
         
         # Create table
         table = doc.add_table(rows=1, cols=6)
@@ -6063,7 +6235,7 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
             row = table.add_row()
             
             # Format data
-            date_str = record.date_requested.strftime('%d/%m/%Y')
+            date_str = record.date_requested.strftime('%d/%m/%Y') if record.date_requested else "N/A"
             hours_str = f"{float(record.overtime_hours):.1f} jam"
             
             # Truncate description
@@ -6120,6 +6292,49 @@ class OvertimeSummaryRequestViewSet(viewsets.ModelViewSet):
         
         # Add spacing
         doc.add_paragraph()
+
+    def _convert_docx_to_pdf_via_service(self, docx_file_path):
+        """
+        Convert DOCX to PDF using the DOCX converter service
+        Returns PDF content as bytes
+        """
+        import requests
+        import os
+        from django.conf import settings
+
+        try:
+            # Prepare the file for upload
+            with open(docx_file_path, 'rb') as f:
+                files = {'file': ('document.docx', f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
+
+                # Send POST request to DOCX converter service
+                # Use internal network URL for better performance
+                converter_url = "http://docx_converter:5000/convert"
+
+                data = {'method': 'file'}
+                response = requests.post(converter_url, files=files, data=data, timeout=60)
+
+                if response.status_code == 200:
+                    return response.content
+                else:
+                    # Log error for debugging
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"DOCX converter service error: {response.status_code} - {response.text}")
+                    return None
+
+        except requests.exceptions.RequestException as e:
+            # Log network error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"DOCX converter service network error: {str(e)}")
+            return None
+        except Exception as e:
+            # Log general error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"DOCX to PDF conversion error: {str(e)}")
+            return None
 
     def convert_docx_to_pdf(self, docx_file_path):
         """Convert DOCX file to PDF using docx2pdf library"""

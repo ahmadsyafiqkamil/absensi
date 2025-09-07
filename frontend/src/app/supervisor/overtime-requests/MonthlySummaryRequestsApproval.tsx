@@ -11,9 +11,9 @@ export default function MonthlySummaryRequestsApproval() {
   return (
     <div className="space-y-6">
       {/* Approval Level Warning */}
-      {approvalLevel !== null && (
+      {/* {approvalLevel !== null && (
         <ApprovalLevelWarning approvalLevel={approvalLevel} />
-      )}
+      )} */}
 
       <Card>
         <CardHeader>

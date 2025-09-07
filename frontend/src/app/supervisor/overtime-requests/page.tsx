@@ -2,6 +2,9 @@ import { meFromServerCookies } from '@/lib/backend';
 import Header from '@/components/Header';
 import OvertimeRequestsApproval from './OvertimeRequestsApproval';
 import MonthlySummaryRequestsApproval from './MonthlySummaryRequestsApproval';
+import { useEffect } from 'react';
+import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning';
+import { useSupervisorApprovalLevel } from '@/lib/hooks';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -10,6 +13,7 @@ async function getMe() {
 }
 
 export default async function SupervisorOvertimeRequestsPage() {
+  const { approvalLevel } = useSupervisorApprovalLevel()
   const me = await getMe()
   
   if (!me) {
@@ -63,6 +67,10 @@ export default async function SupervisorOvertimeRequestsPage() {
           </p>
         </div>
 
+        {approvalLevel !== null && (
+          <ApprovalLevelWarning approvalLevel={approvalLevel} />
+        )}
+      
         {/* Overtime Requests Approval */}
         <OvertimeRequestsApproval />
         

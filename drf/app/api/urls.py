@@ -139,7 +139,12 @@ urlpatterns += [
     
     # Employee work settings endpoint
     path('employee/settings/work', views.employee_work_settings, name='employee-work-settings'),
-    
+
+    # Export monthly summary to PDF
+    path('employee/overtime-summary-requests/<int:pk>/export_pdf/',
+         views.OvertimeSummaryRequestViewSet.as_view({'get': 'export_pdf'}),
+         name='employee-overtime-summary-export-pdf'),
+
     # Supervisor approvals summary endpoint for dashboard card
     path('supervisor/approvals/summary', views.supervisor_approvals_summary, name='supervisor-approvals-summary'),
     
