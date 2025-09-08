@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Setup script untuk server production
-# Jalankan script ini di server production sebelum deployment
+# Setup script khusus untuk Debian server
+# Jalankan script ini di server Debian sebelum deployment
 
 set -e
 
-echo "🚀 Setting up server for Absensi KJRI Dubai deployment..."
+echo "🐧 Setting up Debian server for Absensi KJRI Dubai deployment..."
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
@@ -14,50 +14,62 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-# Detect OS and update system
-echo "📦 Detecting OS and updating system packages..."
-if command -v apt-get &> /dev/null; then
-    # Debian/Ubuntu
-    sudo apt-get update && sudo apt-get upgrade -y
-    echo "📦 Installing required packages..."
-    sudo apt-get install -y curl wget git rsync ca-certificates gnupg lsb-release
-elif command -v yum &> /dev/null; then
-    # CentOS/RHEL
-    sudo yum update -y
-    echo "📦 Installing required packages..."
-    sudo yum install -y curl wget git rsync
-else
-    echo "❌ Unsupported operating system. Please use Debian/Ubuntu or CentOS/RHEL."
+# Check if Debian
+if ! command -v apt-get &> /dev/null; then
+    echo "❌ This script is designed for Debian/Ubuntu systems."
+    echo "   Please use the appropriate script for your OS."
     exit 1
 fi
+
+# Update system
+echo "📦 Updating Debian system packages..."
+sudo apt-get update && sudo apt-get upgrade -y
+
+# Install required packages
+echo "📦 Installing required packages..."
+sudo apt-get install -y curl wget git rsync ca-certificates gnupg lsb-release software-properties-common
 
 # Install Docker
 echo "🐳 Installing Docker..."
 if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
+    # Add Docker's official GPG key
+    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    
+    # Add Docker repository
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Install Docker
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
+    # Add user to docker group
     sudo usermod -aG docker $USER
-    rm get-docker.sh
+    
     echo "✅ Docker installed successfully"
 else
     echo "✅ Docker already installed"
 fi
 
-# Install Docker Compose
+# Install Docker Compose (standalone)
 echo "🐳 Installing Docker Compose..."
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+if ! command -v docker-compose &> /dev/null; then
     # Get latest version
     COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
     sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
     
-    # Create symlink for docker-compose command
+    # Create symlink
     sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
     
     echo "✅ Docker Compose installed successfully"
 else
     echo "✅ Docker Compose already installed"
 fi
+
+# Start and enable Docker
+echo "🔧 Starting Docker service..."
+sudo systemctl start docker
+sudo systemctl enable docker
 
 # Create application directory
 echo "📁 Creating application directory..."
@@ -89,31 +101,12 @@ sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/
 sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 sudo systemctl restart ssh
 
-# Setup firewall
-echo "🔥 Configuring firewall..."
-if command -v ufw &> /dev/null; then
-    # Ubuntu/Debian with UFW
-    sudo ufw allow ssh
-    sudo ufw allow 80
-    sudo ufw allow 443
-    sudo ufw --force enable
-elif command -v firewall-cmd &> /dev/null; then
-    # CentOS/RHEL with firewalld
-    sudo systemctl start firewalld
-    sudo systemctl enable firewalld
-    sudo firewall-cmd --permanent --add-service=ssh
-    sudo firewall-cmd --permanent --add-service=http
-    sudo firewall-cmd --permanent --add-service=https
-    sudo firewall-cmd --reload
-elif command -v iptables &> /dev/null; then
-    # Generic iptables
-    sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-    sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-    sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-    sudo iptables-save > /etc/iptables/rules.v4 2>/dev/null || echo "⚠️  Please save iptables rules manually"
-else
-    echo "⚠️  No firewall detected. Please configure firewall manually."
-fi
+# Setup UFW firewall
+echo "🔥 Configuring UFW firewall..."
+sudo ufw allow ssh
+sudo ufw allow 80
+sudo ufw allow 443
+sudo ufw --force enable
 
 # Create production.env template
 echo "📝 Creating production.env template..."
@@ -211,6 +204,9 @@ case "$1" in
         echo ""
         echo "=== Memory Usage ==="
         free -h
+        echo ""
+        echo "=== Debian Version ==="
+        lsb_release -a
         ;;
     *)
         echo "Usage: $0 {health|logs|resources|all}"
@@ -220,6 +216,44 @@ esac
 EOF
 
 chmod +x /opt/absensi/scripts/monitor.sh
+
+# Create system info script
+echo "ℹ️  Creating system info script..."
+cat > /opt/absensi/scripts/system-info.sh << 'EOF'
+#!/bin/bash
+# System information script for Debian
+
+echo "🐧 Debian System Information"
+echo "============================"
+echo "OS: $(lsb_release -d | cut -f2)"
+echo "Kernel: $(uname -r)"
+echo "Architecture: $(uname -m)"
+echo "Uptime: $(uptime -p)"
+echo ""
+echo "🐳 Docker Information"
+echo "===================="
+docker --version
+docker-compose --version
+echo ""
+echo "💾 Disk Usage"
+echo "============="
+df -h
+echo ""
+echo "🧠 Memory Usage"
+echo "==============="
+free -h
+echo ""
+echo "🌐 Network Interfaces"
+echo "====================="
+ip addr show | grep -E "inet |UP"
+echo ""
+echo "🔧 Services Status"
+echo "=================="
+systemctl is-active docker
+systemctl is-active ssh
+EOF
+
+chmod +x /opt/absensi/scripts/system-info.sh
 
 # Display SSH public key
 echo ""
@@ -236,10 +270,16 @@ echo "3. Add other required secrets (SERVER_IP, SERVER_USER, etc.)"
 echo "4. Update production.env with your actual values"
 echo "5. Run your first deployment via GitHub Actions"
 echo ""
-echo "✅ Server setup completed successfully!"
+echo "✅ Debian server setup completed successfully!"
 echo ""
 echo "🔧 Useful commands:"
-echo "   Monitor services:  ./scripts/monitor.sh all"
-echo "   View logs:         ./scripts/monitor.sh logs"
-echo "   Check health:      ./scripts/monitor.sh health"
-echo "   Create backup:     ./scripts/backup.sh"
+echo "   System info:      ./scripts/system-info.sh"
+echo "   Monitor services: ./scripts/monitor.sh all"
+echo "   View logs:        ./scripts/monitor.sh logs"
+echo "   Check health:     ./scripts/monitor.sh health"
+echo "   Create backup:    ./scripts/backup.sh"
+echo ""
+echo "⚠️  Important:"
+echo "   - Logout and login again to apply docker group changes"
+echo "   - Or run: newgrp docker"
+echo "   - Test Docker: docker run hello-world"

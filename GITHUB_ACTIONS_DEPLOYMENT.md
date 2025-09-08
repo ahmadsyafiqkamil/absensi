@@ -5,7 +5,7 @@ Panduan lengkap untuk mendeploy aplikasi Absensi KJRI Dubai ke server production
 ## 📋 Prasyarat
 
 ### 1. Server Production
-- Ubuntu 20.04+ atau CentOS 7+
+- Debian 10+ atau Ubuntu 20.04+ atau CentOS 7+
 - Docker 20.10+ dan Docker Compose 2.0+
 - 4GB RAM minimum (8GB recommended)
 - 50GB disk space

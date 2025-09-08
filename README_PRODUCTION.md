@@ -5,7 +5,7 @@ Panduan lengkap untuk mendeploy sistem Absensi KJRI Dubai ke production environm
 ## 📋 Prasyarat
 
 ### Sistem Requirements
-- Ubuntu 20.04+ atau CentOS 7+
+- **Debian 10+** (Recommended) atau Ubuntu 20.04+ atau CentOS 7+
 - Docker 20.10+
 - Docker Compose 2.0+
 - 4GB RAM minimum (8GB recommended)
@@ -20,9 +20,25 @@ Panduan lengkap untuk mendeploy sistem Absensi KJRI Dubai ke production environm
 ## 🚀 Quick Start
 
 ### 1. Persiapan Server
+
+#### Untuk Debian (Recommended):
+```bash
+# Download dan jalankan setup script khusus Debian
+curl -fsSL https://raw.githubusercontent.com/your-repo/absensi-kjri-dubai/main/scripts/setup-debian.sh | bash
+
+# Atau clone repository dan jalankan
+git clone https://github.com/your-repo/absensi-kjri-dubai.git /opt/absensi
+cd /opt/absensi
+chmod +x scripts/setup-debian.sh
+./scripts/setup-debian.sh
+```
+
+#### Untuk Ubuntu/CentOS:
 ```bash
 # Update sistem
-sudo apt update && sudo apt upgrade -y
+sudo apt update && sudo apt upgrade -y  # Debian/Ubuntu
+# atau
+sudo yum update -y  # CentOS
 
 # Install Docker dan Docker Compose
 curl -fsSL https://get.docker.com -o get-docker.sh

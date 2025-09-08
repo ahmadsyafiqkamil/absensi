@@ -4,11 +4,14 @@ Panduan cepat untuk mendeploy aplikasi Absensi ke production menggunakan GitHub 
 
 ## ⚡ Langkah Cepat (5 Menit)
 
-### 1. Setup Server Production
+### 1. Setup Server Production (Debian/Ubuntu)
 
 ```bash
 # Login ke server production
 ssh user@your-server-ip
+
+# Update sistem (Debian/Ubuntu)
+sudo apt update && sudo apt upgrade -y
 
 # Download dan jalankan setup script
 curl -fsSL https://raw.githubusercontent.com/your-repo/absensi-kjri-dubai/main/scripts/setup-server.sh | bash
