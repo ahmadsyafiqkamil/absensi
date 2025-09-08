@@ -134,6 +134,19 @@ fi
 # Clone repository
 echo "📥 Cloning repository..."
 if [ ! -d "$APP_DIR/.git" ]; then
+    # Check if directory exists and is not empty
+    if [ -d "$APP_DIR" ] && [ "$(ls -A $APP_DIR)" ]; then
+        echo "⚠️  Directory $APP_DIR exists and is not empty"
+        echo "🔄 Backing up existing directory..."
+        mv $APP_DIR ${APP_DIR}_backup_$(date +%Y%m%d_%H%M%S)
+        echo "✅ Existing directory backed up"
+    fi
+    
+    # Create fresh directory
+    mkdir -p $APP_DIR
+    chown -R kava:kava $APP_DIR
+    
+    # Clone repository
     sudo -u kava git clone https://github.com/ahmadsyafiqkamil/absensi.git $APP_DIR
     cd $APP_DIR
 else
