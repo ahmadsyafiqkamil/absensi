@@ -36,7 +36,35 @@ jobs:
           cd /opt/absensi
           if [ ! -f production.env ]; then
             echo "Creating production.env from template..."
-            cp env.production.example production.env
+            if [ -f env.production.example ]; then
+              cp env.production.example production.env
+            else
+              echo "Creating basic production.env..."
+              cat > production.env << 'ENVEOF'
+# Database Configuration
+MYSQL_ROOT_PASSWORD=CHANGE_THIS_STRONG_ROOT_PASSWORD_IN_PRODUCTION
+MYSQL_USER=absensi_user
+MYSQL_PASSWORD=CHANGE_THIS_STRONG_DB_PASSWORD_IN_PRODUCTION
+
+# Django Backend Configuration
+SECRET_KEY=CHANGE_THIS_DJANGO_SECRET_KEY_IN_PRODUCTION_USE_AT_LEAST_50_CHARACTERS
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com,api.yourdomain.com,backend
+PASSWORD_SALT=CHANGE_THIS_PASSWORD_SALT_IN_PRODUCTION
+BACKEND_CORS_ORIGINS=["https://yourdomain.com", "https://www.yourdomain.com"]
+
+# Frontend Configuration
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+NEXT_PUBLIC_BACKEND_URL=https://api.yourdomain.com
+
+# Domain Configuration for Caddy
+FRONTEND_DOMAIN=yourdomain.com
+API_DOMAIN=api.yourdomain.com
+
+# Production Settings
+DJANGO_DEBUG=0
+NODE_ENV=production
+ENVEOF
+            fi
             echo "⚠️  Please update production.env with your actual values"
           fi
         EOF
