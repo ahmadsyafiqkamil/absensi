@@ -95,13 +95,14 @@ sudo systemctl enable docker
 
 # Create application directory
 echo "📁 Creating application directory..."
-sudo mkdir -p /opt/absensi
-sudo chown $USER:$USER /opt/absensi
+APP_DIR="/home/$USER/absensi"
+sudo mkdir -p $APP_DIR
+sudo chown $USER:$USER $APP_DIR
 
 # Create necessary subdirectories
-mkdir -p /opt/absensi/logs/{backend,frontend,caddy}
-mkdir -p /opt/absensi/backups
-mkdir -p /opt/absensi/mysql/conf.d
+mkdir -p $APP_DIR/logs/{backend,frontend,caddy}
+mkdir -p $APP_DIR/backups
+mkdir -p $APP_DIR/mysql/conf.d
 
 # Setup SSH key for GitHub Actions
 echo "🔑 Setting up SSH key for GitHub Actions..."
@@ -143,11 +144,11 @@ fi
 
 # Clone repository
 echo "📥 Cloning repository..."
-if [ ! -d "/opt/absensi/.git" ]; then
-    git clone https://github.com/ahmadsyafiqkamil/absensi.git /opt/absensi
-    cd /opt/absensi
+if [ ! -d "$APP_DIR/.git" ]; then
+    git clone https://github.com/ahmadsyafiqkamil/absensi.git $APP_DIR
+    cd $APP_DIR
 else
-    cd /opt/absensi
+    cd $APP_DIR
     git pull origin main
 fi
 

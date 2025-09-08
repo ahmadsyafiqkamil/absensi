@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Setup script untuk Debian tanpa sudo
-# Jalankan script ini sebagai root di server production
+# Final setup script untuk Debian dengan direktori /home/kava/absensi
+# Jalankan script ini sebagai root
 
 set -e
 
-echo "🚀 Setup Absensi KJRI Dubai untuk Debian tanpa sudo"
-echo "==================================================="
+echo "🚀 Final Setup untuk Absensi KJRI Dubai"
+echo "======================================="
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -14,15 +14,8 @@ if [ "$EUID" -ne 0 ]; then
     echo ""
     echo "📋 To run this script:"
     echo "1. Switch to root: su -"
-    echo "2. Run this script: curl -fsSL https://raw.githubusercontent.com/ahmadsyafiqkamil/absensi/main/scripts/setup-debian-no-sudo.sh | bash"
-    echo "3. After setup, switch back to regular user: exit"
-    echo ""
-    echo "⚠️  Or install sudo first:"
-    echo "   su -"
-    echo "   apt update && apt install -y sudo"
-    echo "   usermod -aG sudo kava"
-    echo "   exit"
-    echo "   Then run the regular setup script"
+    echo "2. Run this script: curl -fsSL https://raw.githubusercontent.com/ahmadsyafiqkamil/absensi/main/scripts/setup-final.sh | bash"
+    echo "3. After setup, switch back to kava user: exit"
     exit 1
 fi
 
@@ -37,13 +30,18 @@ echo ""
 echo "📦 Updating system packages..."
 apt update && apt upgrade -y
 
-# Install required packages
-echo "📦 Installing required packages..."
-apt install -y curl wget git rsync ca-certificates gnupg lsb-release sudo
+# Install essential packages first
+echo "📦 Installing essential packages..."
+apt install -y curl wget git rsync ca-certificates gnupg lsb-release
 
-# Try to install software-properties-common (not available in all Debian versions)
-echo "📦 Installing additional packages..."
+# Install sudo
+echo "📦 Installing sudo..."
+apt install -y sudo
+
+# Try to install optional packages
+echo "📦 Installing optional packages..."
 apt install -y software-properties-common 2>/dev/null || echo "⚠️  software-properties-common not available, skipping..."
+apt install -y apt-transport-https 2>/dev/null || echo "⚠️  apt-transport-https not available, skipping..."
 
 # Install Docker
 echo "🐳 Installing Docker..."
@@ -54,8 +52,10 @@ if ! command -v docker &> /dev/null; then
     # Add Docker repository
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
     
-    # Install Docker
+    # Update package list
     apt-get update
+    
+    # Install Docker
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     
     echo "✅ Docker installed successfully"
@@ -113,8 +113,8 @@ sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_
 sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 systemctl restart ssh
 
-# Setup UFW firewall
-echo "🔥 Configuring UFW firewall..."
+# Setup firewall
+echo "🔥 Configuring firewall..."
 if command -v ufw &> /dev/null; then
     ufw allow ssh
     ufw allow 80
@@ -175,14 +175,14 @@ fi
 
 # Set permissions
 chmod +x docker-prod.sh scripts/*.sh 2>/dev/null || true
-chown -R kava:kava /opt/absensi
+chown -R kava:kava $APP_DIR
 
 # Add user to docker group
 echo "👤 Adding user to docker group..."
 usermod -aG docker kava
 
-# Install sudo for kava user
-echo "🔧 Installing sudo for kava user..."
+# Add user to sudo group
+echo "👤 Adding user to sudo group..."
 usermod -aG sudo kava
 
 echo ""
@@ -191,7 +191,7 @@ echo ""
 echo "📋 Next Steps:"
 echo "1. Switch back to kava user:"
 echo "   exit"
-echo "   cd /opt/absensi"
+echo "   cd /home/kava/absensi"
 echo ""
 echo "2. Update production.env with your actual values:"
 echo "   nano production.env"
@@ -217,11 +217,13 @@ echo "1. Push to main branch: git push origin main"
 echo "2. Or run workflow manually in GitHub Actions"
 echo ""
 echo "🔧 Useful commands (run as kava user):"
-echo "   Check status:    cd /opt/absensi && ./scripts/monitor.sh all"
-echo "   View logs:       cd /opt/absensi && docker-compose logs -f"
-echo "   Manual deploy:   cd /opt/absensi && ./docker-prod.sh"
+echo "   Check status:    cd /home/kava/absensi && ./scripts/monitor.sh all"
+echo "   View logs:       cd /home/kava/absensi && docker-compose logs -f"
+echo "   Manual deploy:   cd /home/kava/absensi && ./docker-prod.sh"
 echo ""
 echo "⚠️  Important:"
 echo "   - Logout and login again to apply docker group changes"
 echo "   - Or run: newgrp docker"
 echo "   - Test Docker: docker run hello-world"
+echo ""
+echo "📁 Application directory: $APP_DIR"

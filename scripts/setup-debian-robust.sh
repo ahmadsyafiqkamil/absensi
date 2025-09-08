@@ -82,14 +82,15 @@ systemctl enable docker
 
 # Create application directory
 echo "📁 Creating application directory..."
-mkdir -p /opt/absensi
-chown -R kava:kava /opt/absensi
+APP_DIR="/home/kava/absensi"
+mkdir -p $APP_DIR
+chown -R kava:kava $APP_DIR
 
 # Create necessary subdirectories
-mkdir -p /opt/absensi/logs/{backend,frontend,caddy}
-mkdir -p /opt/absensi/backups
-mkdir -p /opt/absensi/mysql/conf.d
-chown -R kava:kava /opt/absensi
+mkdir -p $APP_DIR/logs/{backend,frontend,caddy}
+mkdir -p $APP_DIR/backups
+mkdir -p $APP_DIR/mysql/conf.d
+chown -R kava:kava $APP_DIR
 
 # Setup SSH key for GitHub Actions
 echo "🔑 Setting up SSH key for GitHub Actions..."
@@ -138,11 +139,11 @@ fi
 
 # Clone repository
 echo "📥 Cloning repository..."
-if [ ! -d "/opt/absensi/.git" ]; then
-    sudo -u kava git clone https://github.com/ahmadsyafiqkamil/absensi.git /opt/absensi
-    cd /opt/absensi
+if [ ! -d "$APP_DIR/.git" ]; then
+    sudo -u kava git clone https://github.com/ahmadsyafiqkamil/absensi.git $APP_DIR
+    cd $APP_DIR
 else
-    cd /opt/absensi
+    cd $APP_DIR
     sudo -u kava git pull origin main
 fi
 
@@ -180,7 +181,7 @@ fi
 
 # Set permissions
 chmod +x docker-prod.sh scripts/*.sh 2>/dev/null || true
-chown -R kava:kava /opt/absensi
+chown -R kava:kava $APP_DIR
 
 # Add user to docker group
 echo "👤 Adding user to docker group..."
@@ -196,7 +197,7 @@ echo ""
 echo "📋 Next Steps:"
 echo "1. Switch back to kava user:"
 echo "   exit"
-echo "   cd /opt/absensi"
+echo "   cd /home/kava/absensi"
 echo ""
 echo "2. Update production.env with your actual values:"
 echo "   nano production.env"
@@ -222,9 +223,9 @@ echo "1. Push to main branch: git push origin main"
 echo "2. Or run workflow manually in GitHub Actions"
 echo ""
 echo "🔧 Useful commands (run as kava user):"
-echo "   Check status:    cd /opt/absensi && ./scripts/monitor.sh all"
-echo "   View logs:       cd /opt/absensi && docker-compose logs -f"
-echo "   Manual deploy:   cd /opt/absensi && ./docker-prod.sh"
+echo "   Check status:    cd /home/kava/absensi && ./scripts/monitor.sh all"
+echo "   View logs:       cd /home/kava/absensi && docker-compose logs -f"
+echo "   Manual deploy:   cd /home/kava/absensi && ./docker-prod.sh"
 echo ""
 echo "⚠️  Important:"
 echo "   - Logout and login again to apply docker group changes"
