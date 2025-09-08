@@ -22,17 +22,30 @@ generate_secret_key() {
 # Pre-deployment checks
 echo "🔍 Running pre-deployment checks..."
 
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-    echo "❌ Docker is not running. Please start Docker first."
+# Pre-deployment checks
+echo "🔍 Running pre-deployment checks..."
+
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker is not installed. Please install Docker first."
     exit 1
 fi
 
-# Check if Docker Compose is available
-if ! command_exists docker-compose && ! docker compose version > /dev/null 2>&1; then
-    echo "❌ Docker Compose is not available. Please install Docker Compose."
+# Check if Docker daemon is running
+if ! docker info &> /dev/null; then
+    echo "❌ Docker daemon is not running. Please start Docker first."
+    echo "💡 Try: sudo systemctl start docker"
+    echo "💡 Or: sudo service docker start"
     exit 1
 fi
+
+# Check if Docker Compose is installed
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+    exit 1
+fi
+
+echo "✅ Docker and Docker Compose are available"
 
 # Check if production.env file exists
 if [ ! -f production.env ]; then
