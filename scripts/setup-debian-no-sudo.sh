@@ -39,7 +39,11 @@ apt update && apt upgrade -y
 
 # Install required packages
 echo "📦 Installing required packages..."
-apt install -y curl wget git rsync ca-certificates gnupg lsb-release software-properties-common sudo
+apt install -y curl wget git rsync ca-certificates gnupg lsb-release sudo
+
+# Try to install software-properties-common (not available in all Debian versions)
+echo "📦 Installing additional packages..."
+apt install -y software-properties-common 2>/dev/null || echo "⚠️  software-properties-common not available, skipping..."
 
 # Install Docker
 echo "🐳 Installing Docker..."
