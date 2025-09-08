@@ -167,7 +167,7 @@ export default function OvertimeRequestsManager() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -331,7 +331,7 @@ export default function OvertimeRequestsManager() {
       
       // Show success message
       setError(''); // Clear any previous errors
-      setSuccessMessage(`Dokumen berhasil di-download: ${filename}`);
+      setSuccessMessage(`Dokumen DOCX berhasil di-download: ${filename}`);
       
       // Clear success message after 3 seconds
       setTimeout(() => {
@@ -340,6 +340,122 @@ export default function OvertimeRequestsManager() {
     } catch (err) {
       console.error('Download error:', err);
       setError(err instanceof Error ? err.message : 'Failed to download document');
+    } finally {
+      setDownloadingId(null); // Clear downloading state
+    }
+  };
+
+  const handleExportPdf = async (requestId: number) => {
+    try {
+      setError(''); // Clear previous errors
+      setDownloadingId(requestId); // Set downloading state
+      
+      const response = await fetch(`/api/overtime-requests/${requestId}/export-pdf`, {
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Accept': 'application/pdf',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to export PDF: ${response.status} ${response.statusText}`);
+      }
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `Surat_Perintah_Lembur_${requestId}.pdf`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Show success message
+      setError(''); // Clear any previous errors
+      setSuccessMessage(`Dokumen PDF berhasil di-export: ${filename}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Export PDF error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to export PDF');
+    } finally {
+      setDownloadingId(null); // Clear downloading state
+    }
+  };
+
+  const handleExportListPdf = async () => {
+    try {
+      setError(''); // Clear previous errors
+      setDownloadingId('list'); // Set downloading state for list
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (monthFilter) {
+        params.append('month', monthFilter);
+      }
+      // Note: status filter is not implemented in the backend yet
+      
+      const response = await fetch(`/api/overtime-requests/export-list-pdf?${params.toString()}`, {
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Accept': 'application/pdf',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to export list PDF: ${response.status} ${response.statusText}`);
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'daftar-pengajuan-lembur.pdf';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Show success message
+      setError(''); // Clear any previous errors
+      setSuccessMessage(`Daftar pengajuan lembur berhasil di-export: ${filename}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Export list PDF error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to export list PDF');
     } finally {
       setDownloadingId(null); // Clear downloading state
     }
@@ -423,22 +539,40 @@ export default function OvertimeRequestsManager() {
         return (
           <div className="flex flex-col space-y-1">
             {request.status === 'approved' && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs px-2 py-1 bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
-                onClick={() => handleDownload(request.id)}
-                disabled={downloadingId === request.id}
-              >
-                {downloadingId === request.id ? (
-                  <>
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700 mr-1"></div>
-                    Downloading...
-                  </>
-                ) : (
-                  '📄 Download Dokumen'
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1 bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                  onClick={() => handleDownload(request.id)}
+                  disabled={downloadingId === request.id}
+                >
+                  {downloadingId === request.id ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700 mr-1"></div>
+                      Downloading...
+                    </>
+                  ) : (
+                    '📄 Download DOCX'
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1 bg-red-50 text-red-700 border-red-300 hover:bg-red-100"
+                  onClick={() => handleExportPdf(request.id)}
+                  disabled={downloadingId === request.id}
+                >
+                  {downloadingId === request.id ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700 mr-1"></div>
+                      Exporting...
+                    </>
+                  ) : (
+                    '📑 Export PDF'
+                  )}
+                </Button>
+              </div>
             )}
             {request.status === 'rejected' && (
               <div className="text-xs text-red-600">
@@ -622,11 +756,11 @@ export default function OvertimeRequestsManager() {
       {/* Action Button */}
       <div className="flex justify-end items-center mb-4">
         <Dialog.Root open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <Dialog.Trigger asChild>
+          {/* <Dialog.Trigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700">
               Ajukan Lembur
             </Button>
-          </Dialog.Trigger>
+          </Dialog.Trigger> */}
           <Dialog.Portal>
             <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
             <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl p-6 w-full max-w-md z-50 max-h-[90vh] overflow-y-auto">
@@ -798,20 +932,23 @@ export default function OvertimeRequestsManager() {
                   )}
                 </div>
 
-                {/* Export Filtered Data */}
+                {/* Export Filtered Data to PDF */}
                 {monthFilter && table.getFilteredRowModel().rows.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      // Export filtered data logic here
-                      const filteredData = table.getFilteredRowModel().rows.map(row => row.original);
-                      console.log('Exporting filtered data:', filteredData);
-                      // You can implement CSV export or other export functionality
-                    }}
-                    className="text-xs"
+                    onClick={handleExportListPdf}
+                    disabled={downloadingId === 'list'}
+                    className="text-xs bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
                   >
-                    📊 Export Data
+                    {downloadingId === 'list' ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-700 mr-1"></div>
+                        Exporting...
+                      </>
+                    ) : (
+                      '📑 Export PDF'
+                    )}
                   </Button>
                 )}
               </div>

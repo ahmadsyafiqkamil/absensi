@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers';
 
 export async function GET(request: Request) {
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   if (approvedOnly) queryParams.append('approved_only', approvedOnly);
   if (pendingOnly) queryParams.append('pending_only', pendingOnly);
 
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+  const backend = getBackendUrl();
   const url = `${backend}/api/overtime/report${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
 
   try {

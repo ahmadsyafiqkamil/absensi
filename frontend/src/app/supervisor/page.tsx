@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import TodayAttendance from '../pegawai/TodayAttendance';
 import AttendanceWidget from '../pegawai/AttendanceWidget';
+import { getApprovalCapabilities } from '@/lib/approval-utils';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -17,7 +18,7 @@ export default async function SupervisorPage() {
   
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
@@ -29,15 +30,20 @@ export default async function SupervisorPage() {
     )
   }
 
-  const groups: string[] = me?.groups || []
-  const isSupervisor = groups.includes('supervisor')
+  // Check position-based approval level instead of group membership
+  const position = me?.position || null
+  const approvalCapabilities = getApprovalCapabilities(position)
+  const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level
 
-  if (!isSupervisor) {
+  if (!hasApprovalPermission) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
-          <p className="text-gray-600 mt-2">Supervisor privileges required.</p>
+          <p className="text-gray-600 mt-2">Supervisor privileges required (approval level 1 or higher).</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Current approval level: {position?.approval_level || 0}
+          </p>
           <Link href="/" className="text-blue-600 hover:underline mt-4 inline-block">
             Return to Home
           </Link>
@@ -47,7 +53,7 @@ export default async function SupervisorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Supervisor Dashboard" 
         subtitle="Manage your team and monitor performance"

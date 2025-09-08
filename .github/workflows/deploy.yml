@@ -1,0 +1,129 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main, production ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+    - name: Create production.env if not exists
+      run: |
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd /opt/absensi
+          if [ ! -f production.env ]; then
+            echo "Creating production.env from template..."
+            cp env.production.example production.env
+            echo "⚠️  Please update production.env with your actual values"
+          fi
+        EOF
+
+    - name: Deploy to server
+      run: |
+        # Copy files to server
+        rsync -avz --exclude='.git' --exclude='node_modules' --exclude='.env*' \
+          -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
+          . ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/opt/absensi/
+
+        # Run deployment commands on server
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd /opt/absensi
+
+          # Create necessary directories
+          mkdir -p logs/backend logs/frontend logs/caddy backups mysql/conf.d
+
+          # Backup current deployment
+          if [ -f ./scripts/backup.sh ]; then
+            ./scripts/backup.sh
+          else
+            echo "Backup script not found, creating basic backup..."
+            mkdir -p backups
+            tar -czf backups/backup_$(date +%Y%m%d_%H%M%S).tar.gz logs/ 2>/dev/null || true
+          fi
+
+          # Set proper permissions
+          chmod +x docker-prod.sh scripts/*.sh 2>/dev/null || true
+
+          # Stop existing containers
+          docker-compose --env-file production.env -f docker-compose.prod.yml down || true
+
+          # Deploy with Docker
+          ./docker-prod.sh
+
+          # Wait for services to start
+          echo "Waiting for services to start..."
+          sleep 60
+
+          # Health checks
+          echo "Running health checks..."
+          
+          # Check if services are running
+          docker-compose --env-file production.env -f docker-compose.prod.yml ps
+          
+          # Check backend health
+          if curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
+            echo "✅ Backend is healthy"
+          else
+            echo "❌ Backend health check failed"
+            docker-compose --env-file production.env -f docker-compose.prod.yml logs backend
+            exit 1
+          fi
+
+          # Check frontend health
+          if curl -f http://localhost:3000 > /dev/null 2>&1; then
+            echo "✅ Frontend is healthy"
+          else
+            echo "❌ Frontend health check failed"
+            docker-compose --env-file production.env -f docker-compose.prod.yml logs frontend
+            exit 1
+          fi
+
+          echo "✅ Deployment successful!"
+        EOF
+
+    - name: Verify deployment
+      run: |
+        # Wait a bit more for services to fully stabilize
+        sleep 30
+        
+        # Test external access if domain is configured
+        if [ -n "${{ secrets.FRONTEND_DOMAIN }}" ]; then
+          echo "Testing external access..."
+          curl -f https://${{ secrets.FRONTEND_DOMAIN }} || echo "⚠️  External access test failed (domain might not be configured yet)"
+        fi
+
+    - name: Notify on success
+      if: success()
+      run: |
+        echo "🎉 Deployment to ${{ github.event.inputs.environment || 'production' }} successful!"
+        echo "Frontend: https://${{ secrets.FRONTEND_DOMAIN || 'yourdomain.com' }}"
+        echo "API: https://${{ secrets.API_DOMAIN || 'api.yourdomain.com' }}"
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "❌ Deployment to ${{ github.event.inputs.environment || 'production' }} failed!"
+        echo "Check the logs above for more details."

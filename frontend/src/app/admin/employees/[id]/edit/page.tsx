@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useParams, useRouter } from 'next/navigation'
 
 type Division = { id: number; name: string }
@@ -134,20 +134,30 @@ export default function EditEmployeePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="division_id">Division</Label>
-                    <Select id="division_id" name="division_id" value={formData.division_id} onChange={handleInputChange}>
-                      <option value="">Select Division</option>
-                      {divisions.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      ))}
+                    <Select value={formData.division_id} onValueChange={(value) => handleInputChange({ target: { name: 'division_id', value } } as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Division" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select Division</SelectItem>
+                        {divisions.map((d) => (
+                          <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="position_id">Position</Label>
-                    <Select id="position_id" name="position_id" value={formData.position_id} onChange={handleInputChange}>
-                      <option value="">Select Position</option>
-                      {positions.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
+                    <Select value={formData.position_id} onValueChange={(value) => handleInputChange({ target: { name: 'position_id', value } } as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select Position</SelectItem>
+                        {positions.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
                 </div>

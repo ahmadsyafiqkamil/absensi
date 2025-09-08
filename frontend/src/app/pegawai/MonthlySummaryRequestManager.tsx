@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import * as Dialog from '@radix-ui/react-dialog';
 import { authFetch } from '@/lib/authFetch';
+import { getBackendUrl } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -22,16 +21,14 @@ import {
   ColumnFiltersState,
 } from '@tanstack/react-table';
 
-type MonthlySummaryRequest = {
+type OvertimeSummaryRequest = {
   id: number;
   request_period: string;
-  report_type: string;
   request_title: string;
   request_description: string;
-  include_attendance: boolean;
-  include_overtime: boolean;
-  include_corrections: boolean;
-  include_summary_stats: boolean;
+  include_overtime_details: boolean;
+  include_overtime_summary: boolean;
+  include_approver_info: boolean;
   status: 'pending' | 'level1_approved' | 'approved' | 'rejected' | 'cancelled' | 'completed';
   level1_approved_by: {
     id: number;
@@ -54,11 +51,11 @@ type MonthlySummaryRequest = {
   updated_at: string;
 };
 
-type MonthlySummaryRequestsResponse = {
+type OvertimeSummaryRequestsResponse = {
   count: number;
   next: string | null;
   previous: string | null;
-  results: MonthlySummaryRequest[];
+  results: OvertimeSummaryRequest[];
 };
 
 function formatDate(dateString: string): string {
@@ -118,23 +115,18 @@ function getStatusText(status: string): string {
   }
 }
 
-const columnHelper = createColumnHelper<MonthlySummaryRequest>();
+const columnHelper = createColumnHelper<OvertimeSummaryRequest>();
 
-export default function MonthlySummaryRequestManager() {
-  const [requests, setRequests] = useState<MonthlySummaryRequest[]>([]);
+export default function OvertimeSummaryRequestManager() {
+  const [requests, setRequests] = useState<OvertimeSummaryRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     request_period: '',
-    report_type: 'overtime_summary',
     request_title: '',
     request_description: '',
-    include_attendance: false,
-    include_overtime: true,
-    include_corrections: false,
-    include_summary_stats: true,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -149,10 +141,10 @@ export default function MonthlySummaryRequestManager() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await authFetch('/api/employee/monthly-summary-requests/');
+      const response = await authFetch(`${getBackendUrl()}/api/employee/overtime-summary-requests/`);
       
       if (response.ok) {
-        const data: MonthlySummaryRequestsResponse = await response.json();
+        const data: OvertimeSummaryRequestsResponse = await response.json();
         setRequests(data.results);
       } else {
         setError('Gagal memuat data pengajuan rekap lembur bulanan');
@@ -176,19 +168,18 @@ export default function MonthlySummaryRequestManager() {
       return;
     }
 
-    if (!formData.include_overtime) {
-      setFormErrors({ general: 'Data lembur wajib disertakan' });
-      setSubmitting(false);
-      return;
-    }
 
     try {
-      const response = await authFetch('/api/employee/monthly-summary-requests/', {
+      // Prepare data for submission, excluding null/empty fields
+      const submitData = { ...formData };
+      
+      console.log(submitData);
+      const response = await authFetch(`${getBackendUrl()}/api/employee/overtime-summary-requests/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       if (response.ok) {
@@ -200,13 +191,8 @@ export default function MonthlySummaryRequestManager() {
         const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         setFormData({
           request_period: currentPeriod,
-          report_type: 'overtime_summary',
           request_title: '',
           request_description: '',
-          include_attendance: false,
-          include_overtime: true,
-          include_corrections: false,
-          include_summary_stats: true,
         });
         
         // Auto-fill title for current period
@@ -273,14 +259,6 @@ export default function MonthlySummaryRequestManager() {
       header: 'Judul Laporan',
       cell: info => info.getValue() || '-',
     }),
-    // columnHelper.accessor('include_overtime', {
-    //   header: 'Data Lembur',
-    //   cell: info => info.getValue() ? '✓ Ya' : '✗ Tidak',
-    // }),
-    // columnHelper.accessor('include_attendance', {
-    //   header: 'Data Absensi',
-    //   cell: info => info.getValue() ? '✓ Ya' : '✗ Tidak',
-    // }),
     columnHelper.accessor('status', {
       header: 'Status',
       cell: info => (
@@ -337,7 +315,7 @@ export default function MonthlySummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`/api/employee/monthly-summary-requests/${request.id}/export_docx/`);
+                      const response = await authFetch(`${getBackendUrl()}/api/employee/overtime-summary-requests/${request.id}/export_docx/`);
                       
                       if (response.ok) {
                         // Get blob from response
@@ -362,6 +340,38 @@ export default function MonthlySummaryRequestManager() {
                   className="text-green-600 border-green-600 hover:bg-green-50"
                 >
                   📄 Export DOCX
+                </Button>
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const response = await authFetch(`${getBackendUrl()}/api/employee/overtime-summary-requests/${request.id}/export_pdf/`);
+                      
+                      if (response.ok) {
+                        // Get blob from response
+                        const blob = await response.blob();
+                        // Create download link
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Rekap_Lembur_Bulanan_${request.request_period}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } else {
+                        alert('Gagal export PDF. Silakan coba lagi.');
+                      }
+                    } catch (error) {
+                      console.error('Export error:', error);
+                      alert('Terjadi kesalahan saat export PDF.');
+                    }
+                  }}
+                  className="text-red-600 border-red-600 hover:bg-red-50"
+                >
+                  📄 Export PDF
                 </Button>
               </>
             )}
@@ -403,7 +413,7 @@ export default function MonthlySummaryRequestManager() {
     const now = new Date();
     const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     setFormData(prev => ({ ...prev, request_period: currentPeriod }));
-    
+
     // Auto-fill title for current period
     const [year, month] = currentPeriod.split('-');
     const monthNames = [
@@ -453,40 +463,20 @@ export default function MonthlySummaryRequestManager() {
               </Dialog.Title>
               
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Period and Report Type Row */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="request_period">Periode Laporan *</Label>
-                    <Input
-                      id="request_period"
-                      type="month"
-                      value={formData.request_period}
-                      onChange={(e) => handleInputChange('request_period', e.target.value)}
-                      required
-                      className={formErrors.request_period ? 'border-red-500' : ''}
-                    />
-                    {formErrors.request_period && (
-                      <p className="text-sm text-red-600">{formErrors.request_period}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="report_type">Jenis Laporan *</Label>
-                    <Select
-                      value={formData.report_type}
-                      onValueChange={(value: string) => handleInputChange('report_type', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih jenis laporan" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="overtime_summary">Rekap Lembur Bulanan</SelectItem>
-                        <SelectItem value="monthly_summary">Rekap Bulanan Lengkap</SelectItem>
-                        <SelectItem value="attendance_summary">Rekap Absensi</SelectItem>
-                        <SelectItem value="custom_report">Laporan Kustom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                {/* Periode Laporan */}
+                <div className="space-y-2">
+                  <Label htmlFor="request_period">Periode Laporan *</Label>
+                  <Input
+                    id="request_period"
+                    type="month"
+                    value={formData.request_period}
+                    onChange={(e) => handleInputChange('request_period', e.target.value)}
+                    required
+                    className={formErrors.request_period ? 'border-red-500' : ''}
+                  />
+                  {formErrors.request_period && (
+                    <p className="text-sm text-red-600">{formErrors.request_period}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -519,53 +509,11 @@ export default function MonthlySummaryRequestManager() {
                   )}
                 </div>
 
-                {/* Data Scope */}
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">Data yang Dimasukkan dalam Rekap</Label>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="include_overtime"
-                        checked={formData.include_overtime}
-                        onCheckedChange={(checked: boolean | 'indeterminate') => handleInputChange('include_overtime', checked === true)}
-                      />
-                      <Label htmlFor="include_overtime" className="text-sm">
-                         Data Lembur {/*<span className="text-blue-600 font-medium">(Wajib)</span> */}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="include_attendance"
-                        checked={formData.include_attendance}
-                        onCheckedChange={(checked: boolean | 'indeterminate') => handleInputChange('include_attendance', checked === true)}
-                      />
-                      <Label htmlFor="include_attendance" className="text-sm">
-                        Data Absensi Harian {/* <span className="text-gray-500">(Opsional)</span> */}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="include_corrections"
-                        checked={formData.include_corrections}
-                        onCheckedChange={(checked: boolean | 'indeterminate') => handleInputChange('include_corrections', checked === true)}
-                      />
-                      <Label htmlFor="include_corrections" className="text-sm">
-                        Data Perbaikan Absensi {/* <span className="text-gray-500">(Opsional)</span> */}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="include_summary_stats"
-                        checked={formData.include_summary_stats}
-                        onCheckedChange={(checked: boolean | 'indeterminate') => handleInputChange('include_summary_stats', checked === true)}
-                      />
-                      <Label htmlFor="include_summary_stats" className="text-sm">
-                        Statistik Ringkasan Lembur {/* <span className="text-blue-600 font-medium">(Wajib)</span> */}
-                      </Label>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Data lembur akan selalu disertakan untuk perhitungan gaji lembur
+                {/* Informasi */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-sm text-blue-700">
+                    <strong>Informasi:</strong> Sistem akan otomatis mengambil data lembur bulanan untuk periode yang dipilih
+                    dan memasukkannya ke dalam laporan rekap.
                   </p>
                 </div>
 

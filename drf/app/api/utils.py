@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from zoneinfo import ZoneInfo
+from functools import wraps
 
 from django.utils import timezone as dj_timezone
 
@@ -121,6 +122,335 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
     c = 2 * asin(sqrt(a))
     return R * c
+
+
+# ============================================================================
+# APPROVAL UTILITIES
+# ============================================================================
+
+class ApprovalChecker:
+    """
+    Utility class untuk check approval permissions berdasarkan position approval level
+    """
+    
+    @staticmethod
+    def get_user_approval_level(user):
+        """
+        Get approval level dari user berdasarkan position
+        
+        Args:
+            user: User object
+            
+        Returns:
+            int: Approval level (0=No Approval, 1=Division Level, 2=Organization Level)
+        """
+        if user.is_superuser:
+            return 2  # Superuser has organization level approval
+        
+        try:
+            employee = user.employee
+            if employee and employee.position:
+                return employee.position.approval_level
+        except:
+            pass
+        
+        return 0  # Default: no approval permission
+    
+    @staticmethod
+    def can_approve_division_level(user):
+        """
+        Check if user can approve at division level (level 1)
+        
+        Args:
+            user: User object
+            
+        Returns:
+            bool: True if user can approve division level
+        """
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        return approval_level >= 1
+    
+    @staticmethod
+    def can_approve_organization_level(user):
+        """
+        Check if user can approve at organization level (level 2)
+        
+        Args:
+            user: User object
+            
+        Returns:
+            bool: True if user can approve organization level
+        """
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        return approval_level >= 2
+    
+    @staticmethod
+    def can_approve_overtime_org_wide(user):
+        """
+        Check if user can approve overtime organization-wide
+        
+        Args:
+            user: User object
+            
+        Returns:
+            bool: True if user can approve overtime org-wide
+        """
+        if user.is_superuser:
+            return True
+        
+        try:
+            employee = user.employee
+            if employee and employee.position:
+                return employee.position.can_approve_overtime_org_wide
+        except:
+            pass
+        
+        return False
+    
+    @staticmethod
+    def can_approve_division_overtime(user, target_employee):
+        """
+        Check if user can approve overtime for specific employee at division level
+        
+        Args:
+            user: User object (approver)
+            target_employee: Employee object (target)
+            
+        Returns:
+            bool: True if user can approve
+        """
+        # Check if user has division level approval
+        if not ApprovalChecker.can_approve_division_level(user):
+            return False
+        
+        # Check if user has no approval permission (level 0)
+        if ApprovalChecker.get_user_approval_level(user) == 0:
+            return False
+        
+        # Check if same division
+        try:
+            approver_employee = user.employee
+            if approver_employee and approver_employee.division:
+                return approver_employee.division == target_employee.division
+        except:
+            pass
+        
+        return False
+    
+    @staticmethod
+    def can_approve_organization_overtime(user, target_employee):
+        """
+        Check if user can approve overtime for specific employee at organization level
+        
+        Args:
+            user: User object (approver)
+            target_employee: Employee object (target)
+            
+        Returns:
+            bool: True if user can approve
+        """
+        # Check if user has organization level approval
+        if not ApprovalChecker.can_approve_organization_level(user):
+            return False
+        
+        # Check if user can approve org-wide
+        return ApprovalChecker.can_approve_overtime_org_wide(user)
+    
+    @staticmethod
+    def get_approval_capabilities(user):
+        """
+        Get comprehensive approval capabilities for a user
+        
+        Args:
+            user: User object
+            
+        Returns:
+            dict: Dictionary with approval capabilities
+        """
+        approval_level = ApprovalChecker.get_user_approval_level(user)
+        
+        return {
+            'approval_level': approval_level,
+            'can_approve_division': approval_level >= 1,
+            'can_approve_organization': approval_level >= 2,
+            'can_approve_overtime_org_wide': ApprovalChecker.can_approve_overtime_org_wide(user),
+            'has_no_approval': approval_level == 0,
+            'is_superuser': user.is_superuser,
+            'position_name': user.employee.position.name if user.employee and user.employee.position else None,
+            'division_name': user.employee.division.name if user.employee and user.employee.division else None,
+        }
+
+
+# ============================================================================
+# PERMISSION UTILITIES
+# ============================================================================
+
+class PermissionChecker:
+    """
+    Utility class untuk check permission dengan menggabungkan Django permission dan custom permission
+    """
+    
+    @staticmethod
+    def has_permission(user, permission_type, permission_action):
+        """
+        Check if user has permission (Django + Custom)
+        
+        Args:
+            user: User object
+            permission_type: Type of permission (e.g., 'employee', 'overtime')
+            permission_action: Action (e.g., 'view', 'create', 'approve')
+        
+        Returns:
+            bool: True if user has permission
+        """
+        # Superuser has all permissions
+        if user.is_superuser:
+            return True
+        
+        # Check Django permission first
+        django_perm = f"api.{permission_action}_{permission_type}"
+        if user.has_perm(django_perm):
+            return True
+        
+        # Check custom permission
+        try:
+            from .models import GroupPermission
+            return GroupPermission.has_permission(user, permission_type, permission_action)
+        except ImportError:
+            # If models not available yet (during migration)
+            return False
+    
+    @staticmethod
+    def has_any_permission(user, permission_type, actions):
+        """
+        Check if user has any of the specified actions for a permission type
+        
+        Args:
+            user: User object
+            permission_type: Type of permission
+            actions: List of actions to check
+        
+        Returns:
+            bool: True if user has any of the specified permissions
+        """
+        for action in actions:
+            if PermissionChecker.has_permission(user, permission_type, action):
+                return True
+        return False
+    
+    @staticmethod
+    def has_all_permissions(user, permission_type, actions):
+        """
+        Check if user has all of the specified actions for a permission type
+        
+        Args:
+            user: User object
+            permission_type: Type of permission
+            actions: List of actions to check
+        
+        Returns:
+            bool: True if user has all of the specified permissions
+        """
+        for action in actions:
+            if not PermissionChecker.has_permission(user, permission_type, action):
+                return False
+        return True
+    
+    @staticmethod
+    def get_user_permissions(user):
+        """
+        Get all permissions for a user (Django + Custom)
+        
+        Args:
+            user: User object
+        
+        Returns:
+            dict: Dictionary with permission information
+        """
+        if user.is_superuser:
+            return {
+                'is_superuser': True,
+                'django_permissions': list(user.get_all_permissions()),
+                'custom_permissions': [],
+                'all_permissions': 'all'
+            }
+        
+        # Django permissions
+        django_perms = list(user.get_all_permissions())
+        
+        # Custom permissions
+        custom_perms = []
+        try:
+            from .models import GroupPermission
+            user_groups = user.groups.all()
+            custom_perms = list(GroupPermission.objects.filter(
+                group__in=user_groups,
+                is_active=True
+            ).values('permission_type', 'permission_action'))
+        except ImportError:
+            pass
+        
+        return {
+            'is_superuser': False,
+            'django_permissions': django_perms,
+            'custom_permissions': custom_perms,
+            'all_permissions': 'mixed'
+        }
+    
+    @staticmethod
+    def check_permission_decorator(permission_type, permission_action):
+        """
+        Decorator untuk check permission pada views
+        
+        Usage:
+            @PermissionChecker.check_permission_decorator('overtime', 'approve')
+            def approve_overtime(request):
+                pass
+        """
+        def decorator(view_func):
+            @wraps(view_func)
+            def wrapper(request, *args, **kwargs):
+                if not PermissionChecker.has_permission(request.user, permission_type, permission_action):
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied(f"Permission denied: {permission_type}.{permission_action}")
+                return view_func(request, *args, **kwargs)
+            return wrapper
+        return decorator
+
+
+class PermissionMixin:
+    """
+    Mixin untuk ViewSets yang ingin menggunakan permission checker
+    """
+    
+    def check_permission(self, user, permission_type, permission_action):
+        """Check if user has specific permission"""
+        return PermissionChecker.has_permission(user, permission_type, permission_action)
+    
+    def check_any_permission(self, user, permission_type, actions):
+        """Check if user has any of the specified permissions"""
+        return PermissionChecker.has_any_permission(user, permission_type, actions)
+    
+    def check_all_permissions(self, user, permission_type, actions):
+        """Check if user has all of the specified permissions"""
+        return PermissionChecker.has_all_permissions(user, permission_type, actions)
+    
+    def get_queryset_with_permission(self, user, permission_type, permission_action, base_queryset):
+        """
+        Get queryset based on user permissions
+        
+        Args:
+            user: User object
+            permission_type: Type of permission
+            permission_action: Action
+            base_queryset: Base queryset to filter
+        
+        Returns:
+            QuerySet: Filtered queryset based on permissions
+        """
+        if self.check_permission(user, permission_type, permission_action):
+            return base_queryset
+        return base_queryset.none()
 
 
 

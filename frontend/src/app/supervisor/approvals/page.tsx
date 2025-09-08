@@ -3,37 +3,55 @@
 import { useEffect, useMemo, useState } from 'react'
 import Header from '@/components/Header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning'
+import { useSupervisorApprovalLevel } from '@/lib/hooks'
+import { DataTable } from './data-table'
+import { columns, type AttendanceCorrection } from './columns'
+import { ApprovalActions } from './approval-actions'
 
-type Item = {
-  id: number
-  date_local: string
-  type: string
-  reason: string
-  status: string
-  created_at: string
-  proposed_check_in_local?: string | null
-  proposed_check_out_local?: string | null
-  attachment?: string | null
-  user?: {
-    username: string
-    first_name: string
-    last_name: string
-  }
+interface WorkSettings {
+  id: number;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  lateness_threshold_minutes: number;
+  workdays: number[];
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
 }
 
 export default function ApprovalsPage() {
+  const { approvalLevel, canApprove, isLevel0, loading: approvalLevelLoading } = useSupervisorApprovalLevel()
   const [me, setMe] = useState<{ username: string; groups: string[] } | null>(null)
-  const [items, setItems] = useState<Item[]>([])
+  const [items, setItems] = useState<AttendanceCorrection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submittingId, setSubmittingId] = useState<number | null>(null)
+  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
+
+  // Fetch work settings
+  const fetchWorkSettings = async () => {
+    try {
+      const response = await fetch('/api/employee/settings/work');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkSettings(data);
+      }
+    } catch (error) {
+      console.error('Error fetching work settings:', error);
+    }
+  };
 
   useEffect(() => {
     ;(async () => {
       const r = await fetch('/api/auth/me')
       if (r.ok) setMe(await r.json())
     })()
+  }, [])
+
+  useEffect(() => {
+    fetchWorkSettings();
   }, [])
 
   async function load() {
@@ -44,6 +62,7 @@ export default function ApprovalsPage() {
       const data = await resp.json().catch(() => ({}))
       const list = Array.isArray(data) ? data : (data.results || [])
       setItems(list)
+      console.log('LOAD_DATA', { list })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal memuat data')
     } finally {
@@ -52,18 +71,56 @@ export default function ApprovalsPage() {
   }
 
   useEffect(() => { load() }, [])
+  
+  // Auto-refresh sudah dihapus - data hanya di-refresh saat:
+  // 1. Halaman pertama kali load
+  // 2. Setelah approval/reject berhasil
+  // 3. Manual refresh via tombol refresh
 
-  async function act(id: number, action: 'approve' | 'reject') {
+  async function act(id: number, action: 'approve' | 'reject', decisionNote: string) {
+    if (isLevel0) {
+      setError('Anda tidak memiliki permission untuk melakukan approval')
+      return
+    }
+
     setSubmittingId(id)
     setError(null)
     try {
       const path = action === 'approve' ? `/api/attendance-corrections/${id}/approve` : `/api/attendance-corrections/${id}/reject`
       console.log('APPROVAL_ACTION', { id, action, path })
-      const resp = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision_note: action === 'approve' ? 'Disetujui' : 'Ditolak' }) })
+      
+      const resp = await fetch(path, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+                  body: JSON.stringify({ 
+            decision_note: decisionNote
+          }) 
+      })
+      
       const d = await resp.json().catch(() => ({}))
       console.log('APPROVAL_RESPONSE', { status: resp.status, ok: resp.ok, body: d })
-      if (!resp.ok) throw new Error(d?.detail || 'Gagal memproses')
+      
+      if (!resp.ok) {
+        // Handle specific error cases
+        if (d?.detail === 'invalid_status') {
+          throw new Error('Record sudah tidak bisa di-approve/reject (status berubah)')
+        } else if (d?.detail === 'proposed_check_out_local_required') {
+          throw new Error('Data check-out yang diusulkan diperlukan untuk approval ini')
+        } else if (d?.detail === 'proposed_check_in_local_required') {
+          throw new Error('Data check-in yang diusulkan diperlukan untuk approval ini')
+        } else if (d?.detail === 'one_of_check_in_or_out_required') {
+          throw new Error('Minimal salah satu data check-in atau check-out yang diusulkan diperlukan untuk approval')
+        } else if (d?.detail === 'division_not_configured') {
+          throw new Error('Divisi tidak dikonfigurasi dengan benar')
+        } else {
+          throw new Error(d?.detail || 'Gagal memproses approval')
+        }
+      }
+      
+      // Success - refresh data
       await load()
+      console.log('APPROVAL_SUCCESS', { id, action, response: d })
+      
     } catch (e) {
       console.error('APPROVAL_ERROR', e)
       setError(e instanceof Error ? e.message : 'Gagal memproses')
@@ -72,98 +129,93 @@ export default function ApprovalsPage() {
     }
   }
 
-  // Function to get filename from attachment path
-  function getFilename(attachmentPath: string) {
-    if (!attachmentPath) return ''
-    const parts = attachmentPath.split('/')
-    return parts[parts.length - 1] || attachmentPath
+  const handleApprove = async (id: number, decisionNote: string) => {
+    await act(id, 'approve', decisionNote)
   }
 
-  // Function to construct full media URL through proxy
-  function getMediaUrl(attachmentPath: string) {
-    if (!attachmentPath) return ''
-    // If absolute URL, return as-is routed through proxy if same host
-    try {
-      const url = new URL(attachmentPath)
-      // If already absolute to backend, strip origin and route via proxy
-      const pathname = url.pathname.startsWith('/media/') ? url.pathname : `/media${url.pathname}`
-      return `/api/media${pathname}`
-    } catch {
-      // Not an absolute URL
-      const path = attachmentPath.startsWith('/media/') ? attachmentPath : (attachmentPath.startsWith('media/') ? `/${attachmentPath}` : `/media/${attachmentPath}`)
-      return `/api/media${path}`
-    }
+  const handleReject = async (id: number, decisionNote: string) => {
+    await act(id, 'reject', decisionNote)
   }
+
+  // Transform data to include approval actions
+  const tableData = useMemo(() => {
+    return items.map(item => ({
+      ...item,
+      actions: (
+        <ApprovalActions
+          correction={item}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          loading={submittingId === item.id}
+          isLevel0={isLevel0}
+        />
+      )
+    }))
+  }, [items, submittingId, isLevel0])
 
   const role = me?.groups?.includes('admin') ? 'admin' : 'supervisor'
 
+  if (loading || approvalLevelLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header title="Approvals" subtitle="Review and approve attendance corrections" username={me?.username || ''} role={role} />
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="text-center py-8">
+            <div className="text-gray-500">Loading...</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="Pending Approvals" subtitle="Koreksi absensi menunggu persetujuan Anda" username={me?.username || ''} role={role} />
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <Header title="Approvals" subtitle="Review and approve attendance corrections" username={me?.username || ''} role={role} />
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Approval Level Warning */}
+        {approvalLevel !== null && (
+          <ApprovalLevelWarning approvalLevel={approvalLevel} className="mb-6" />
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>Pengajuan Pending</CardTitle>
-            <CardDescription>Hanya menampilkan pegawai dalam divisi Anda.</CardDescription>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle>Attendance Corrections Management</CardTitle>
+                <CardDescription>
+                  {isLevel0 
+                    ? 'You can view pending corrections but cannot approve them due to Level 0 permission'
+                    : 'Review and approve attendance correction requests from your team members'
+                  }
+                </CardDescription>
+              </div>
+              {workSettings?.timezone && (
+                <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                  Timezone: {workSettings.timezone}
+                </div>
+              )}
+            </div>
+            {/* Debug info */}
+            <div className="text-xs text-gray-500 mt-2">
+              <div>Last updated: {new Date().toLocaleTimeString('id-ID')}</div>
+              <div>Data count: {items.length} records</div>
+              <div>Approval level: {approvalLevel} (Level {approvalLevel === 0 ? '0 - No Approval' : approvalLevel === 1 ? '1 - Can Approve' : '2+ - Admin Level'})</div>
+            </div>
           </CardHeader>
-          <CardContent className="grid gap-3">
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{error}</div>}
-            {loading ? (
-              <div className="text-gray-600">Memuat...</div>
-            ) : items.length === 0 ? (
-              <div className="text-gray-600">Tidak ada pengajuan pending.</div>
-            ) : (
-              <div className="grid gap-2">
-                {items.map((it) => (
-                  <div key={it.id} className="border rounded p-3 text-sm">
-                    <div className="flex justify-between">
-                      <div className="font-medium">{it.date_local} — {it.type.replaceAll('_',' ')}</div>
-                      <div className="text-xs text-amber-600">{it.status}</div>
-                    </div>
-                    {it.user && (
-                      <div className="text-xs text-gray-600">
-                        Diajukan oleh: {it.user.first_name} {it.user.last_name} ({it.user.username})
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-600">Diajukan: {new Date(it.created_at).toLocaleString()}</div>
-                    {it.proposed_check_in_local && <div>Usulan In: {it.proposed_check_in_local}</div>}
-                    {it.proposed_check_out_local && <div>Usulan Out: {it.proposed_check_out_local}</div>}
-                    {it.attachment && (
-                      <div className="mt-2">
-                        <span className="text-xs text-gray-600">Surat Pendukung: </span>
-                        <a 
-                          href={getMediaUrl(it.attachment)} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-blue-600 hover:underline text-xs font-medium"
-                          title={`Download ${getFilename(it.attachment)}`}
-                        >
-                          📎 {getFilename(it.attachment)}
-                        </a>
-                      </div>
-                    )}
-                    <div className="mt-2">Alasan: {it.reason}</div>
-                    <div className="mt-3 flex gap-2">
-                      <Button 
-                        onClick={() => act(it.id, 'approve')} 
-                        disabled={it.status !== 'pending' || submittingId === it.id || (it.type === 'missing_check_in' && !it.proposed_check_in_local) || (it.type === 'missing_check_out' && !it.proposed_check_out_local)}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        Approve
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        onClick={() => act(it.id, 'reject')} 
-                        disabled={it.status !== 'pending' || submittingId === it.id}
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+          <CardContent>
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                <div className="text-red-800">{error}</div>
               </div>
             )}
+
+            <DataTable
+              columns={columns}
+              data={tableData}
+              onRefresh={load}
+              loading={loading}
+              meta={{ workSettings }}
+            />
           </CardContent>
         </Card>
       </div>

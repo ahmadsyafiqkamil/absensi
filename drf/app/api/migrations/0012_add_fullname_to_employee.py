@@ -10,22 +10,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # This field already exists in the database, so we just need to update Django's state
-        # without actually modifying the database schema
-        migrations.RunSQL(
-            sql='',  # No SQL to run since field already exists
-            reverse_sql='',  # No reverse SQL needed
-            state_operations=[
-                migrations.AddField(
-                    model_name='employee',
-                    name='fullname',
-                    field=models.TextField(
-                        blank=True,
-                        help_text='Full name of the employee',
-                        null=True,
-                        verbose_name='Full Name'
-                    ),
-                ),
-            ]
+        migrations.AddField(
+            model_name='employee',
+            name='fullname',
+            field=models.TextField(
+                blank=True,
+                help_text='Full name of the employee',
+                null=True,
+                verbose_name='Full Name'
+            ),
         ),
     ]

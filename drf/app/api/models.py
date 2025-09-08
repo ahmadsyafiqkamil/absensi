@@ -24,9 +24,9 @@ class Position(models.Model):
     )
     approval_level = models.PositiveSmallIntegerField(
         default=1,
-        choices=[(1, 'Division Level'), (2, 'Organization Level')],
+        choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level')],
         verbose_name="Approval Level",
-        help_text="1 = Division-level approval, 2 = Organization-level (final) approval"
+        help_text="0 = No approval permission, 1 = Division-level approval, 2 = Organization-level (final) approval"
     )
 
     class Meta:
@@ -131,6 +131,30 @@ class WorkSettings(models.Model):
         default=60,
         verbose_name="Overtime Threshold (Minutes)",
         help_text="Minimum extra minutes before overtime starts counting (e.g., 60 = 1 hour buffer)",
+    )
+    
+    # Early check-in restriction settings
+    earliest_check_in_time = models.TimeField(
+        default=time(6, 0),  # Default: 06:00
+        verbose_name="Earliest Check-in Time",
+        help_text="Earliest time employees can check in (e.g., 06:00)"
+    )
+    earliest_check_in_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Enable Early Check-in Restriction",
+        help_text="Whether to enforce earliest check-in time restriction"
+    )
+
+    # Early check-out restriction settings
+    latest_check_out_time = models.TimeField(
+        default=time(22, 0),  # Default: 22:00
+        verbose_name="Latest Check-out Time",
+        help_text="Latest time employees can check out (e.g., 22:00)"
+    )
+    latest_check_out_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Enable Latest Check-out Restriction",
+        help_text="Whether to enforce latest check-out time restriction"
     )
 
     class Meta:
@@ -313,6 +337,21 @@ class OvertimeRequest(models.Model):
         verbose_name="Level 1 Approved At"
     )
     
+    # Level 1 rejection (division supervisor)
+    level1_rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='level1_rejected_overtime_requests',
+        verbose_name="Level 1 Rejected By"
+    )
+    level1_rejected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Level 1 Rejected At"
+    )
+    
     # Final approval (organization-wide supervisor)
     final_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -326,6 +365,21 @@ class OvertimeRequest(models.Model):
         null=True,
         blank=True,
         verbose_name="Final Approved At"
+    )
+    
+    # Final rejection (organization-wide supervisor)
+    final_rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='final_rejected_overtime_requests',
+        verbose_name="Final Rejected By"
+    )
+    final_rejected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Final Rejected At"
     )
     
     # Legacy fields (untuk backward compatibility)
@@ -357,7 +411,18 @@ class OvertimeRequest(models.Model):
         verbose_name="Overtime Amount",
         help_text="Calculated overtime pay amount"
     )
-    
+
+    # Document reference (for quick access to generated files)
+    docx_document = models.OneToOneField(
+        'OvertimeDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='overtime_request_ref',
+        verbose_name="Generated DOCX Document",
+        help_text="Reference to the generated DOCX document"
+    )
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -407,10 +472,10 @@ class OvertimeRequest(models.Model):
         ordering = ['-created_at']
 
 
-class MonthlySummaryRequest(models.Model):
+class OvertimeSummaryRequest(models.Model):
     """
-    Model untuk pengajuan rekap bulanan dengan approval 2 level.
-    Memungkinkan audit trail dan monitoring pengajuan laporan.
+    Model untuk pengajuan rekap lembur bulanan dengan approval 2 level.
+    Fokus pada rekap data lembur karyawan dengan audit trail lengkap.
     """
     REQUEST_STATUS_CHOICES = [
         ('pending', 'Menunggu Approval'),
@@ -420,93 +485,57 @@ class MonthlySummaryRequest(models.Model):
         ('completed', 'Selesai'),
         ('cancelled', 'Dibatalkan'),
     ]
-    
+
     employee = models.ForeignKey(
         'Employee',
         on_delete=models.CASCADE,
-        related_name='overtime_exports',
+        related_name='overtime_summary_requests',
         verbose_name="Employee"
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='overtime_exports',
+        related_name='overtime_summary_requests',
         verbose_name="User Requesting Export"
     )
-    
-    # Request details
+
+    # Request details - fokus pada rekap lembur
     request_period = models.CharField(
         max_length=7,
         verbose_name="Periode Laporan",
         help_text="Format: YYYY-MM (e.g., 2024-01)"
     )
-    report_type = models.CharField(
-        max_length=20,
-        choices=[
-            ('monthly_summary', 'Rekap Bulanan'),
-            ('attendance_summary', 'Rekap Absensi'),
-            ('overtime_summary', 'Rekap Lembur'),
-            ('custom_report', 'Laporan Kustom'),
-        ],
-        default='monthly_summary',
-        verbose_name="Jenis Laporan"
-    )
-    
-    # Request details (untuk pengajuan rekap bulanan)
+
+    # Request details untuk rekap lembur
     request_title = models.CharField(
         max_length=200,
-        verbose_name="Judul Laporan",
-        help_text="Judul laporan yang diminta (e.g., 'Rekap Absensi Januari 2024')",
+        verbose_name="Judul Laporan Lembur",
+        help_text="Judul laporan rekap lembur (e.g., 'Rekap Lembur Januari 2024')",
         null=True,
         blank=True
     )
     request_description = models.TextField(
-        verbose_name="Deskripsi Laporan",
-        help_text="Deskripsi detail laporan yang diminta",
+        verbose_name="Deskripsi Pengajuan Lembur",
+        help_text="Deskripsi detail pengajuan rekap lembur",
         null=True,
         blank=True
     )
-    
-    # Data scope untuk rekap bulanan
-    include_attendance = models.BooleanField(
+
+    # Data scope - fokus pada data lembur
+    include_overtime_details = models.BooleanField(
         default=True,
-        verbose_name="Include Attendance Data",
-        help_text="Apakah data absensi harian dimasukkan dalam rekap"
+        verbose_name="Include Overtime Details",
+        help_text="Apakah detail lembur per hari dimasukkan dalam rekap"
     )
-    include_overtime = models.BooleanField(
+    include_overtime_summary = models.BooleanField(
         default=True,
-        verbose_name="Include Overtime Data",
-        help_text="Apakah data lembur dimasukkan dalam rekap"
+        verbose_name="Include Overtime Summary",
+        help_text="Apakah ringkasan statistik lembur dimasukkan dalam rekap"
     )
-    include_corrections = models.BooleanField(
-        default=False,
-        verbose_name="Include Corrections Data",
-        help_text="Apakah data perbaikan absensi dimasukkan dalam rekap"
-    )
-    include_summary_stats = models.BooleanField(
+    include_approver_info = models.BooleanField(
         default=True,
-        verbose_name="Include Summary Statistics",
-        help_text="Apakah statistik ringkasan dimasukkan dalam rekap"
-    )
-    
-    # Additional request details
-    priority = models.CharField(
-        max_length=20,
-        choices=[
-            ('low', 'Rendah'),
-            ('medium', 'Sedang'),
-            ('high', 'Tinggi'),
-            ('urgent', 'Urgent'),
-        ],
-        default='medium',
-        verbose_name="Prioritas"
-    )
-    
-    expected_completion_date = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="Tanggal Target Selesai",
-        help_text="Tanggal target penyelesaian laporan"
+        verbose_name="Include Approver Information",
+        help_text="Apakah informasi approver dimasukkan dalam rekap"
     )
     
     # Status and approval
@@ -516,14 +545,14 @@ class MonthlySummaryRequest(models.Model):
         default='pending',
         verbose_name="Status"
     )
-    
+
     # Level 1 approval (division supervisor)
     level1_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='level1_approved_summary_requests',
+        related_name='level1_approved_overtime_summary_requests',
         verbose_name="Level 1 Disetujui Oleh"
     )
     level1_approved_at = models.DateTimeField(
@@ -531,14 +560,14 @@ class MonthlySummaryRequest(models.Model):
         blank=True,
         verbose_name="Level 1 Disetujui Pada"
     )
-    
+
     # Final approval (organization-wide supervisor)
     final_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='final_approved_summary_requests',
+        related_name='final_approved_overtime_summary_requests',
         verbose_name="Final Disetujui Oleh"
     )
     final_approved_at = models.DateTimeField(
@@ -546,13 +575,13 @@ class MonthlySummaryRequest(models.Model):
         blank=True,
         verbose_name="Final Disetujui Pada"
     )
-    
+
     rejection_reason = models.TextField(
         null=True,
         blank=True,
         verbose_name="Alasan Penolakan"
     )
-    
+
     # Request result
     completed_at = models.DateTimeField(
         null=True,
@@ -564,19 +593,30 @@ class MonthlySummaryRequest(models.Model):
         blank=True,
         verbose_name="Catatan Penyelesaian"
     )
-    
+
+    # Document reference (for quick access to generated files)
+    docx_document = models.OneToOneField(
+        'OvertimeSummaryDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='summary_request_ref',
+        verbose_name="Generated DOCX Document",
+        help_text="Reference to the generated DOCX document"
+    )
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     def __str__(self):
-        return f"Pengajuan Rekap - {self.employee.user.username} - {self.request_period} - {self.get_report_type_display()}"
-    
+        return f"Pengajuan Rekap Lembur - {self.employee.user.username} - {self.request_period}"
+
     def get_request_title_display(self):
-        """Get display title for the request"""
+        """Get display title for the overtime summary request"""
         if self.request_title:
             return self.request_title
-        return f"Rekap {self.get_report_type_display()} - {self.request_period}"
+        return f"Rekap Lembur {self.request_period}"
     
     def can_be_approved_by(self, user):
         """Check if user can approve this summary request"""
@@ -586,6 +626,11 @@ class MonthlySummaryRequest(models.Model):
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    return False  # Level 0: No approval permission
+                
                 # Check if supervisor has org-wide approval permission
                 if (supervisor_employee.position and 
                     supervisor_employee.position.can_approve_overtime_org_wide):
@@ -607,6 +652,11 @@ class MonthlySummaryRequest(models.Model):
         if user.groups.filter(name='supervisor').exists():
             try:
                 supervisor_employee = user.employee
+                # Check approval level first
+                if (supervisor_employee.position and 
+                    supervisor_employee.position.approval_level == 0):
+                    return False  # Level 0: No approval permission
+                
                 # Only org-wide supervisors can give final approval
                 if (supervisor_employee.position and 
                     supervisor_employee.position.can_approve_overtime_org_wide):
@@ -617,7 +667,337 @@ class MonthlySummaryRequest(models.Model):
         return False
     
     class Meta:
-        verbose_name = "Pengajuan Rekap Bulanan"
-        verbose_name_plural = "Pengajuan Rekap Bulanan"
+        verbose_name = "Pengajuan Rekap Lembur Bulanan"
+        verbose_name_plural = "Pengajuan Rekap Lembur Bulanan"
         ordering = ['-created_at']
-        unique_together = ("employee", "request_period", "report_type")
+        unique_together = ("employee", "request_period")
+
+
+class GroupPermission(models.Model):
+    """
+    Model untuk menyimpan permission detail per group
+    """
+    PERMISSION_TYPES = [
+        ('attendance', 'Attendance Management'),
+        ('overtime', 'Overtime Management'),
+        ('employee', 'Employee Management'),
+        ('division', 'Division Management'),
+        ('position', 'Position Management'),
+        ('settings', 'System Settings'),
+        ('reports', 'Reports & Analytics'),
+        ('admin', 'Admin Functions'),
+        # Django built-in permissions
+        ('session', 'Session Management'),
+        ('logentry', 'Log Entry Management'),
+        ('contenttype', 'Content Type Management'),
+        ('permission', 'Permission Management'),
+        ('group', 'Group Management'),
+        ('user', 'User Management'),
+        ('holiday', 'Holiday Management'),
+        ('worksettings', 'Work Settings Management'),
+        ('overtimesummaryrequest', 'Overtime Summary Request Management'),
+        ('overtimerequest', 'Overtime Request Management'),
+        ('overtimeexporthistory', 'Overtime Export History Management'),
+        ('attendancecorrection', 'Attendance Correction Management'),
+        ('grouppermission', 'Group Permission Management'),
+        ('grouppermissiontemplate', 'Group Permission Template Management'),
+        ('generatedreport', 'Generated Report Management'),
+        ('reportaccesslog', 'Report Access Log Management'),
+        ('reportschedule', 'Report Schedule Management'),
+        ('reporttemplate', 'Report Template Management'),
+    ]
+    
+    PERMISSION_ACTIONS = [
+        ('view', 'View'),
+        ('create', 'Create'),
+        ('edit', 'Edit'),
+        ('delete', 'Delete'),
+        ('approve', 'Approve'),
+        ('reject', 'Reject'),
+        ('export', 'Export'),
+        ('import', 'Import'),
+    ]
+    
+    group = models.ForeignKey(
+        'auth.Group',
+        on_delete=models.CASCADE,
+        related_name='custom_permissions',
+        verbose_name="Group"
+    )
+    permission_type = models.CharField(
+        max_length=30,
+        choices=PERMISSION_TYPES,
+        verbose_name="Permission Type"
+    )
+    permission_action = models.CharField(
+        max_length=20,
+        choices=PERMISSION_ACTIONS,
+        verbose_name="Permission Action"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Is Active"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Group Permission"
+        verbose_name_plural = "Group Permissions"
+        unique_together = ("group", "permission_type", "permission_action")
+        ordering = ["group__name", "permission_type", "permission_action"]
+    
+    def __str__(self):
+        return f"{self.group.name} - {self.get_permission_type_display()} - {self.get_permission_action_display()}"
+    
+    @classmethod
+    def get_permission_string(cls, permission_type, permission_action):
+        """Generate permission string in format: app.action_model"""
+        return f"{permission_type}.{permission_action}"
+    
+    @classmethod
+    def has_permission(cls, user, permission_type, permission_action):
+        """Check if user has specific permission through their groups"""
+        if user.is_superuser:
+            return True
+        
+        user_groups = user.groups.all()
+        return cls.objects.filter(
+            group__in=user_groups,
+            permission_type=permission_type,
+            permission_action=permission_action,
+            is_active=True
+        ).exists()
+
+
+class GroupPermissionTemplate(models.Model):
+    """
+    Template untuk permission yang bisa diaplikasikan ke group
+    """
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Template Name"
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Description"
+    )
+    permissions = models.JSONField(
+        default=list,
+        verbose_name="Permissions List",
+        help_text="List of permission strings in format: [{'type': 'attendance', 'action': 'view'}]"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Is Active"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Permission Template"
+        verbose_name_plural = "Permission Templates"
+        ordering = ["name"]
+    
+    def __str__(self):
+        return self.name
+    
+    def apply_to_group(self, group):
+        """Apply template permissions to a group"""
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        # Clear existing custom permissions for this group
+        GroupPermission.objects.filter(group=group).delete()
+
+        # Create new permissions based on template
+        for perm_data in self.permissions:
+            perm_type = perm_data.get('type')
+            perm_action = perm_data.get('action')
+
+            if perm_type and perm_action:
+                GroupPermission.objects.create(
+                    group=group,
+                    permission_type=perm_type,
+                    permission_action=perm_action,
+                    is_active=True
+                )
+
+
+class OvertimeDocument(models.Model):
+    """
+    Model untuk menyimpan dokumen DOCX dan PDF yang dihasilkan dari overtime requests
+    """
+    DOCUMENT_TYPE_CHOICES = [
+        ('individual', 'Individual Request'),
+        ('monthly', 'Monthly Summary'),
+    ]
+
+    STATUS_CHOICES = [
+        ('generated', 'Generated'),
+        ('converted', 'Converted to PDF'),
+        ('downloaded', 'Downloaded'),
+        ('error', 'Error'),
+    ]
+
+    overtime_request = models.ForeignKey(
+        'OvertimeRequest',
+        on_delete=models.CASCADE,
+        related_name='documents',
+        verbose_name="Overtime Request"
+    )
+
+    docx_file = models.FileField(
+        upload_to='overtime_docx/',
+        verbose_name='DOCX File',
+        null=True,
+        blank=True
+    )
+
+    pdf_file = models.FileField(
+        upload_to='overtime_pdf/',
+        verbose_name='PDF File',
+        null=True,
+        blank=True
+    )
+
+    document_type = models.CharField(
+        max_length=20,
+        choices=DOCUMENT_TYPE_CHOICES,
+        default='individual',
+        verbose_name='Document Type'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='generated',
+        verbose_name='Status'
+    )
+
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Error Message'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    converted_at = models.DateTimeField(null=True, blank=True)
+    downloaded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Overtime Document"
+        verbose_name_plural = "Overtime Documents"
+        ordering = ['-created_at']
+        unique_together = ('overtime_request', 'document_type')
+
+    def __str__(self):
+        return f"{self.document_type} - {self.overtime_request} - {self.status}"
+
+    def get_file_path(self):
+        """Get the actual file path for the DOCX file"""
+        if self.docx_file:
+            return self.docx_file.path
+        return None
+
+    def get_file_url(self):
+        """Get the URL for the DOCX file"""
+        if self.docx_file:
+            return self.docx_file.url
+        return None
+
+
+class OvertimeSummaryDocument(models.Model):
+    """
+    Model untuk menyimpan dokumen DOCX dan PDF yang dihasilkan dari overtime summary requests (rekap bulanan)
+    """
+    DOCUMENT_TYPE_CHOICES = [
+        ('monthly_summary', 'Monthly Summary'),
+        ('monthly_export', 'Monthly Export'),
+    ]
+
+    STATUS_CHOICES = [
+        ('generated', 'Generated'),
+        ('converted', 'Converted to PDF'),
+        ('downloaded', 'Downloaded'),
+        ('error', 'Error'),
+    ]
+
+    overtime_summary_request = models.ForeignKey(
+        'OvertimeSummaryRequest',
+        on_delete=models.CASCADE,
+        related_name='documents',
+        verbose_name="Overtime Summary Request"
+    )
+
+    docx_file = models.FileField(
+        upload_to='overtime_summary_docx/',
+        verbose_name='DOCX File',
+        null=True,
+        blank=True
+    )
+
+    pdf_file = models.FileField(
+        upload_to='overtime_summary_pdf/',
+        verbose_name='PDF File',
+        null=True,
+        blank=True
+    )
+
+    document_type = models.CharField(
+        max_length=20,
+        choices=DOCUMENT_TYPE_CHOICES,
+        default='monthly_summary',
+        verbose_name='Document Type'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='generated',
+        verbose_name='Status'
+    )
+
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Error Message'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    converted_at = models.DateTimeField(null=True, blank=True)
+    downloaded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Overtime Summary Document"
+        verbose_name_plural = "Overtime Summary Documents"
+        ordering = ['-created_at']
+        unique_together = ('overtime_summary_request', 'document_type')
+
+    def __str__(self):
+        return f"{self.document_type} - {self.overtime_summary_request} - {self.status}"
+
+    def get_docx_file_path(self):
+        """Get the actual file path for the DOCX file"""
+        if self.docx_file:
+            return self.docx_file.path
+        return None
+
+    def get_docx_file_url(self):
+        """Get the URL for the DOCX file"""
+        if self.docx_file:
+            return self.docx_file.url
+        return None
+
+    def get_pdf_file_path(self):
+        """Get the actual file path for the PDF file"""
+        if self.pdf_file:
+            return self.pdf_file.path
+        return None
+
+    def get_pdf_file_url(self):
+        """Get the URL for the PDF file"""
+        if self.pdf_file:
+            return self.pdf_file.url
+        return None

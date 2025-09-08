@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/auth/me`, {
+    const meResponse = await fetch(`${getBackendUrl()}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -33,11 +34,11 @@ export async function POST(request: Request) {
       nip, 
       division_id, 
       position_id, 
+      fullname, 
       gaji_pokok, 
       tmt_kerja, 
       tempat_lahir, 
-      tanggal_lahir, 
-      fullname 
+      tanggal_lahir 
     } = body;
 
     // Validate required fields
@@ -48,43 +49,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // Prepare employee data
-    const employeeData: any = {
-      user_id,
-      nip,
-      division_id: division_id || null,
-      position_id: position_id || null,
-    };
-
-    // Add optional fields if provided
-    if (gaji_pokok !== undefined && gaji_pokok !== null) {
-      employeeData.gaji_pokok = gaji_pokok;
-    }
-    if (tmt_kerja !== undefined && tmt_kerja !== null) {
-      employeeData.tmt_kerja = tmt_kerja;
-    }
-    if (tempat_lahir !== undefined && tempat_lahir !== null) {
-      employeeData.tempat_lahir = tempat_lahir;
-    }
-    if (tanggal_lahir !== undefined && tanggal_lahir !== null) {
-      employeeData.tanggal_lahir = tanggal_lahir;
-    }
-    if (fullname !== undefined && fullname !== null) {
-      employeeData.fullname = fullname;
-    }
-
     // Call backend employee creation API (namespaced admin route)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'}/api/admin/employees/`, {
+    const response = await fetch(`${getBackendUrl()}/api/admin/employees/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${accessToken}`,
+        'X-CSRFToken': (await cookies()).get('csrftoken')?.value || ''
       },
-      body: JSON.stringify(employeeData)
+      body: JSON.stringify({
+        user_id,
+        nip,
+        division_id: division_id === 'none' ? null : division_id,
+        position_id: position_id === 'none' ? null : position_id,
+        fullname: fullname || null,
+        gaji_pokok: gaji_pokok || null,
+        tmt_kerja: tmt_kerja || null,
+        tempat_lahir: tempat_lahir || null,
+        tanggal_lahir: tanggal_lahir || null,
+      })
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // If response is not JSON (e.g., HTML error page), create a generic error
+        errorData = { detail: `Server error: ${response.status} ${response.statusText}` };
+      }
       return NextResponse.json(errorData, { status: response.status });
     }
 
@@ -107,7 +100,7 @@ export async function GET() {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
     }
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+    const backendBase = getBackendUrl();
 
     // Verify admin
     const meResponse = await fetch(`${backendBase}/api/auth/me`, {

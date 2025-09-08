@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { attendanceId: string } }
+  { params }: { params: Promise<{ attendanceId: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -12,13 +13,13 @@ export async function POST(
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const attendanceId = params.attendanceId
+    const { attendanceId } = await params
     
     if (!attendanceId) {
       return NextResponse.json({ detail: 'Attendance ID is required' }, { status: 400 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = getBackendUrl()
     const url = `${backend}/api/overtime/${attendanceId}/approve`
     
     const resp = await fetch(url, {

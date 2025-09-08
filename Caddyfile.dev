@@ -4,6 +4,9 @@
 absensi.localhost {
 	encode gzip
 	
+	# Auth endpoints - must go to backend
+	reverse_proxy /api/auth/* backend:8000
+	
 	# Route specific backend API calls (not auth routes)
 	# Only route specific patterns to backend, let Next.js handle the rest
 	

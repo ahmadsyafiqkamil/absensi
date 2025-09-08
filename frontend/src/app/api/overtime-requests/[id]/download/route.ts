@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -12,8 +13,9 @@ export async function GET(
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/overtime-requests/${params.id}/download/`
+    const backend = getBackendUrl()
+    const { id } = await params
+    const url = `${backend}/api/overtime-requests/${id}/download/`
     
     const resp = await fetch(url, {
       method: 'GET',
@@ -36,7 +38,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="Surat_Perintah_Kerja_Lembur_${params.id}.docx"`,
+        'Content-Disposition': `attachment; filename="Surat_Perintah_Kerja_Lembur_${id}.docx"`,
         'Cache-Control': 'no-cache'
       }
     })

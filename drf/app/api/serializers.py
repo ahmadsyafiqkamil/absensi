@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
+from django.contrib.auth.models import Group
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, OvertimeSummaryDocument, GroupPermission, GroupPermissionTemplate
 
 
 # ============================================================================
@@ -127,6 +128,10 @@ class WorkSettingsAdminSerializer(serializers.ModelSerializer):
             "required_minutes",
             "grace_minutes",
             "workdays",
+            "earliest_check_in_enabled",
+            "earliest_check_in_time",
+            "latest_check_out_enabled",
+            "latest_check_out_time",
             "friday_start_time",
             "friday_end_time",
             "friday_required_minutes",
@@ -154,6 +159,10 @@ class WorkSettingsSupervisorSerializer(serializers.ModelSerializer):
             "required_minutes",
             "grace_minutes",
             "workdays",
+            "earliest_check_in_enabled",
+            "earliest_check_in_time",
+            "latest_check_out_enabled",
+            "latest_check_out_time",
             "friday_start_time",
             "friday_end_time",
             "friday_required_minutes",
@@ -545,6 +554,10 @@ class WorkSettingsSerializer(serializers.ModelSerializer):
             "required_minutes",
             "grace_minutes",
             "workdays",
+            "earliest_check_in_enabled",
+            "earliest_check_in_time",
+            "latest_check_out_enabled",
+            "latest_check_out_time",
             "friday_start_time",
             "friday_end_time",
             "friday_required_minutes",
@@ -664,6 +677,10 @@ class OvertimeRequestAdminSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    level1_rejected_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    final_rejected_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = OvertimeRequest
@@ -675,6 +692,14 @@ class OvertimeRequestAdminSerializer(serializers.ModelSerializer):
             "overtime_hours",
             "work_description",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
             "rejection_reason",
@@ -691,6 +716,10 @@ class OvertimeRequestSupervisorSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    level1_rejected_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    final_rejected_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = OvertimeRequest
@@ -702,6 +731,14 @@ class OvertimeRequestSupervisorSerializer(serializers.ModelSerializer):
             "overtime_hours",
             "work_description",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
             "rejection_reason",
@@ -718,6 +755,10 @@ class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    level1_rejected_by = UserBasicSerializer(read_only=True)
+    final_approved_by = UserBasicSerializer(read_only=True)
+    final_rejected_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = OvertimeRequest
@@ -729,8 +770,17 @@ class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
             "overtime_hours",
             "work_description",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
+            "rejection_reason",
             "overtime_amount",
             "created_at",
             "updated_at",
@@ -739,8 +789,17 @@ class OvertimeRequestEmployeeSerializer(serializers.ModelSerializer):
             "employee",
             "user",
             "status",
+            "level1_approved_by",
+            "level1_approved_at",
+            "level1_rejected_by",
+            "level1_rejected_at",
+            "final_approved_by",
+            "final_approved_at",
+            "final_rejected_by",
+            "final_rejected_at",
             "approved_by",
             "approved_at",
+            "rejection_reason",
             "overtime_amount",
             "created_at",
             "updated_at",
@@ -764,11 +823,10 @@ class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
         from datetime import date, timedelta
         today = date.today()
         
-        # Allow up to 7 days in the past and 1 day in the future
+        # Allow any date in the past and up to 1 day in the future
         if value > today + timedelta(days=1):
             raise serializers.ValidationError("Tanggal tidak boleh lebih dari 1 hari ke depan")
-        if value < today - timedelta(days=7):
-            raise serializers.ValidationError("Tanggal tidak boleh lebih dari 7 hari ke belakang")
+        # Removed 7-day restriction - now allows any past date
             
         return value
     
@@ -785,31 +843,64 @@ class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
 # MONTHLY SUMMARY REQUEST SERIALIZERS
 # ============================================================================
 
-class MonthlySummaryRequestAdminSerializer(serializers.ModelSerializer):
+class OvertimeSummaryDocumentSerializer(serializers.ModelSerializer):
     """
-    Admin serializer for monthly summary requests - full access
+    Serializer for OvertimeSummaryDocument
+    """
+    docx_file_url = serializers.SerializerMethodField()
+    pdf_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OvertimeSummaryDocument
+        fields = [
+            "id",
+            "overtime_summary_request",
+            "docx_file",
+            "pdf_file",
+            "document_type",
+            "status",
+            "error_message",
+            "docx_file_url",
+            "pdf_file_url",
+            "created_at",
+            "converted_at",
+            "downloaded_at",
+        ]
+        read_only_fields = ["id", "created_at", "converted_at", "downloaded_at"]
+
+    def get_docx_file_url(self, obj):
+        if obj.docx_file:
+            return obj.get_docx_file_url()
+        return None
+
+    def get_pdf_file_url(self, obj):
+        if obj.pdf_file:
+            return obj.get_pdf_file_url()
+        return None
+
+
+class OvertimeSummaryRequestAdminSerializer(serializers.ModelSerializer):
+    """
+    Admin serializer for overtime summary requests - full access
     """
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
-    
+    docx_document = OvertimeSummaryDocumentSerializer(read_only=True)
+
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "id",
             "employee",
             "user",
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
+            "include_overtime_details",
+            "include_overtime_summary",
+            "include_approver_info",
             "status",
             "level1_approved_by",
             "level1_approved_at",
@@ -818,36 +909,34 @@ class MonthlySummaryRequestAdminSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "completed_at",
             "completion_notes",
+            "docx_document",
             "created_at",
             "updated_at",
         ]
 
 
-class MonthlySummaryRequestSupervisorSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestSupervisorSerializer(serializers.ModelSerializer):
     """
-    Supervisor serializer for monthly summary requests - can approve/reject
+    Supervisor serializer for overtime summary requests - can approve/reject
     """
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
-    
+    docx_document = OvertimeSummaryDocumentSerializer(read_only=True)
+
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "id",
             "employee",
             "user",
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
+            "include_overtime_details",
+            "include_overtime_summary",
+            "include_approver_info",
             "status",
             "level1_approved_by",
             "level1_approved_at",
@@ -856,36 +945,34 @@ class MonthlySummaryRequestSupervisorSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "completed_at",
             "completion_notes",
+            "docx_document",
             "created_at",
             "updated_at",
         ]
 
 
-class MonthlySummaryRequestEmployeeSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestEmployeeSerializer(serializers.ModelSerializer):
     """
-    Employee serializer for monthly summary requests - can create and view own requests
+    Employee serializer for overtime summary requests - can create and view own requests
     """
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     final_approved_by = UserBasicSerializer(read_only=True)
-    
+    docx_document = OvertimeSummaryDocumentSerializer(read_only=True)
+
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "id",
             "employee",
             "user",
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
+            "include_overtime_details",
+            "include_overtime_summary",
+            "include_approver_info",
             "status",
             "level1_approved_by",
             "level1_approved_at",
@@ -894,6 +981,7 @@ class MonthlySummaryRequestEmployeeSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "completed_at",
             "completion_notes",
+            "docx_document",
             "created_at",
             "updated_at",
         ]
@@ -913,25 +1001,20 @@ class MonthlySummaryRequestEmployeeSerializer(serializers.ModelSerializer):
         ]
 
 
-class MonthlySummaryRequestCreateSerializer(serializers.ModelSerializer):
+class OvertimeSummaryRequestCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating monthly summary requests by employees
+    Serializer for creating overtime summary requests by employees
+    - Only requires 3 fields: period, title, description
+    - Automatically sets overtime data inclusion
     """
     class Meta:
-        model = MonthlySummaryRequest
+        model = OvertimeSummaryRequest
         fields = [
             "request_period",
-            "report_type",
             "request_title",
             "request_description",
-            "include_attendance",
-            "include_overtime",
-            "include_corrections",
-            "include_summary_stats",
-            "priority",
-            "expected_completion_date",
         ]
-    
+
     def validate_request_period(self, value):
         """Validate request period format (YYYY-MM)"""
         from datetime import datetime
@@ -940,10 +1023,312 @@ class MonthlySummaryRequestCreateSerializer(serializers.ModelSerializer):
         except ValueError:
             raise serializers.ValidationError("Format periode harus YYYY-MM (contoh: 2024-01)")
         return value
-    
-    def validate_expected_completion_date(self, value):
-        """Validate expected completion date is not in the past"""
-        from datetime import date
-        if value and value < date.today():
-            raise serializers.ValidationError("Tanggal target selesai tidak boleh di masa lalu")
+
+    def create(self, validated_data):
+        """Override create to automatically set overtime data fields"""
+        # Automatically set overtime data inclusion
+        validated_data.update({
+            'include_overtime_details': True,
+            'include_overtime_summary': True,
+            'include_approver_info': True,
+        })
+        return super().create(validated_data)
+
+
+# ============================================================================
+# GROUP SERIALIZERS
+# ============================================================================
+
+class GroupSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk Group - Basic access untuk semua role
+    """
+    class Meta:
+        model = Group
+        fields = ["id", "name"]
+        read_only_fields = ["id"]
+
+
+class GroupAdminSerializer(serializers.ModelSerializer):
+    """
+    Admin serializer untuk Group - Full access
+    """
+    class Meta:
+        model = Group
+        fields = ["id", "name"]
+        read_only_fields = ["id"]
+
+
+class GroupCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat Group baru
+    """
+    class Meta:
+        model = Group
+        fields = ["name"]
+
+    def validate_name(self, value):
+        # Check if group name already exists
+        if Group.objects.filter(name=value).exists():
+            raise serializers.ValidationError("Group with this name already exists.")
         return value
+
+
+class GroupUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update Group
+    """
+    class Meta:
+        model = Group
+        fields = ["name"]
+
+    def validate_name(self, value):
+        # Check if group name already exists (excluding current instance)
+        instance = self.instance
+        if instance and Group.objects.filter(name=value).exclude(id=instance.id).exists():
+            raise serializers.ValidationError("Group with this name already exists.")
+        return value
+
+
+class GroupDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk detail Group dengan informasi user dan permissions
+    """
+    user_count = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    user_set = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = ["id", "name", "user_count", "permissions", "user_set"]
+        read_only_fields = ["id", "user_count", "permissions", "user_set"]
+    
+    def get_user_count(self, obj):
+        return obj.user_set.count()
+    
+    def get_permissions(self, obj):
+        """Get custom permissions for this group"""
+        from .models import GroupPermission
+        permissions = GroupPermission.objects.filter(group=obj, is_active=True)
+        return [{
+            'id': perm.id,
+            'permission_type': perm.permission_type,
+            'permission_action': perm.permission_action,
+            'is_active': perm.is_active,
+            'created_at': perm.created_at,
+            'updated_at': perm.updated_at,
+        } for perm in permissions]
+    
+    def get_user_set(self, obj):
+        """Get users in this group"""
+        return [{
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name or '',
+            'last_name': user.last_name or '',
+            'is_active': user.is_active,
+            'date_joined': user.date_joined,
+            'last_login': user.last_login
+        } for user in obj.user_set.all()]
+
+
+# ============================================================================
+# PERMISSION SERIALIZERS
+# ============================================================================
+
+class BulkPermissionUpdateSerializer(serializers.Serializer):
+    """
+    Serializer untuk bulk update permissions
+    """
+    group_id = serializers.IntegerField()
+    permissions = serializers.ListField(
+        child=serializers.DictField()
+    )
+    
+    def validate_permissions(self, value):
+        """Validate permissions format"""
+        for perm in value:
+            if 'permission_type' not in perm or 'permission_action' not in perm:
+                raise serializers.ValidationError(
+                    "Each permission must have 'permission_type' and 'permission_action' keys"
+                )
+            
+            # Validate permission type and action values
+            valid_types = [choice[0] for choice in GroupPermission.PERMISSION_TYPES]
+            valid_actions = [choice[0] for choice in GroupPermission.PERMISSION_ACTIONS]
+            
+            if perm['permission_type'] not in valid_types:
+                raise serializers.ValidationError(f"Invalid permission type: {perm['permission_type']}")
+            
+            if perm['permission_action'] not in valid_actions:
+                raise serializers.ValidationError(f"Invalid permission action: {perm['permission_action']}")
+        
+        return value
+
+
+# ============================================================================
+# PERMISSION SERIALIZERS
+# ============================================================================
+
+class GroupPermissionSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk GroupPermission - Basic access
+    """
+    permission_type_display = serializers.CharField(source='get_permission_type_display', read_only=True)
+    permission_action_display = serializers.CharField(source='get_permission_action_display', read_only=True)
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    
+    class Meta:
+        model = GroupPermission
+        fields = [
+            "id", "group", "group_name", "permission_type", "permission_type_display",
+            "permission_action", "permission_action_display", "is_active",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroupPermissionCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat GroupPermission baru
+    """
+    class Meta:
+        model = GroupPermission
+        fields = ["group", "permission_type", "permission_action", "is_active"]
+    
+    def validate(self, data):
+        # Check if permission already exists for this group
+        if GroupPermission.objects.filter(
+            group=data['group'],
+            permission_type=data['permission_type'],
+            permission_action=data['permission_action']
+        ).exists():
+            raise serializers.ValidationError(
+                "Permission already exists for this group, type, and action combination."
+            )
+        return data
+
+
+class GroupPermissionUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update GroupPermission
+    """
+    class Meta:
+        model = GroupPermission
+        fields = ["permission_type", "permission_action", "is_active"]
+    
+    def validate(self, data):
+        instance = self.instance
+        if instance:
+            # Check if updated combination already exists (excluding current instance)
+            if GroupPermission.objects.filter(
+                group=instance.group,
+                permission_type=data.get('permission_type', instance.permission_type),
+                permission_action=data.get('permission_action', instance.permission_action)
+            ).exclude(id=instance.id).exists():
+                raise serializers.ValidationError(
+                    "Permission already exists for this group, type, and action combination."
+                )
+        return data
+
+
+class GroupPermissionDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk detail GroupPermission
+    """
+    permission_type_display = serializers.CharField(source='get_permission_type_display', read_only=True)
+    permission_action_display = serializers.CharField(source='get_permission_action_display', read_only=True)
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    
+    class Meta:
+        model = GroupPermission
+        fields = [
+            "id", "group", "group_name", "permission_type", "permission_type_display",
+            "permission_action", "permission_action_display", "is_active",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroupPermissionTemplateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk GroupPermissionTemplate
+    """
+    class Meta:
+        model = GroupPermissionTemplate
+        fields = [
+            "id", "name", "description", "permissions", "is_active",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroupPermissionTemplateCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk membuat GroupPermissionTemplate baru
+    """
+    class Meta:
+        model = GroupPermissionTemplate
+        fields = ["name", "description", "permissions", "is_active"]
+    
+    def validate_permissions(self, value):
+        """Validate permissions format"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Permissions must be a list")
+        
+        for perm in value:
+            if not isinstance(perm, dict):
+                raise serializers.ValidationError("Each permission must be a dictionary")
+            
+            if 'type' not in perm or 'action' not in perm:
+                raise serializers.ValidationError("Each permission must have 'type' and 'action' keys")
+            
+            # Validate permission type and action values
+            valid_types = [choice[0] for choice in GroupPermission.PERMISSION_TYPES]
+            valid_actions = [choice[0] for choice in GroupPermission.PERMISSION_ACTIONS]
+            
+            if perm['type'] not in valid_types:
+                raise serializers.ValidationError(f"Invalid permission type: {perm['type']}")
+            
+            if perm['action'] not in valid_actions:
+                raise serializers.ValidationError(f"Invalid permission action: {perm['action']}")
+        
+        return value
+
+
+class GroupPermissionTemplateUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk update GroupPermissionTemplate
+    """
+    class Meta:
+        model = GroupPermissionTemplate
+        fields = ["name", "description", "permissions", "is_active"]
+
+
+class GroupWithPermissionsSerializer(serializers.ModelSerializer):
+    """
+    Serializer untuk Group dengan permissions detail
+    """
+    permissions = GroupPermissionSerializer(source='custom_permissions', many=True, read_only=True)
+    permission_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = ["id", "name", "permissions", "permission_count"]
+        read_only_fields = ["id"]
+    
+    def get_permission_count(self, obj):
+        return obj.custom_permissions.filter(is_active=True).count()
+
+
+class PermissionSummarySerializer(serializers.Serializer):
+    """
+    Serializer untuk summary permissions
+    """
+    group_id = serializers.IntegerField()
+    group_name = serializers.CharField()
+    total_permissions = serializers.IntegerField()
+    active_permissions = serializers.IntegerField()
+    permission_types = serializers.ListField(child=serializers.CharField())
+    permission_actions = serializers.ListField(child=serializers.CharField())

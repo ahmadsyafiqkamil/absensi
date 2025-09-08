@@ -17,6 +17,18 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
+interface WorkSettings {
+  id: number;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  lateness_threshold_minutes: number;
+  workdays: number[];
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
+}
+
 interface AttendanceRecord {
   id: number;
   date_local: string;
@@ -61,11 +73,29 @@ export default function PegawaiAttendanceReportPage() {
   const [attendanceData, setAttendanceData] = useState<AttendanceReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null);
   const [filters, setFilters] = useState({
     start_date: '',
     end_date: '',
     month: ''
   });
+
+  // Fetch work settings
+  const fetchWorkSettings = async () => {
+    try {
+      const response = await fetch('/api/employee/settings/work');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkSettings(data);
+      }
+    } catch (error) {
+      console.error('Error fetching work settings:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchWorkSettings();
+  }, []);
 
   useEffect(() => {
     fetchAttendanceReport();
@@ -77,9 +107,15 @@ export default function PegawaiAttendanceReportPage() {
       setError(null);
       
       const params = new URLSearchParams();
-      if (filters.start_date) params.append('start_date', filters.start_date);
-      if (filters.end_date) params.append('end_date', filters.end_date);
-      if (filters.month) params.append('month', filters.month);
+      
+      // Priority: month filter overrides date range filters
+      if (filters.month) {
+        params.append('month', filters.month);
+      } else {
+        // Only use date range if month is not set
+        if (filters.start_date) params.append('start_date', filters.start_date);
+        if (filters.end_date) params.append('end_date', filters.end_date);
+      }
       
       const response = await fetch(`/api/attendance/report?${params.toString()}`);
       
@@ -101,10 +137,11 @@ export default function PegawaiAttendanceReportPage() {
     if (!timeString) return '-';
     try {
       const date = new Date(timeString);
+      const timezone = workSettings?.timezone || 'Asia/Dubai';
       return date.toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit',
-        timeZone: 'Asia/Dubai'
+        timeZone: timezone
       });
     } catch {
       return '-';
@@ -128,13 +165,14 @@ export default function PegawaiAttendanceReportPage() {
   const formatDateTime = (dateString: string) => {
     try {
       const date = new Date(dateString);
+      const timezone = workSettings?.timezone || 'Asia/Dubai';
       return date.toLocaleString('id-ID', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        timeZone: 'Asia/Dubai'
+        timeZone: timezone
       });
     } catch {
       return dateString;
@@ -162,6 +200,29 @@ export default function PegawaiAttendanceReportPage() {
     return record.within_geofence ? 'WFO' : 'WFA';
   };
 
+  // Get WFA/WFO status with color styling
+  const getWfaWfoWithColor = (record: AttendanceRecord) => {
+    if (!record.check_in_at_utc) return '-';
+    const status = record.within_geofence ? 'WFO' : 'WFA';
+    const colorClass = record.within_geofence ? 'text-green-600 bg-green-100' : 'text-orange-600 bg-orange-100';
+    return (
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${colorClass}`}>
+        {status}
+      </span>
+    );
+  };
+
+  // Check if record needs correction (WFA or has issues)
+  const needsCorrection = (record: AttendanceRecord) => {
+    // WFA records always need correction
+    if (record.check_in_at_utc && !record.within_geofence) return true;
+    // Records with system notes (geofence warnings) need correction
+    if (record.note && record.note.includes('luar area kantor')) return true;
+    // Records with missing check-in or check-out
+    if (!record.check_in_at_utc || !record.check_out_at_utc) return true;
+    return false;
+  };
+
   // TanStack Table columns
   const columns: ColumnDef<AttendanceRecord>[] = [
     { header: 'Tanggal', accessorKey: 'date_local', cell: ({ row }) => formatDate(row.original.date_local) },
@@ -170,7 +231,7 @@ export default function PegawaiAttendanceReportPage() {
         {getStatusText(row.original)}
       </span>
     ) },
-    { header: 'WFA/WFO', id: 'wfa_wfo', cell: ({ row }) => getWfaWfo(row.original) },
+    { header: 'WFA/WFO', id: 'wfa_wfo', cell: ({ row }) => getWfaWfoWithColor(row.original) },
     { header: 'Check-in', id: 'check_in', cell: ({ row }) => formatTime(row.original.check_in_at_utc) },
     { header: 'Check-out', id: 'check_out', cell: ({ row }) => formatTime(row.original.check_out_at_utc) },
     { header: 'Terlambat (m)', accessorKey: 'minutes_late', cell: ({ getValue }) => <span className="block text-center">{String(getValue<number>())}</span> },
@@ -190,11 +251,39 @@ export default function PegawaiAttendanceReportPage() {
         {row.original.note || row.original.employee_note || '-'}
       </div>
     ) },
+    { header: 'Actions', id: 'actions', cell: ({ row }) => {
+      const record = row.original;
+      if (needsCorrection(record)) {
+        return (
+          <div className="flex flex-col gap-1">
+            {/* <Link href={`/pegawai/corrections?date=${record.date_local}`}> */}
+            <Link href={`/pegawai/corrections`}> 
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="text-xs px-2 py-1 h-auto bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+              >
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Perbaiki
+              </Button>
+            </Link>
+            {!record.within_geofence && record.check_in_at_utc && (
+              <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                ⚠️ WFA
+              </span>
+            )}
+          </div>
+        );
+      }
+      return (
+        <span className="text-xs text-gray-500">-</span>
+      );
+    }},
     { header: 'Dibuat', id: 'created', cell: ({ row }) => formatDateTime(row.original.created_at) },
     { header: 'Diubah', id: 'updated', cell: ({ row }) => formatDateTime(row.original.updated_at) },
   ];
-
-
 
   if (loading) {
     return (
@@ -314,33 +403,68 @@ export default function PegawaiAttendanceReportPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                  {filters.month && <span className="text-gray-400 ml-1">(disabled when month is selected)</span>}
+                </label>
                 <input
                   type="date"
                   value={filters.start_date}
                   onChange={(e) => setFilters(prev => ({ ...prev, start_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  disabled={!!filters.month}
+                  className={`w-full border border-gray-300 rounded-md px-3 py-2 ${filters.month ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                  {filters.month && <span className="text-gray-400 ml-1">(disabled when month is selected)</span>}
+                </label>
                 <input
                   type="date"
                   value={filters.end_date}
                   onChange={(e) => setFilters(prev => ({ ...prev, end_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  disabled={!!filters.month}
+                  className={`w-full border border-gray-300 rounded-md px-3 py-2 ${filters.month ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Month (YYYY-MM)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Month (YYYY-MM)
+                  <span className="text-gray-400 ml-1">(overrides date range)</span>
+                </label>
                 <input
                   type="month"
                   value={filters.month}
-                  onChange={(e) => setFilters(prev => ({ ...prev, month: e.target.value }))}
+                  onChange={(e) => {
+                    const monthValue = e.target.value;
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      month: monthValue,
+                      // Clear date range when month is selected
+                      start_date: monthValue ? '' : prev.start_date,
+                      end_date: monthValue ? '' : prev.end_date
+                    }));
+                  }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 />
               </div>
             </div>
+            
+            {/* Filter Summary */}
+            {(filters.start_date || filters.end_date || filters.month) && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="text-sm text-blue-800">
+                  <strong>Active Filters:</strong>
+                  {filters.month && (
+                    <span className="ml-2">Month: {filters.month}</span>
+                  )}
+                  {!filters.month && filters.start_date && filters.end_date && (
+                    <span className="ml-2">Date Range: {filters.start_date} to {filters.end_date}</span>
+                  )}
+                </div>
+              </div>
+            )}
             
             {/* Reset Filter Button */}
             <div className="mt-4 flex justify-end">
@@ -366,7 +490,14 @@ export default function PegawaiAttendanceReportPage() {
 
         {/* Summary Statistics */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Attendance Summary</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Attendance Summary</h2>
+            {workSettings?.timezone && (
+              <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                Timezone: {workSettings.timezone}
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4">
@@ -418,7 +549,14 @@ export default function PegawaiAttendanceReportPage() {
 
         {/* Attendance Records (TanStack Table) */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Attendance Records</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Attendance Records</h2>
+            {workSettings?.timezone && (
+              <div className="text-xs text-gray-500">
+                Times shown in {workSettings.timezone} timezone
+              </div>
+            )}
+          </div>
           {attendanceData.attendance_records.length > 0 ? (
             <TanstackTable data={attendanceData.attendance_records} columns={columns} />
           ) : (
@@ -450,7 +588,7 @@ function TanstackTable({ data, columns }: { data: AttendanceRecord[]; columns: C
 
   return (
     <div className="overflow-x-auto bg-white border rounded-md">
-      <div className="p-3 grid gap-2 md:grid-cols-4 grid-cols-1 border-b bg-gray-50">
+      <div className="p-3 grid gap-2 md:grid-cols-5 grid-cols-1 border-b bg-gray-50">
         <input
           placeholder="Filter Tanggal (YYYY-MM-DD)"
           value={(table.getColumn('date_local')?.getFilterValue() as string) ?? ''}
@@ -475,6 +613,16 @@ function TanstackTable({ data, columns }: { data: AttendanceRecord[]; columns: C
           onChange={(e) => table.getColumn('ip_out')?.setFilterValue(e.target.value)}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
         />
+        <select
+          value={(table.getColumn('actions')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('actions')?.setFilterValue(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">All Actions</option>
+          <option value="needs_correction">Needs Correction</option>
+          <option value="wfa">WFA Records</option>
+          <option value="no_action">No Action Needed</option>
+        </select>
       </div>
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">

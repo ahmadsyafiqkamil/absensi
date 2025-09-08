@@ -1,11 +1,12 @@
 import { cookies } from 'next/headers'
+import { getBackendUrl } from '@/lib/api-utils'
 import { NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+const BACKEND_URL = getBackendUrl()
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const cookieStore = await cookies()
@@ -16,8 +17,9 @@ export async function POST(
     }
 
     const body = await request.json()
+    const { id } = await params
 
-    const response = await fetch(`${BACKEND_URL}/api/overtime-requests/${params.id}/reject/`, {
+    const response = await fetch(`${BACKEND_URL}/api/overtime-requests/${id}/reject/`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,

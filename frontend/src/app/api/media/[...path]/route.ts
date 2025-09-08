@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import { getBackendUrl } from '@/lib/api-utils'
 
-export async function GET(_req: Request, { params }: { params: { path: string[] } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ path: string[] }> }) {
 	try {
-		const raw = params.path || []
+		const { path } = await params
+		const raw = path || []
 		if (raw.length === 0) {
 			return NextResponse.json({ detail: 'media path required' }, { status: 400 })
 		}
@@ -12,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: { path: string[] 
 		const encoded = parts.map(encodeURIComponent).join('/')
 		const safePath = `media/${encoded}`
 
-		const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+		const backendBase = getBackendUrl()
 		const url = `${backendBase}/${safePath}`
 
 		const resp = await fetch(url, { cache: 'no-store' })

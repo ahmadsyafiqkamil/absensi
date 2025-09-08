@@ -9,6 +9,7 @@ import Link from 'next/link';
 interface Employee {
   id: number;
   nip: string;
+  fullname: string;
   user: {
     id: number;
     username: string;
@@ -350,7 +351,7 @@ export default function SupervisorAttendancePage() {
                       {teamData.team_attendance.map((member) => (
                         <tr key={member.employee.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 border-b">
-                            {member.employee.user.first_name} {member.employee.user.last_name}
+                            {member.employee.fullname || `${member.employee.user.first_name} ${member.employee.user.last_name}`}
                           </td>
                           <td className="px-3 py-2 border-b">{member.employee.nip}</td>
                           <td className="px-3 py-2 border-b">{member.employee.division?.name || '-'}</td>

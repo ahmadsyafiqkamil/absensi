@@ -1,0 +1,128 @@
+# Production Caddyfile with SSL and security headers
+{$FRONTEND_DOMAIN} {
+    # Enable automatic HTTPS
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    # Security headers
+    header {
+        # Security
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # Remove server information
+        -Server
+    }
+
+    # Gzip compression
+    encode gzip
+
+    # Reverse proxy to frontend
+    reverse_proxy frontend:3000 {
+        # Health check
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 10s
+
+        # Load balancing (if needed in future)
+        # lb_policy round_robin
+
+        # Timeout settings
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Rate limiting
+    rate_limit {
+        zone static {
+            key {remote}
+            window 1m
+            events 100
+        }
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/frontend.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+{$API_DOMAIN} {
+    # Enable automatic HTTPS
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    # Security headers
+    header {
+        # Security
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # CORS headers (handled by Django)
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Authorization, Content-Type, X-CSRFToken"
+
+        # Remove server information
+        -Server
+    }
+
+    # Gzip compression
+    encode gzip
+
+    # Reverse proxy to backend
+    reverse_proxy backend:8000 {
+        # Health check
+        health_uri /health/
+        health_interval 30s
+        health_timeout 10s
+
+        # Timeout settings
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+
+    # Rate limiting for API
+    rate_limit {
+        zone api {
+            key {remote}
+            window 1m
+            events 200
+        }
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/api.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# Redirect www to non-www
+www.{$FRONTEND_DOMAIN} {
+    redir https://{FRONTEND_DOMAIN}{uri} permanent
+}
+
+www.{$API_DOMAIN} {
+    redir https://{$API_DOMAIN}{uri} permanent
+}

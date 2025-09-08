@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { getBackendUrl } from '@/lib/api-utils'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward request to backend with authentication
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backendUrl = getBackendUrl()
     const backendResponse = await fetch(`${backendUrl}/api/overtime-requests/upload-monthly-export-template`, {
       method: 'POST',
       headers: {

@@ -56,13 +56,22 @@ const columns: ColumnDef<PositionRow>[] = [
     accessorKey: "approval_level",
     cell: ({ getValue }) => {
       const level = getValue<number>();
+       const getLevelInfo = (level: number) => {
+        switch (level) {
+          case 0:
+            return { color: 'bg-red-100 text-red-800', text: 'Level 0 (No Approval)' }
+          case 1:
+            return { color: 'bg-blue-100 text-blue-800', text: 'Level 1 (Division)' }
+          case 2:
+            return { color: 'bg-green-100 text-green-800', text: 'Level 2 (Organization)' }
+          default:
+            return { color: 'bg-gray-100 text-gray-800', text: `Level ${level}` }
+        }
+      };
+      const levelInfo = getLevelInfo(level);
       return (
-        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-          level === 2 
-            ? 'bg-blue-100 text-blue-800' 
-            : 'bg-yellow-100 text-yellow-800'
-        }`}>
-          Level {level} {level === 2 ? '(Organization)' : '(Division)'}
+        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${levelInfo.color}`}>
+          {levelInfo.text}
         </span>
       );
     },
@@ -228,48 +237,53 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
                 <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
               </div>
               
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Approval Permissions</Label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="edit-can-approve-org-wide"
-                    checked={editCanApproveOrgWide}
-                    onChange={(e) => {
-                      setEditCanApproveOrgWide(e.target.checked);
-                      if (e.target.checked) {
-                        setEditApprovalLevel(2);
-                      } else {
-                        setEditApprovalLevel(1);
-                      }
-                    }}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <Label htmlFor="edit-can-approve-org-wide" className="text-sm">
-                    Can approve overtime organization-wide
-                  </Label>
-                </div>
-                <p className="text-xs text-gray-500">
-                  If enabled, supervisors with this position can approve overtime requests from all divisions (final approval)
-                </p>
-              </div>
-              
               <div className="space-y-1">
                 <Label htmlFor="edit-approval-level">Approval Level</Label>
                 <select
                   id="edit-approval-level"
                   value={editApprovalLevel}
-                  onChange={(e) => setEditApprovalLevel(Number(e.target.value))}
+                  onChange={(e) => {
+                    const newLevel = Number(e.target.value);
+                    setEditApprovalLevel(newLevel);
+                    // Auto-update org-wide checkbox based on level
+                    if (newLevel === 2) {
+                      setEditCanApproveOrgWide(true);
+                    } else {
+                      setEditCanApproveOrgWide(false);
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={editCanApproveOrgWide} // Auto-set to 2 when org-wide is enabled
                 >
-                  <option value={1}>Level 1 (Division)</option>
-                  <option value={2}>Level 2 (Organization)</option>
+                  <option value={0}>Level 0 - No Approval</option>
+                  <option value={1}>Level 1 - Division Level</option>
+                  <option value={2}>Level 2 - Organization Level</option>
                 </select>
                 <p className="text-xs text-gray-500">
-                  Level 1: Division-level approval, Level 2: Organization-level (final) approval
+                  {editApprovalLevel === 0 && 'Cannot approve any requests. View-only access.'}
+                  {editApprovalLevel === 1 && 'Can approve requests from their own division only.'}
+                  {editApprovalLevel === 2 && 'Can approve requests from all divisions (final approval).'}
                 </p>
               </div>
+              
+              {editApprovalLevel === 2 && (
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="edit-can-approve-org-wide"
+                      checked={editCanApproveOrgWide}
+                      onChange={(e) => setEditCanApproveOrgWide(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <Label htmlFor="edit-can-approve-org-wide" className="text-sm">
+                      Can approve overtime organization-wide
+                    </Label>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    If enabled, supervisors with this position can approve overtime requests from all divisions (final approval)
+                  </p>
+                </div>
+              )}
               
               {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{errorMsg}</div>}
             </div>

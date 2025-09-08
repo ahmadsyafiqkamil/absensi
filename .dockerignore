@@ -1,0 +1,80 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.pytest_cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.cache
+.mypy_cache
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# Environment files
+.env
+.env.*
+!.env.example
+production.env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+!docker-compose.prod.yml
+!docker-compose.dev.yml
+
+# Logs
+logs
+*.log
+
+# Backups
+backups
+
+# Reports
+reports
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Documentation
+README*.md
+docs
+
+# Scripts (keep only production scripts)
+scripts/
+!scripts/deploy.sh
+!scripts/monitor.sh
+!scripts/maintenance.sh

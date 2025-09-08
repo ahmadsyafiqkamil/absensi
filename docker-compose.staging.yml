@@ -1,0 +1,138 @@
+version: '3.8'
+
+# Staging environment - similar to production but with some development features
+
+services:
+  # MySQL Database for staging
+  mysql:
+    image: mysql:8.0
+    container_name: absensi_mysql_staging
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-staging_root_password}
+      MYSQL_DATABASE: absensi_db
+      MYSQL_USER: ${MYSQL_USER:-absensi_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-staging_db_password}
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - mysql_data_staging:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/conf.d:/etc/mysql/conf.d:ro
+    networks:
+      - absensi_network_staging
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=512M
+      - --max-connections=100
+      - --query-cache-size=128M
+      - --query-cache-type=1
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Backend DRF for staging
+  backend:
+    build:
+      context: ./drf
+      dockerfile: Dockerfile
+    container_name: absensi_backend_staging
+    restart: unless-stopped
+    environment:
+      - DJANGO_DEBUG=0
+      - DJANGO_SECRET_KEY=${SECRET_KEY:-staging-secret-key}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,staging.yourdomain.com}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=absensi_db
+      - MYSQL_USER=${MYSQL_USER:-absensi_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-staging_db_password}
+      - CORS_ALLOWED_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://staging.yourdomain.com"]}
+      - DJANGO_SETTINGS_MODULE=core.settings
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - absensi_network_staging
+    volumes:
+      - ./logs/staging/backend:/app/logs
+      - ./drf/app/media:/app/media
+      - ./drf/app/staticfiles:/app/staticfiles
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Next.js for staging
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: absensi_frontend_staging
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api-staging.yourdomain.com}
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-https://api-staging.yourdomain.com}
+      - NODE_ENV=production
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - absensi_network_staging
+    volumes:
+      - ./logs/staging/frontend:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Caddy for staging
+  caddy:
+    image: caddy:2
+    container_name: absensi_caddy_staging
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-staging.yourdomain.com}
+      - API_DOMAIN=${API_DOMAIN:-api-staging.yourdomain.com}
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddy_data_staging:/data
+      - caddy_config_staging:/config
+      - ./logs/staging/caddy:/var/log/caddy
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - absensi_network_staging
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mysql_data_staging:
+    driver: local
+  caddy_data_staging:
+    driver: local
+  caddy_config_staging:
+    driver: local
+
+networks:
+  absensi_network_staging:
+    driver: bridge

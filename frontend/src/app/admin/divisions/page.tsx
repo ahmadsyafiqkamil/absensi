@@ -3,6 +3,7 @@ import Header from '@/components/Header';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import DivisionsTable from '@/components/tables/DivisionsTable';
+import { getBackendUrl } from '@/lib/api-utils';
 
 type DivisionRow = {
   id: number;
@@ -19,7 +20,8 @@ type PaginatedDivisions = {
 async function getDivisions(page: number, pageSize: number): Promise<PaginatedDivisions> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+  // Use client-side URL for page components
+  const backend = getBackendUrl()
   const url = new URL(`${backend}/api/divisions/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))

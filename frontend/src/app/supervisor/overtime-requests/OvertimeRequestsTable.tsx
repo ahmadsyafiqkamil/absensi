@@ -73,6 +73,20 @@ type OvertimeRequest = {
     last_name: string;
   } | null;
   final_approved_at: string | null;
+  level1_rejected_by: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+  level1_rejected_at: string | null;
+  final_rejected_by: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+  final_rejected_at: string | null;
   rejection_reason: string | null;
   overtime_amount: string;
   created_at: string;
@@ -270,11 +284,35 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
               </div>
             )}
             
-            {row.original.status === 'rejected' && row.original.rejection_reason && (
-              <div className="text-xs text-red-600" title={row.original.rejection_reason}>
-                Alasan: {row.original.rejection_reason.length > 30 
-                  ? row.original.rejection_reason.substring(0, 30) + '...' 
-                  : row.original.rejection_reason}
+            {row.original.status === 'rejected' && (
+              <div className="text-xs space-y-1">
+                {row.original.level1_rejected_by && (
+                  <div className="text-red-600">
+                    ✗ Level 1: {row.original.level1_rejected_by.username}
+                    {row.original.level1_rejected_at && (
+                      <span className="text-gray-500 ml-1">
+                        ({formatDateTime(row.original.level1_rejected_at)})
+                      </span>
+                    )}
+                  </div>
+                )}
+                {row.original.final_rejected_by && (
+                  <div className="text-red-600">
+                    ✗ Final: {row.original.final_rejected_by.username}
+                    {row.original.final_rejected_at && (
+                      <span className="text-gray-500 ml-1">
+                        ({formatDateTime(row.original.final_rejected_at)})
+                      </span>
+                    )}
+                  </div>
+                )}
+                {row.original.rejection_reason && (
+                  <div className="text-red-600" title={row.original.rejection_reason}>
+                    Alasan: {row.original.rejection_reason.length > 30 
+                      ? row.original.rejection_reason.substring(0, 30) + '...' 
+                      : row.original.rejection_reason}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -306,10 +344,6 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           let buttonText = 'Setujui';
           let disabledReason = '';
           
-
-          
-
-          
           if (isAdmin) {
             // Admin can approve any status except rejected/approved
             canApprove = status === 'pending' || status === 'level1_approved';
@@ -325,13 +359,11 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
               // Ensure canApprove is false for pending status
               canApprove = false;
             }
-
           } else if (isDivisionSupervisor) {
             // Division supervisor can only do level 1 approval
             canApprove = status === 'pending';
             canReject = status === 'pending';
             buttonText = 'Level 1 Approve';
-
           }
           
 
@@ -370,8 +402,9 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                     variant="outline"
                     className="border-red-300 text-red-600 hover:bg-red-50 text-xs px-2 py-1"
                     onClick={() => openActionModal(row.original, 'reject')}
+                    title={supervisorInfo?.isAdmin ? 'Reject (Final)' : supervisorInfo?.isOrgWide ? 'Reject (Final)' : 'Reject (Level 1)'}
                   >
-                    Tolak
+                    {supervisorInfo?.isAdmin || supervisorInfo?.isOrgWide ? 'Final Reject' : 'Level 1 Reject'}
                   </Button>
                 )}
               </div>
@@ -468,12 +501,9 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         const supervisorData = await supervisorResponse.json();
         setSupervisorInfo({
           isOrgWide: supervisorData.can_approve_overtime_org_wide || false,
-          isAdmin: false // This endpoint is for supervisors, so not admin
+          isAdmin: supervisorData.is_admin || false
         });
-        
-
       } else {
-
         // Fallback: assume division supervisor
         setSupervisorInfo({
           isOrgWide: false,
@@ -703,6 +733,18 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           <CardTitle>Daftar Pengajuan Lembur</CardTitle>
           <CardDescription>
             Kelola pengajuan lembur dari tim Anda
+            {supervisorInfo && (
+              <div className="mt-2 text-sm">
+                <span className="font-medium">Role Anda: </span>
+                {supervisorInfo.isAdmin ? (
+                  <span className="text-purple-600">Admin (Dapat approve/reject semua level)</span>
+                ) : supervisorInfo.isOrgWide ? (
+                  <span className="text-blue-600">Supervisor Organization-wide (Final approval)</span>
+                ) : (
+                  <span className="text-green-600">Supervisor Divisi (Level 1 approval)</span>
+                )}
+              </div>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -809,6 +851,36 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
               {actionType === 'approve' ? 'Setujui Pengajuan Lembur' : 'Tolak Pengajuan Lembur'}
             </Dialog.Title>
             
+            {/* Action Type Indicator */}
+            <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="text-sm font-medium text-blue-800">
+                {actionType === 'approve' ? (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Admin Approval' : supervisorInfo?.isOrgWide ? 'Final Approval' : 'Level 1 Approval'}
+                  </>
+                ) : (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Admin Rejection' : supervisorInfo?.isOrgWide ? 'Final Rejection' : 'Level 1 Rejection'}
+                  </>
+                )}
+              </div>
+              <div className="text-xs text-blue-600 mt-1">
+                {actionType === 'approve' ? (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Anda akan melakukan final approval langsung' : 
+                     supervisorInfo?.isOrgWide ? 'Anda akan melakukan final approval setelah level 1' : 
+                     'Anda akan melakukan level 1 approval, menunggu final approval'}
+                  </>
+                ) : (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Anda akan melakukan final rejection langsung' : 
+                     supervisorInfo?.isOrgWide ? 'Anda akan melakukan final rejection' : 
+                     'Anda akan melakukan level 1 rejection'}
+                  </>
+                )}
+              </div>
+            </div>
+            
             {selectedRequest && (
               <div className="space-y-4">
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -836,6 +908,53 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                           {getStatusText(selectedRequest.status)}
                         </span>
                       </div>
+                      
+                      {/* Approval/Rejection History */}
+                      {(selectedRequest.level1_approved_by || selectedRequest.final_approved_by || 
+                        selectedRequest.level1_rejected_by || selectedRequest.final_rejected_by) && (
+                        <div className="mt-2 text-xs space-y-1">
+                          {selectedRequest.level1_approved_by && (
+                            <div className="text-green-600">
+                              ✓ Level 1 Approved by: {selectedRequest.level1_approved_by.username}
+                              {selectedRequest.level1_approved_at && (
+                                <span className="text-gray-500 ml-1">
+                                  ({formatDateTime(selectedRequest.level1_approved_at)})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {selectedRequest.final_approved_by && (
+                            <div className="text-green-600">
+                              ✓ Final Approved by: {selectedRequest.final_approved_by.username}
+                              {selectedRequest.final_approved_at && (
+                                <span className="text-gray-500 ml-1">
+                                  ({formatDateTime(selectedRequest.final_approved_at)})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {selectedRequest.level1_rejected_by && (
+                            <div className="text-red-600">
+                              ✗ Level 1 Rejected by: {selectedRequest.level1_rejected_by.username}
+                              {selectedRequest.level1_rejected_at && (
+                                <span className="text-gray-500 ml-1">
+                                  ({formatDateTime(selectedRequest.level1_rejected_at)})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {selectedRequest.final_rejected_by && (
+                            <div className="text-red-600">
+                              ✗ Final Rejected by: {selectedRequest.final_rejected_by.username}
+                              {selectedRequest.final_rejected_at && (
+                                <span className="text-gray-500 ml-1">
+                                  ({formatDateTime(selectedRequest.final_rejected_at)})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="mt-4">

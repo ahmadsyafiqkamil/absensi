@@ -84,16 +84,54 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     }
   };
 
+  const getDashboardPath = (role: string) => {
+    switch (role.toLowerCase()) {
+      case 'admin':
+        return '/admin';
+      case 'supervisor':
+        return '/supervisor';
+      case 'pegawai':
+        return '/pegawai';
+      default:
+        return '/';
+    }
+  };
+
+  const handleLogoClick = () => {
+    const dashboardPath = getDashboardPath(role);
+    router.push(dashboardPath);
+  };
+
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
-          {/* Left side - Title and subtitle */}
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-            {subtitle && (
-              <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
-            )}
+          {/* Left side - Logo and Title */}
+          <div className="flex items-center space-x-4 flex-1">
+            {/* Clickable Logo */}
+            <button
+              onClick={handleLogoClick}
+              className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer"
+              title="Klik untuk kembali ke dashboard"
+            >
+              <img 
+                src="/logo_kjri_dubai.avif" 
+                alt="Logo KJRI Dubai" 
+                className="w-10 h-10 object-contain"
+              />
+              <div className="hidden sm:block">
+                <h2 className="text-lg font-bold text-gray-900">KJRI Dubai</h2>
+                <p className="text-xs text-gray-600">Sistem Absensi</p>
+              </div>
+            </button>
+            
+            {/* Title and subtitle */}
+            {/* <div className="flex-1">
+              <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+              {subtitle && (
+                <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
+              )}
+            </div> */}
           </div>
 
           {/* Right side - User info and logout */}

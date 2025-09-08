@@ -108,6 +108,12 @@ DATABASES = {
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGIN_FRONTEND', 'http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = os.getenv('CORS_ORIGIN_FRONTEND', 'http://localhost:3000').split(',')
+CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript access
+CSRF_COOKIE_SAMESITE = 'Lax'
+
 # REST Framework basic config
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

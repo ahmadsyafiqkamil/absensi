@@ -1,5 +1,28 @@
 from django.contrib import admin
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, MonthlySummaryRequest
+from django.contrib.auth.models import Group
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, GroupPermission, GroupPermissionTemplate
+
+# Unregister the default Group admin and register our custom one
+admin.site.unregister(Group)
+
+@admin.register(Group)
+class GroupAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "user_count")
+    search_fields = ("name",)
+    ordering = ("name",)
+    
+    def user_count(self, obj):
+        return obj.user_set.count()
+    user_count.short_description = "Number of Users"
+    
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.user_set.exists():
+            return False  # Prevent deletion of groups with users
+        return super().has_delete_permission(request, obj)
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('user_set')
+
 
 @admin.register(Division)
 class DivisionAdmin(admin.ModelAdmin):
@@ -9,8 +32,18 @@ class DivisionAdmin(admin.ModelAdmin):
 
 @admin.register(Position)
 class PositionAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
+    list_display = ("id", "name", "approval_level", "can_approve_overtime_org_wide")
     search_fields = ("name",)
+    list_filter = ("approval_level", "can_approve_overtime_org_wide")
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name',)
+        }),
+        ('Approval Permissions', {
+            'fields': ('approval_level', 'can_approve_overtime_org_wide'),
+            'description': 'Set approval level and organization-wide approval permission'
+        }),
+    )
 
 
 @admin.register(Employee)
@@ -29,6 +62,14 @@ class WorkSettingsAdmin(admin.ModelAdmin):
         }),
         ('Regular Work Hours', {
             'fields': ('start_time', 'end_time', 'required_minutes', 'grace_minutes')
+        }),
+        ('Check-in Restrictions', {
+            'fields': ('earliest_check_in_enabled', 'earliest_check_in_time'),
+            'description': 'Restrict when employees can start checking in'
+        }),
+        ('Check-out Restrictions', {
+            'fields': ('latest_check_out_enabled', 'latest_check_out_time'),
+            'description': 'Restrict when employees can check out (latest time)'
         }),
         ('Friday Special Hours', {
             'fields': ('friday_start_time', 'friday_end_time', 'friday_required_minutes', 'friday_grace_minutes'),
@@ -94,17 +135,27 @@ class AttendanceAdmin(admin.ModelAdmin):
 
 @admin.register(OvertimeRequest)
 class OvertimeRequestAdmin(admin.ModelAdmin):
-    list_display = ("id", "employee", "date_requested", "overtime_hours", "status", "overtime_amount", "created_at")
-    list_filter = ("status", "date_requested", "created_at")
-    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "work_description")
-    readonly_fields = ("overtime_amount", "created_at", "updated_at")
+    list_display = ("id", "employee", "date_requested", "overtime_hours", "status", "level1_approved_by", "final_approved_by", "level1_rejected_by", "final_rejected_by", "overtime_amount", "created_at")
+    list_filter = ("status", "date_requested", "created_at", "level1_approved_by", "final_approved_by", "level1_rejected_by", "final_rejected_by")
+    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "work_description", "level1_approved_by__username", "final_approved_by__username", "level1_rejected_by__username", "final_rejected_by__username")
+    readonly_fields = ("overtime_amount", "created_at", "updated_at", "level1_approved_at", "level1_rejected_at", "final_approved_at", "final_rejected_at")
     
     fieldsets = (
         ('Request Information', {
             'fields': ('employee', 'user', 'date_requested', 'overtime_hours', 'work_description')
         }),
         ('Status', {
-            'fields': ('status', 'approved_by', 'approved_at', 'rejection_reason')
+            'fields': ('status', 'rejection_reason')
+        }),
+        ('Level 1 Approval (Division)', {
+            'fields': ('level1_approved_by', 'level1_approved_at', 'level1_rejected_by', 'level1_rejected_at')
+        }),
+        ('Final Approval (Organization)', {
+            'fields': ('final_approved_by', 'final_approved_at', 'final_rejected_by', 'final_rejected_at')
+        }),
+        ('Legacy Fields', {
+            'fields': ('approved_by', 'approved_at'),
+            'classes': ('collapse',)
         }),
         ('Amount', {
             'fields': ('overtime_amount',)
@@ -115,30 +166,52 @@ class OvertimeRequestAdmin(admin.ModelAdmin):
     )
     
     def save_model(self, request, obj, form, change):
-        # Auto-set approved_by and approved_at when status changes to approved
-        if obj.status == 'approved' and not obj.approved_by:
-            obj.approved_by = request.user
-            from django.utils import timezone
-            obj.approved_at = timezone.now()
+        # Auto-set approval/rejection fields when status changes
+        from django.utils import timezone
+        now = timezone.now()
+        
+        # Handle approval
+        if obj.status == 'level1_approved' and not obj.level1_approved_by:
+            obj.level1_approved_by = request.user
+            obj.level1_approved_at = now
+        elif obj.status == 'approved' and not obj.final_approved_by:
+            obj.final_approved_by = request.user
+            obj.final_approved_at = now
+            # Also set legacy fields for backward compatibility
+            if not obj.approved_by:
+                obj.approved_by = request.user
+                obj.approved_at = now
+        
+        # Handle rejection
+        elif obj.status == 'rejected':
+            # Check if it's level 1 rejection (pending -> rejected)
+            if obj.level1_rejected_by is None and obj.final_rejected_by is None:
+                # Determine if it's level 1 or final rejection based on current approval state
+                if obj.level1_approved_by is None:
+                    # Level 1 rejection
+                    obj.level1_rejected_by = request.user
+                    obj.level1_rejected_at = now
+                else:
+                    # Final rejection
+                    obj.final_rejected_by = request.user
+                    obj.final_rejected_at = now
+        
         super().save_model(request, obj, form, change)
 
 
-@admin.register(MonthlySummaryRequest)
-class MonthlySummaryRequestAdmin(admin.ModelAdmin):
-    list_display = ("id", "employee", "request_period", "report_type", "status", "priority", "created_at")
-    list_filter = ("status", "report_type", "request_period", "priority", "created_at")
+@admin.register(OvertimeSummaryRequest)
+class OvertimeSummaryRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "employee", "request_period", "status", "created_at")
+    list_filter = ("status", "request_period", "created_at")
     search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "request_title")
     readonly_fields = ("created_at", "updated_at")
-    
+
     fieldsets = (
         ('Request Information', {
-            'fields': ('employee', 'user', 'request_period', 'report_type', 'request_title', 'request_description')
+            'fields': ('employee', 'user', 'request_period', 'request_title', 'request_description')
         }),
         ('Data Scope', {
-            'fields': ('include_attendance', 'include_overtime', 'include_corrections', 'include_summary_stats')
-        }),
-        ('Priority & Timeline', {
-            'fields': ('priority', 'expected_completion_date')
+            'fields': ('include_overtime_details', 'include_overtime_summary', 'include_approver_info')
         }),
         ('Status and Approval', {
             'fields': ('status', 'level1_approved_by', 'level1_approved_at', 'final_approved_by', 'final_approved_at', 'rejection_reason')
@@ -150,7 +223,7 @@ class MonthlySummaryRequestAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
-    
+
     def save_model(self, request, obj, form, change):
         # Auto-set approvers when status changes
         if obj.status == 'level1_approved' and not obj.level1_approved_by:
@@ -165,3 +238,57 @@ class MonthlySummaryRequestAdmin(admin.ModelAdmin):
             from django.utils import timezone
             obj.completed_at = timezone.now()
         super().save_model(request, obj, form, change)
+
+
+@admin.register(GroupPermission)
+class GroupPermissionAdmin(admin.ModelAdmin):
+    list_display = ("id", "group", "permission_type", "permission_action", "is_active", "created_at")
+    list_filter = ("group", "permission_type", "permission_action", "is_active", "created_at")
+    search_fields = ("group__name", "permission_type", "permission_action")
+    ordering = ("group__name", "permission_type", "permission_action")
+    readonly_fields = ("created_at", "updated_at")
+    
+    fieldsets = (
+        ('Permission Information', {
+            'fields': ('group', 'permission_type', 'permission_action', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('group')
+
+
+@admin.register(GroupPermissionTemplate)
+class GroupPermissionTemplateAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "description", "permission_count", "is_active", "created_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("name", "description")
+    ordering = ("name",)
+    readonly_fields = ("created_at", "updated_at")
+    
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('name', 'description', 'is_active')
+        }),
+        ('Permissions', {
+            'fields': ('permissions',),
+            'description': 'Format: [{"type": "attendance", "action": "view"}, {"type": "employee", "action": "create"}]'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def permission_count(self, obj):
+        if isinstance(obj.permissions, list):
+            return len(obj.permissions)
+        return 0
+    permission_count.short_description = "Permission Count"
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request)

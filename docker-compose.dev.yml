@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # MySQL Database
+  # MySQL Database for development
   mysql:
     image: mysql:8.0
     container_name: absensi_mysql_dev
@@ -12,16 +12,21 @@ services:
       MYSQL_USER: absensi_user
       MYSQL_PASSWORD: absensi_password
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - mysql_data_dev:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d
-      - ./mysql/migrations:/migrations
     networks:
       - absensi_network_dev
     command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-  # phpMyAdmin
+  # phpMyAdmin for development
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
     container_name: absensi_phpmyadmin_dev
@@ -39,7 +44,7 @@ services:
     networks:
       - absensi_network_dev
 
-  # Backend DRF (Development)
+  # Backend DRF for development
   backend:
     build:
       context: ./drf
@@ -49,25 +54,33 @@ services:
     environment:
       - DJANGO_DEBUG=1
       - DJANGO_SECRET_KEY=dev-secret-key-change-in-production
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,172.20.0.1,backend,absensi.localhost,api.absensi.localhost
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,host.docker.internal
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=absensi_db
       - MYSQL_USER=absensi_user
       - MYSQL_PASSWORD=absensi_password
-      - CORS_ORIGIN_FRONTEND=http://localhost:3000,https://absensi.localhost,https://api.absensi.localhost
+      - CORS_ORIGIN_FRONTEND=http://localhost:3000,http://frontend:3000
     ports:
       - "8000:8000"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - absensi_network_dev
     volumes:
       - ./drf/app:/app
-      - ./template:/app/template
-    command: ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+      - ./logs/dev/backend:/app/logs
+      - ./template:/app/app/template
+    command: python manage.py runserver 0.0.0.0:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Frontend Next.js (Development)
+  # Frontend Next.js for development
   frontend:
     build:
       context: ./frontend
@@ -75,46 +88,52 @@ services:
     container_name: absensi_frontend_dev
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://172.20.0.1:8000
-      - NEXT_PUBLIC_BACKEND_URL=http://172.20.0.1:8000
-      - BACKEND_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NODE_ENV=development
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - absensi_network_dev
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - ./logs/dev/frontend:/app/logs
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Reverse proxy for local HTTPS (self-signed via Caddy internal CA)
-  caddy:
-    image: caddy:2
-    container_name: absensi_caddy_dev
+  # DOCX to PDF Converter Service
+  docx_converter:
+    image: beladevos/docx-pdf-converter-libreoffice:latest
+    platform: linux/amd64
+    container_name: absensi_docx_converter_dev
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - FRONTEND_DOMAIN_DEV=absensi.localhost
-      - API_DOMAIN_DEV=api.absensi.localhost
-    volumes:
-      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
-      - caddy_data_dev:/data
-      - caddy_config_dev:/config
-    depends_on:
-      - frontend
-      - backend
+      - "3001:5000"  # Service runs on port 5000 internally
     networks:
       - absensi_network_dev
+    volumes:
+      - ./drf/app/media:/app/media  # Mount media directory for file processing
+      - ./template:/app/template   # Mount template directory if needed
+    environment:
+      - NODE_ENV=development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]  # Adjust health check endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   mysql_data_dev:
-    driver: local
-  caddy_data_dev:
-    driver: local
-  caddy_config_dev:
     driver: local
 
 networks:
