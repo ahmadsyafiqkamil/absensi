@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { meFromServerCookies } from '@/lib/backend';
 import RoleBasedRedirect from '@/components/RoleBasedRedirect';
+import ApiStatusCheck from '@/components/ApiStatusCheck';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -62,6 +63,12 @@ export default async function Home() {
             <p>Konten pegawai, seperti absensi harian dan riwayat.</p>
           </div>
         )}
+
+        {/* API Status Check */}
+        <div className="w-full max-w-4xl">
+          <h2 className="text-xl font-semibold mb-4">API System Status</h2>
+          <ApiStatusCheck />
+        </div>
 
         <a href="/api/auth/logout" className="text-blue-600 underline">Logout</a>
 

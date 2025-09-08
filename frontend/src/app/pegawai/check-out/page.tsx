@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { locationService, LocationData, LocationError } from '@/lib/location'
 
 type Precheck = { date_local: string; has_check_in: boolean; has_check_out: boolean }
 
@@ -11,7 +12,7 @@ export default function CheckOutPage() {
   const [loading, setLoading] = useState(true)
   const [precheck, setPrecheck] = useState<Precheck | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [loc, setLoc] = useState<{ lat: number; lng: number; acc: number } | null>(null)
+  const [loc, setLoc] = useState<LocationData | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -58,23 +59,24 @@ export default function CheckOutPage() {
   async function getLocation() {
     setError(null)
     try {
-      await new Promise<void>((resolve, reject) => {
-        if (!('geolocation' in navigator)) {
-          reject(new Error('Geolocation tidak didukung browser'))
-          return
-        }
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const { latitude, longitude, accuracy } = pos.coords
-            setLoc({ lat: Number(latitude.toFixed(5)), lng: Number(longitude.toFixed(5)), acc: Math.round(accuracy) })
-            resolve()
-          },
-          (err) => reject(err),
-          { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-        )
-      })
+      // Check permission first
+      const permission = await locationService.checkPermission()
+      if (permission === 'denied') {
+        setError('Izin lokasi ditolak. Silakan izinkan akses lokasi di browser.')
+        return
+      }
+
+      // Get location using improved service
+      const location = await locationService.getCurrentLocation()
+      setLoc(location)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal mengambil lokasi')
+      if (e instanceof Error) {
+        setError(e.message)
+      } else if (typeof e === 'object' && e !== null && 'message' in e) {
+        setError((e as any).message)
+      } else {
+        setError('Gagal mengambil lokasi')
+      }
     }
   }
 

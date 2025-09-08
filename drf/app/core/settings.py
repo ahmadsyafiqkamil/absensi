@@ -26,7 +26,7 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,drf,absensi.localhost,api.absensi.localhost').split(',')
+ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,172.20.0.1,backend,drf,absensi.localhost,api.absensi.localhost').split(',')
 
 
 # Application definition
@@ -41,7 +41,19 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'corsheaders',
+    
+    # Legacy app (for backward compatibility during migration)
     'api',
+    
+    # New modular apps
+    'apps.core',
+    'apps.users',
+    'apps.employees',
+    'apps.attendance',
+    'apps.corrections',
+    'apps.overtime',
+    'apps.reporting',
+    'apps.settings',
 ]
 
 MIDDLEWARE = [
