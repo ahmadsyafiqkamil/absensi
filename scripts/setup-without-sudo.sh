@@ -1,39 +1,19 @@
 #!/bin/bash
 
-# Quick setup script untuk deployment Absensi KJRI Dubai
-# Jalankan script ini di server production
+# Setup script untuk sistem tanpa sudo
+# Jalankan script ini sebagai root di server production
 
 set -e
 
-echo "🚀 Quick Setup untuk Absensi KJRI Dubai Deployment"
-echo "=================================================="
+echo "🚀 Setup Absensi KJRI Dubai (Root Mode)"
+echo "======================================="
 
 # Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    echo "⚠️  Running as root. This is not recommended for security reasons."
-    echo "   Please run as a regular user with sudo privileges."
+if [ "$EUID" -ne 0 ]; then
+    echo "❌ This script must be run as root."
+    echo "   Please run: su -"
+    echo "   Then run this script again."
     exit 1
-fi
-
-# Check if sudo is available
-if ! command -v sudo &> /dev/null; then
-    echo "❌ sudo command not found. Installing sudo..."
-    
-    # Check if running as root to install sudo
-    if [ "$EUID" -ne 0 ]; then
-        echo "❌ Cannot install sudo without root privileges."
-        echo "   Please run as root or install sudo manually:"
-        echo "   su -"
-        echo "   apt update && apt install -y sudo"
-        echo "   usermod -aG sudo $USER"
-        echo "   exit"
-        echo "   Then run this script again."
-        exit 1
-    fi
-    
-    # Install sudo as root
-    apt update && apt install -y sudo
-    echo "✅ sudo installed successfully"
 fi
 
 # Get server information
@@ -45,27 +25,24 @@ echo ""
 
 # Update system
 echo "📦 Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+apt update && apt upgrade -y
 
 # Install required packages
 echo "📦 Installing required packages..."
-sudo apt install -y curl wget git rsync ca-certificates gnupg lsb-release software-properties-common
+apt install -y curl wget git rsync ca-certificates gnupg lsb-release software-properties-common sudo
 
 # Install Docker
 echo "🐳 Installing Docker..."
 if ! command -v docker &> /dev/null; then
     # Add Docker's official GPG key
-    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
     
     # Add Docker repository
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
     
     # Install Docker
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    
-    # Add user to docker group
-    sudo usermod -aG docker $USER
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     
     echo "✅ Docker installed successfully"
 else
@@ -76,9 +53,9 @@ fi
 echo "🐳 Installing Docker Compose..."
 if ! command -v docker-compose &> /dev/null; then
     COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
-    sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-    sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+    curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
     echo "✅ Docker Compose installed successfully"
 else
     echo "✅ Docker Compose already installed"
@@ -86,54 +63,56 @@ fi
 
 # Start and enable Docker
 echo "🔧 Starting Docker service..."
-sudo systemctl start docker
-sudo systemctl enable docker
+systemctl start docker
+systemctl enable docker
 
 # Create application directory
 echo "📁 Creating application directory..."
-sudo mkdir -p /opt/absensi
-sudo chown $USER:$USER /opt/absensi
+mkdir -p /opt/absensi
+chown -R $SUDO_USER:$SUDO_USER /opt/absensi
 
 # Create necessary subdirectories
 mkdir -p /opt/absensi/logs/{backend,frontend,caddy}
 mkdir -p /opt/absensi/backups
 mkdir -p /opt/absensi/mysql/conf.d
+chown -R $SUDO_USER:$SUDO_USER /opt/absensi
 
 # Setup SSH key for GitHub Actions
 echo "🔑 Setting up SSH key for GitHub Actions..."
-if [ ! -f ~/.ssh/github_actions_key ]; then
-    ssh-keygen -t rsa -b 4096 -C "github-actions-deploy" -f ~/.ssh/github_actions_key -N ""
+if [ ! -f /home/$SUDO_USER/.ssh/github_actions_key ]; then
+    sudo -u $SUDO_USER ssh-keygen -t rsa -b 4096 -C "github-actions-deploy" -f /home/$SUDO_USER/.ssh/github_actions_key -N ""
     echo "✅ SSH key generated"
 else
     echo "✅ SSH key already exists"
 fi
 
 # Add public key to authorized_keys
-cat ~/.ssh/github_actions_key.pub >> ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/github_actions_key
-chmod 644 ~/.ssh/authorized_keys
+cat /home/$SUDO_USER/.ssh/github_actions_key.pub >> /home/$SUDO_USER/.ssh/authorized_keys
+chmod 600 /home/$SUDO_USER/.ssh/github_actions_key
+chmod 644 /home/$SUDO_USER/.ssh/authorized_keys
+chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.ssh
 
 # Configure SSH
 echo "🔧 Configuring SSH..."
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
-sudo systemctl restart ssh
+sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+systemctl restart ssh
 
 # Setup UFW firewall
 echo "🔥 Configuring UFW firewall..."
-sudo ufw allow ssh
-sudo ufw allow 80
-sudo ufw allow 443
-sudo ufw --force enable
+ufw allow ssh
+ufw allow 80
+ufw allow 443
+ufw --force enable
 
 # Clone repository
 echo "📥 Cloning repository..."
 if [ ! -d "/opt/absensi/.git" ]; then
-    git clone https://github.com/ahmadsyafiqkamil/absensi.git /opt/absensi
+    sudo -u $SUDO_USER git clone https://github.com/ahmadsyafiqkamil/absensi.git /opt/absensi
     cd /opt/absensi
 else
     cd /opt/absensi
-    git pull origin main
+    sudo -u $SUDO_USER git pull origin main
 fi
 
 # Create production.env
@@ -170,26 +149,35 @@ fi
 
 # Set permissions
 chmod +x docker-prod.sh scripts/*.sh 2>/dev/null || true
+chown -R $SUDO_USER:$SUDO_USER /opt/absensi
+
+# Add user to docker group
+echo "👤 Adding user to docker group..."
+usermod -aG docker $SUDO_USER
 
 echo ""
-echo "🎉 Quick setup completed successfully!"
+echo "🎉 Setup completed successfully!"
 echo ""
 echo "📋 Next Steps:"
-echo "1. Update production.env with your actual values:"
-echo "   nano /opt/absensi/production.env"
+echo "1. Switch back to regular user:"
+echo "   exit"
+echo "   cd /opt/absensi"
 echo ""
-echo "2. Copy the SSH private key below to GitHub Secrets:"
+echo "2. Update production.env with your actual values:"
+echo "   nano production.env"
+echo ""
+echo "3. Copy the SSH private key below to GitHub Secrets:"
 echo "   Repository → Settings → Secrets and variables → Actions"
 echo ""
 echo "🔑 SSH Private Key for GitHub Actions:"
 echo "======================================"
-cat ~/.ssh/github_actions_key
+cat /home/$SUDO_USER/.ssh/github_actions_key
 echo ""
 echo "======================================"
 echo ""
 echo "📋 Required GitHub Secrets:"
 echo "- SERVER_IP: $(hostname -I | awk '{print $1}')"
-echo "- SERVER_USER: $(whoami)"
+echo "- SERVER_USER: $SUDO_USER"
 echo "- SERVER_SSH_PRIVATE_KEY: (copy from above)"
 echo "- FRONTEND_DOMAIN: yourdomain.com"
 echo "- API_DOMAIN: api.yourdomain.com"
@@ -198,7 +186,7 @@ echo "🚀 After setting up GitHub Secrets, you can deploy by:"
 echo "1. Push to main branch: git push origin main"
 echo "2. Or run workflow manually in GitHub Actions"
 echo ""
-echo "🔧 Useful commands:"
+echo "🔧 Useful commands (run as regular user):"
 echo "   Check status:    cd /opt/absensi && ./scripts/monitor.sh all"
 echo "   View logs:       cd /opt/absensi && docker-compose logs -f"
 echo "   Manual deploy:   cd /opt/absensi && ./docker-prod.sh"
