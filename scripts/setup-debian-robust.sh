@@ -112,12 +112,29 @@ sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_
 sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 systemctl restart ssh
 
-# Setup UFW firewall
-echo "🔥 Configuring UFW firewall..."
-ufw allow ssh
-ufw allow 80
-ufw allow 443
-ufw --force enable
+# Setup firewall
+echo "🔥 Configuring firewall..."
+if [ -f "./scripts/setup-firewall.sh" ]; then
+    chmod +x ./scripts/setup-firewall.sh
+    ./scripts/setup-firewall.sh
+else
+    # Fallback firewall setup
+    if command -v ufw &> /dev/null; then
+        ufw allow ssh
+        ufw allow 80
+        ufw allow 443
+        ufw --force enable
+        echo "✅ UFW firewall configured"
+    else
+        echo "⚠️  UFW not available, installing..."
+        apt install -y ufw
+        ufw allow ssh
+        ufw allow 80
+        ufw allow 443
+        ufw --force enable
+        echo "✅ UFW firewall installed and configured"
+    fi
+fi
 
 # Clone repository
 echo "📥 Cloning repository..."

@@ -125,10 +125,21 @@ sudo systemctl restart ssh
 
 # Setup UFW firewall
 echo "🔥 Configuring UFW firewall..."
-sudo ufw allow ssh
-sudo ufw allow 80
-sudo ufw allow 443
-sudo ufw --force enable
+if command -v ufw &> /dev/null; then
+    sudo ufw allow ssh
+    sudo ufw allow 80
+    sudo ufw allow 443
+    sudo ufw --force enable
+    echo "✅ UFW firewall configured"
+else
+    echo "⚠️  UFW not available, installing..."
+    sudo apt install -y ufw
+    sudo ufw allow ssh
+    sudo ufw allow 80
+    sudo ufw allow 443
+    sudo ufw --force enable
+    echo "✅ UFW firewall installed and configured"
+fi
 
 # Clone repository
 echo "📥 Cloning repository..."
