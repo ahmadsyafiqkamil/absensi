@@ -19,7 +19,7 @@ router.register(r'settings/holidays', views.HolidayViewSet, basename='holiday')
 router.register(r'attendance', views.AttendanceViewSet, basename='attendance')
 router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='attendance-correction')
 router.register(r'overtime-requests', views.OvertimeRequestViewSet, basename='overtime-request')
-router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='monthly-summary-request')
+router.register(r'monthly-summary-requests', views.OvertimeSummaryRequestViewSet, basename='monthly-summary-request')
 
 # Role-specific routers (legacy)
 admin_router = DefaultRouter()
@@ -28,7 +28,7 @@ admin_router.register(r'positions', views.AdminPositionViewSet, basename='admin-
 admin_router.register(r'employees', views.AdminEmployeeViewSet, basename='admin-employee')
 admin_router.register(r'settings/work', views.AdminWorkSettingsViewSet, basename='admin-work-settings')
 admin_router.register(r'settings/holidays', views.AdminHolidayViewSet, basename='admin-holiday')
-admin_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='admin-monthly-summary-request')
+admin_router.register(r'monthly-summary-requests', views.OvertimeSummaryRequestViewSet, basename='admin-monthly-summary-request')
 
 supervisor_router = DefaultRouter()
 supervisor_router.register(r'divisions', views.SupervisorDivisionViewSet, basename='supervisor-division')
@@ -36,7 +36,7 @@ supervisor_router.register(r'positions', views.SupervisorPositionViewSet, basena
 supervisor_router.register(r'employees', views.SupervisorEmployeeViewSet, basename='supervisor-employee')
 supervisor_router.register(r'settings/work', views.SupervisorWorkSettingsViewSet, basename='supervisor-work-settings')
 supervisor_router.register(r'settings/holidays', views.SupervisorHolidayViewSet, basename='supervisor-holiday')
-supervisor_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='supervisor-monthly-summary-request')
+supervisor_router.register(r'monthly-summary-requests', views.OvertimeSummaryRequestViewSet, basename='supervisor-monthly-summary-request')
 
 employee_router = DefaultRouter()
 employee_router.register(r'divisions', views.EmployeeDivisionViewSet, basename='employee-division')
@@ -45,7 +45,7 @@ employee_router.register(r'employees', views.EmployeeEmployeeViewSet, basename='
 employee_router.register(r'settings/holidays', views.EmployeeHolidayViewSet, basename='employee-holiday')
 employee_router.register(r'attendance', views.AttendanceViewSet, basename='employee-attendance')
 employee_router.register(r'attendance-corrections', views.AttendanceCorrectionViewSet, basename='employee-attendance-correction')
-employee_router.register(r'monthly-summary-requests', views.MonthlySummaryRequestViewSet, basename='employee-monthly-summary-request')
+employee_router.register(r'monthly-summary-requests', views.OvertimeSummaryRequestViewSet, basename='employee-monthly-summary-request')
 
 urlpatterns = [
     # Legacy endpoints (for backward compatibility)
