@@ -11,19 +11,21 @@ echo "🧹 Cleaning and restarting all services..."
 echo "🛑 Stopping all services..."
 docker-compose -f docker-compose.prod.yml down
 
-# Remove all containers and volumes
-echo "🗑️ Removing all containers and volumes..."
-docker-compose -f docker-compose.prod.yml down -v --remove-orphans
-
-# Clean up Docker system
-echo "🧽 Cleaning up Docker system..."
+# Clean up containers and volumes
+echo "🧹 Cleaning up containers and volumes..."
 docker system prune -f
+docker volume prune -f
 
 # Remove MySQL data directory to start fresh
 echo "🗑️ Removing MySQL data directory..."
 sudo rm -rf mysql/data/*
 
-# Start services again
+# Create MySQL data directory
+echo "📁 Creating MySQL data directory..."
+sudo mkdir -p mysql/data
+sudo chown -R 999:999 mysql/data
+
+# Start services
 echo "🚀 Starting services..."
 docker-compose -f docker-compose.prod.yml up -d
 
@@ -36,4 +38,4 @@ echo "🔍 Checking service status..."
 docker-compose -f docker-compose.prod.yml ps
 
 echo "✅ Clean restart completed!"
-echo "📊 Run './scripts/monitor.sh' to check service health"
+echo "🔍 Run './scripts/monitor.sh' to check service health"
