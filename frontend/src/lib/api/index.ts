@@ -9,7 +9,6 @@ export { default as attendanceApi, correctionsApi } from './attendance/client'
 
 // Re-export for backward compatibility
 export * from './auth/client'
-export { attendanceApi as attendanceApi, correctionsApi } from './attendance/client'
 
 // Import additional feature APIs as they are created
 // export * from './overtime/client'
