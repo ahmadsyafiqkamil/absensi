@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -14,7 +14,7 @@ export async function POST(
 
     const body = await request.json()
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/overtime/overtime/${params.id}/approve/`
+    const url = `${backend}/api/v2/overtime/overtime/${(await params).id}/approve/`
 
     const resp = await fetch(url, {
       method: 'POST',

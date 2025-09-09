@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -13,7 +13,7 @@ export async function GET(
     }
 
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/employees/employees/${params.id}/`
+    const url = `${backend}/api/v2/employees/employees/${(await params).id}/`
 
     const resp = await fetch(url, {
       method: 'GET',

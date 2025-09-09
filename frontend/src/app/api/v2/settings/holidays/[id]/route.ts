@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -13,7 +13,7 @@ export async function GET(
     }
 
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/settings/holidays/${params.id}/`
+    const url = `${backend}/api/v2/settings/holidays/${(await params).id}/`
 
     const resp = await fetch(url, {
       method: 'GET',
@@ -35,7 +35,7 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -46,7 +46,7 @@ export async function PATCH(
 
     const body = await request.json()
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/settings/holidays/${params.id}/`
+    const url = `${backend}/api/v2/settings/holidays/${(await params).id}/`
 
     const resp = await fetch(url, {
       method: 'PATCH',
@@ -69,7 +69,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -79,7 +79,7 @@ export async function DELETE(
     }
 
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/settings/holidays/${params.id}/`
+    const url = `${backend}/api/v2/settings/holidays/${(await params).id}/`
 
     const resp = await fetch(url, {
       method: 'DELETE',
