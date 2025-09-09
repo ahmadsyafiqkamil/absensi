@@ -18,12 +18,11 @@ docker volume prune -f
 
 # Remove MySQL data directory to start fresh
 echo "🗑️ Removing MySQL data directory..."
-sudo rm -rf mysql/data/*
+rm -rf mysql/data/*
 
 # Create MySQL data directory
 echo "📁 Creating MySQL data directory..."
-sudo mkdir -p mysql/data
-sudo chown -R 999:999 mysql/data
+mkdir -p mysql/data
 
 # Start services
 echo "🚀 Starting services..."
