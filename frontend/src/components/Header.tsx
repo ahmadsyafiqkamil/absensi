@@ -20,7 +20,7 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     async function loadFullname() {
       try {
         // Try new V2 API first, fallback to legacy if needed
-        const resp = await fetch('/api/v2/employees/me/', { cache: 'no-store' });
+        const resp = await fetch('/api/v2/employees/me', { cache: 'no-store' });
         if (resp.ok) {
           const data = await resp.json();
           const name = data?.fullname?.trim?.();

@@ -435,7 +435,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
       setError(null);
       
       // Fetch data individually to avoid Promise.all issues
-      const monthlySummaryResponse = await authFetch(`${getBackendUrl()}/api/supervisor/overtime-summary-requests/`);
+      const monthlySummaryResponse = await authFetch(`${getBackendUrl()}/api/supervisor/monthly-summary-requests/`);
       const divisionsResponse = await authFetch(`${getBackendUrl()}/api/supervisor/divisions/`);
       const supervisorResponse = await authFetch(`${getBackendUrl()}/api/supervisor/approvals/summary`);
 
@@ -497,7 +497,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
     setProcessing(true);
     try {
-      const endpoint = `${getBackendUrl()}/api/supervisor/overtime-summary-requests/${selectedRequest.id}/${actionType}/`;
+      const endpoint = `${getBackendUrl()}/api/supervisor/monthly-summary-requests/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
 
       const response = await authFetch(endpoint, {

@@ -10,7 +10,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const backendUrl = `${BACKEND_URL}/api/supervisor/overtime-summary-requests/${id}/reject/`;
+    const backendUrl = `${BACKEND_URL}/api/supervisor/monthly-summary-requests/${id}/reject/`;
     
     const response = await fetch(backendUrl, {
       method: 'POST',
