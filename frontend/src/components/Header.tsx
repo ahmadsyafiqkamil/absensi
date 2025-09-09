@@ -19,26 +19,32 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     let cancelled = false;
     async function loadFullname() {
       try {
-        // Try new V2 API first, fallback to legacy if needed
-        const resp = await fetch('/api/v2/employees/me', { cache: 'no-store' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const name = data?.fullname?.trim?.();
+        // Use legacy API directly (more reliable)
+        const legacyResp = await fetch('/api/employee/employees', { cache: 'no-store' });
+        if (legacyResp.ok) {
+          const legacyData = await legacyResp.json().catch(() => ({}));
+          const list = Array.isArray(legacyData) ? legacyData : (legacyData?.results ?? []);
+          const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
+          const name = emp?.fullname?.trim?.();
           if (!cancelled && name) {
             setDisplayName(name);
             return;
           }
         }
-        
-        // Fallback to legacy API
-        const legacyResp = await fetch('/api/employee/employees', { cache: 'no-store' });
-        const legacyData = await legacyResp.json().catch(() => ({}));
-        const list = Array.isArray(legacyData) ? legacyData : (legacyData?.results ?? []);
-        const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
-        const name = emp?.fullname?.trim?.();
-        if (!cancelled && name) {
-          setDisplayName(name);
-        } else if (!cancelled) {
+
+        // If legacy API fails, try auth/me as fallback
+        const authResp = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (authResp.ok) {
+          const authData = await authResp.json().catch(() => ({}));
+          const name = authData?.position?.name || username;
+          if (!cancelled && name) {
+            setDisplayName(name);
+            return;
+          }
+        }
+
+        // Final fallback to username
+        if (!cancelled) {
           setDisplayName(username);
         }
       } catch {

@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
     }
 
     const backend = getBackendUrl()
-    const url = `${backend}/api/v2/employees/me`
+
+    // Use legacy employee API instead of v2
+    const url = `${backend}/api/employee/employees`
 
     const resp = await fetch(url, {
       method: 'GET',
@@ -24,9 +26,15 @@ export async function GET(request: NextRequest) {
 
     const data = await resp.json().catch(() => ({}))
 
+    // Transform legacy API response to match expected format
+    if (resp.ok && data.results && Array.isArray(data.results) && data.results.length > 0) {
+      const employee = data.results[0]
+      return NextResponse.json(employee, { status: 200 })
+    }
+
     return NextResponse.json(data, { status: resp.status })
   } catch (error) {
-    console.error('Error proxying V2 employees me API:', error)
+    console.error('Error proxying employees me API:', error)
     return NextResponse.json({ detail: 'Internal server error' }, { status: 500 })
   }
 }
