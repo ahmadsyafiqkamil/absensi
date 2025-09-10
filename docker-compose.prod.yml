@@ -26,8 +26,8 @@ services:
       - --collation-server=utf8mb4_unicode_ci
       - --innodb-buffer-pool-size=1G
       - --max-connections=200
-      - --query-cache-size=256M
-      - --query-cache-type=1
+      # - --query-cache-size=256M
+      # - --query-cache-type=1
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 30s
