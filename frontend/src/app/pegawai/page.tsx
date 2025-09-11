@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import AttendanceWidget from './AttendanceWidget'
 import TodayAttendance from './TodayAttendance'
+import TodayAttendanceV2 from './TodayAttendanceV2'
 import PegawaiCalendar from './PegawaiCalendar'
 import OvertimeSummary from './OvertimeSummary'
 
@@ -44,7 +45,10 @@ export default async function PegawaiPage() {
         {/* Quick Stats */}
         <div className="mb-8 grid gap-4">
           <h2 className="text-xl font-semibold text-gray-900">Your Overview</h2>
-          <TodayAttendance />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <TodayAttendance />
+            <TodayAttendanceV2 />
+          </div>
         </div>
 
         {/* Employee Functions Grid */}

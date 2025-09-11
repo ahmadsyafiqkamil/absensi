@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -103,6 +104,15 @@ DATABASES = {
         }
     }
 }
+
+# Use SQLite for tests to avoid MySQL test DB permission issues
+if 'test' in sys.argv:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'test_db.sqlite3'),
+        }
+    }
 
 # CORS
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGIN_FRONTEND', 'http://localhost:3000').split(',')

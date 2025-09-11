@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { backendFetch } from '@/lib/backend'
 import { cookies } from 'next/headers'
 
 export async function GET(request: Request) {
@@ -14,22 +13,23 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('end_date')
     const employeeId = searchParams.get('employee_id')
     
-    // Build query string
+    // Build query string for v2 API
     const params = new URLSearchParams()
     if (startDate) params.append('start_date', startDate)
     if (endDate) params.append('end_date', endDate)
     if (employeeId) params.append('employee_id', employeeId)
     
     const queryString = params.toString()
-    const url = `/supervisor/team-attendance${queryString ? `?${queryString}` : ''}`
     
-    const response = await backendFetch(url, {
+    // Use v2 API supervisor team attendance endpoint
+    const response = await fetch(`${process.env.BACKEND_URL || 'http://backend:8000'}/api/v2/attendance/supervisor/team-attendance${queryString ? `?${queryString}` : ''}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        'Authorization': `Bearer ${accessToken}`,
       },
-    }, 'LEGACY')
+      cache: 'no-store'
+    })
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error fetching supervisor team attendance:', error)
+    console.error('v2 Error fetching supervisor team attendance:', error)
     return NextResponse.json(
       { detail: 'Internal server error' },
       { status: 500 }

@@ -1,19 +1,9 @@
-import { NextResponse } from 'next/server'
-import { getBackendUrl } from '@/lib/api-utils'
-import { cookies } from 'next/headers'
+import { NextRequest } from 'next/server'
+import { getFromV2Api } from '@/lib/v2-route-helper'
 
-export async function GET(req: Request) {
-  const accessToken = (await cookies()).get('access_token')?.value
-  if (!accessToken) return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
-  const backendBase = getBackendUrl()
-  const url = new URL(req.url)
-  const search = url.search ? url.search : ''
-  const resp = await fetch(`${backendBase}/api/settings/holidays/${search}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
-  })
-  const data = await resp.json().catch(() => ({}))
-  return NextResponse.json(data, { status: resp.status })
+export async function GET(request: NextRequest) {
+  // Use v2 API helper for holidays
+  return getFromV2Api(request, '/settings/holidays', true)
 }
 
 
