@@ -29,7 +29,7 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
   const backend = getBackendUrl()
-  const url = new URL(`${backend}/api/employees/`)
+  const url = new URL(`${backend}/api/v2/employees/employees/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
   const res = await fetch(url.toString(), {
@@ -37,7 +37,12 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
     cache: 'no-store',
   })
   if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-  return res.json()
+  const result = await res.json()
+  // Ensure result has the expected structure
+  if (Array.isArray(result)) {
+    return { count: result.length, next: null, previous: null, results: result }
+  }
+  return result
 }
 
 export default async function AdminEmployeesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -72,7 +77,7 @@ export default async function AdminEmployeesPage({ searchParams }: { searchParam
   const page = Number(sp?.page ?? '1') || 1
   const pageSize = Number(sp?.page_size ?? '20') || 20
   const data = await getEmployees(page, pageSize)
-  const employees = data.results
+  const employees = data.results || []
   const role = (me.groups || []).includes('admin') ? 'admin' : 'superuser'
   const totalPages = Math.max(1, Math.ceil((data.count || 0) / pageSize))
   const prevPage = Math.max(1, page - 1)

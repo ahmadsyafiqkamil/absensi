@@ -6,7 +6,7 @@ async function ensureAdmin() {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return { ok: false, status: 401 as const }
   const backendBase = getBackendUrl()
-  const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+  const meResponse = await fetch(`${backendBase}/api/v2/users/me`, {
     headers: { 'Authorization': `Bearer ${accessToken}` },
     cache: 'no-store',
   })
@@ -20,7 +20,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
   const { id } = await ctx.params
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/admin/employees/${id}/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/employees/${id}/`, {
     headers: { Authorization: `Bearer ${chk.accessToken}` },
     cache: 'no-store',
   })
@@ -33,7 +33,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
   const body = await req.json().catch(() => ({}))
-  const resp = await fetch(`${chk.backendBase}/api/admin/employees/${id}/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/employees/${id}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
     body: JSON.stringify(body),
@@ -46,7 +46,7 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/admin/employees/${id}/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/employees/${id}/`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${chk.accessToken}` },
   })

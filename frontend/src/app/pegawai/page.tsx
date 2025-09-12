@@ -45,9 +45,9 @@ export default async function PegawaiPage() {
         {/* Quick Stats */}
         <div className="mb-8 grid gap-4">
           <h2 className="text-xl font-semibold text-gray-900">Your Overview</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <TodayAttendance />
-            <TodayAttendanceV2 />
+            {/* <TodayAttendanceV2 /> */}
           </div>
         </div>
 

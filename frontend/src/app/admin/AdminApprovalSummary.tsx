@@ -6,13 +6,13 @@ import { authFetch } from '@/lib/authFetch';
 import Link from 'next/link';
 
 type OvertimeSummary = {
-  total_requests: number;
-  pending_requests: number;
-  level1_approved_requests: number;
-  approved_requests: number;
-  rejected_requests: number;
-  total_approved_hours: number;
-  total_approved_amount: number;
+  total_requests?: number;
+  pending_requests?: number;
+  level1_approved_requests?: number;
+  approved_requests?: number;
+  rejected_requests?: number;
+  total_approved_hours?: number;
+  total_approved_amount?: number;
 };
 
 export default function AdminApprovalSummary() {
@@ -35,8 +35,35 @@ export default function AdminApprovalSummary() {
         throw new Error('Failed to fetch overtime summary');
       }
 
-      const data: OvertimeSummary = await response.json();
-      setSummary(data);
+      const data = await response.json();
+      
+      // Handle case where API returns empty array or null
+      if (Array.isArray(data) && data.length === 0) {
+        // API returned empty array, create default summary
+        setSummary({
+          total_requests: 0,
+          pending_requests: 0,
+          level1_approved_requests: 0,
+          approved_requests: 0,
+          rejected_requests: 0,
+          total_approved_hours: 0,
+          total_approved_amount: 0,
+        });
+      } else if (data && typeof data === 'object') {
+        // API returned object, use it
+        setSummary(data);
+      } else {
+        // Unexpected response format, create default summary
+        setSummary({
+          total_requests: 0,
+          pending_requests: 0,
+          level1_approved_requests: 0,
+          approved_requests: 0,
+          rejected_requests: 0,
+          total_approved_hours: 0,
+          total_approved_amount: 0,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch overtime summary');
     } finally {
@@ -108,7 +135,7 @@ export default function AdminApprovalSummary() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-orange-600">{summary.pending_requests}</div>
+            <div className="text-2xl font-bold text-orange-600">{summary.pending_requests || 0}</div>
             <div className="text-sm text-gray-600">Pending Requests</div>
             <div className="text-xs text-gray-500 mt-1">Need Level 1 approval</div>
           </CardContent>
@@ -116,7 +143,7 @@ export default function AdminApprovalSummary() {
         
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">{summary.level1_approved_requests}</div>
+            <div className="text-2xl font-bold text-blue-600">{summary.level1_approved_requests || 0}</div>
             <div className="text-sm text-gray-600">Level 1 Approved</div>
             <div className="text-xs text-gray-500 mt-1">Need final approval</div>
           </CardContent>
@@ -124,7 +151,7 @@ export default function AdminApprovalSummary() {
         
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">{summary.approved_requests}</div>
+            <div className="text-2xl font-bold text-green-600">{summary.approved_requests || 0}</div>
             <div className="text-sm text-gray-600">Final Approved</div>
             <div className="text-xs text-gray-500 mt-1">Ready for payment</div>
           </CardContent>
@@ -132,7 +159,7 @@ export default function AdminApprovalSummary() {
         
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-red-600">{summary.rejected_requests}</div>
+            <div className="text-2xl font-bold text-red-600">{summary.rejected_requests || 0}</div>
             <div className="text-sm text-gray-600">Rejected</div>
             <div className="text-xs text-gray-500 mt-1">Not approved</div>
           </CardContent>
@@ -147,7 +174,7 @@ export default function AdminApprovalSummary() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">
-              {summary.total_approved_hours.toFixed(1)}j
+              {(summary.total_approved_hours || 0).toFixed(1)}j
             </div>
           </CardContent>
         </Card>
@@ -159,7 +186,7 @@ export default function AdminApprovalSummary() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">
-              {formatCurrency(summary.total_approved_amount)}
+              {formatCurrency(summary.total_approved_amount || 0)}
             </div>
           </CardContent>
         </Card>

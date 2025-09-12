@@ -20,17 +20,27 @@ type PaginatedDivisions = {
 async function getDivisions(page: number, pageSize: number): Promise<PaginatedDivisions> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
-  // Use client-side URL for page components
-  const backend = getBackendUrl()
-  const url = new URL(`${backend}/api/divisions/`)
+  // Use admin API endpoint (which already proxies to v2)
+  const url = new URL(`http://localhost:3000/api/admin/divisions`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
+  const cookieHeader = (await cookies()).getAll().map(c => `${c.name}=${c.value}`).join('; ')
   const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      // Forward cookies so the route can read access_token
+      Cookie: cookieHeader,
+      // Keep Authorization for completeness, though the route uses cookies
+      Authorization: `Bearer ${token}`,
+    },
     cache: 'no-store',
   })
   if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-  return res.json()
+  const data = await res.json()
+  // Handle both array and paginated response
+  if (Array.isArray(data)) {
+    return { count: data.length, next: null, previous: null, results: data }
+  }
+  return data
 }
 
 export default async function AdminDivisionsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

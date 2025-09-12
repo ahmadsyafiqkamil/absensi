@@ -11,7 +11,7 @@ export async function GET() {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${getBackendUrl()}/api/auth/me`, {
+    const meResponse = await fetch(`${getBackendUrl()}/api/v2/users/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -28,8 +28,8 @@ export async function GET() {
       return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Fetch positions from backend (namespaced admin route)
-    const response = await fetch(`${getBackendUrl()}/api/admin/positions/`, {
+    // Fetch positions from backend v2
+    const response = await fetch(`${getBackendUrl()}/api/v2/employees/positions/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     const backendBase = getBackendUrl();
 
     // Verify admin
-    const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+    const meResponse = await fetch(`${backendBase}/api/v2/users/me`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const resp = await fetch(`${backendBase}/api/admin/positions/`, {
+    const resp = await fetch(`${backendBase}/api/v2/employees/positions/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

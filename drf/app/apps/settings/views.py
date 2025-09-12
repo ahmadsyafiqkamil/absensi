@@ -26,6 +26,20 @@ class WorkSettingsViewSet(viewsets.ViewSet):
         else:
             return WorkSettingsEmployeeSerializer
     
+    def get_serializer(self, *args, **kwargs):
+        """Get serializer instance"""
+        serializer_class = self.get_serializer_class()
+        kwargs.setdefault('context', self.get_serializer_context())
+        return serializer_class(*args, **kwargs)
+    
+    def get_serializer_context(self):
+        """Extra context provided to the serializer class."""
+        return {
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }
+    
     def get_object(self):
         """Get the single WorkSettings instance"""
         return WorkSettings.objects.first()

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     // Forward query parameters
     const { searchParams } = new URL(request.url)
     const queryString = searchParams.toString()
-    const url = `${BACKEND_URL}/api/overtime-requests/summary/${queryString ? `?${queryString}` : ''}`
+    const url = `${BACKEND_URL}/api/v2/overtime/monthly-summary/${queryString ? `?${queryString}` : ''}`
 
     const response = await fetch(url, {
       method: 'GET',

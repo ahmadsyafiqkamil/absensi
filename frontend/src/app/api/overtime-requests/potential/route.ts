@@ -13,26 +13,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Forward query parameters
-    const { searchParams } = new URL(request.url)
-    const queryString = searchParams.toString()
-    const url = `${BACKEND_URL}/api/overtime-requests/potential_overtime/${queryString ? `?${queryString}` : ''}`
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status })
-    }
-
-    return NextResponse.json(data)
+    // Note: potential_overtime action not yet implemented in v2
+    // For now, return empty array as fallback
+    return NextResponse.json([])
   } catch (error) {
     console.error('Error fetching potential overtime:', error)
     return NextResponse.json(

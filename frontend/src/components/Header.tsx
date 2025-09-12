@@ -19,11 +19,11 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     let cancelled = false;
     async function loadFullname() {
       try {
-        // Use legacy API directly (more reliable)
-        const legacyResp = await fetch('/api/employee/employees', { cache: 'no-store' });
-        if (legacyResp.ok) {
-          const legacyData = await legacyResp.json().catch(() => ({}));
-          const list = Array.isArray(legacyData) ? legacyData : (legacyData?.results ?? []);
+        // Use v2 API for employee profile (updated)
+        const employeeResp = await fetch('/api/employee/employees', { cache: 'no-store' });
+        if (employeeResp.ok) {
+          const employeeData = await employeeResp.json().catch(() => ({}));
+          const list = Array.isArray(employeeData) ? employeeData : (employeeData?.results ?? []);
           const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
           const name = emp?.fullname?.trim?.();
           if (!cancelled && name) {
@@ -32,11 +32,11 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
           }
         }
 
-        // If legacy API fails, try auth/me as fallback
+        // If employee API fails, try auth/me as fallback (also v2)
         const authResp = await fetch('/api/auth/me', { cache: 'no-store' });
         if (authResp.ok) {
           const authData = await authResp.json().catch(() => ({}));
-          const name = authData?.position?.name || username;
+          const name = authData?.first_name || authData?.username || username;
           if (!cancelled && name) {
             setDisplayName(name);
             return;

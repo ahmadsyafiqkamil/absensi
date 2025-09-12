@@ -118,7 +118,7 @@ const columns: ColumnDef<EmployeeRow>[] = [
   },
 ];
 
-export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
+export default function EmployeesTable({ data }: { data: EmployeeRow[] | undefined | null }) {
   const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -213,7 +213,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     }
   }, [editingId, formData, router])
   const table = useReactTable({
-    data,
+    data: data || [],
     columns,
     state: { sorting, columnFilters },
     onSortingChange: setSorting,

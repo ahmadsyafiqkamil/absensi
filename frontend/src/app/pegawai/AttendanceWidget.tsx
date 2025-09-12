@@ -4,7 +4,17 @@ import { useCallback, useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Button } from '@/components/ui/button'
 
-type Precheck = { date_local: string; has_check_in: boolean; has_check_out: boolean }
+type Precheck = { 
+  date?: string; 
+  date_local?: string; 
+  has_check_in: boolean; 
+  has_check_out: boolean;
+  success?: boolean;
+  is_workday?: boolean;
+  is_holiday?: boolean;
+  work_hours?: any;
+  status?: string;
+}
 
 // Custom event untuk refresh attendance data
 const ATTENDANCE_REFRESH_EVENT = 'attendance-refresh'
@@ -144,7 +154,23 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       <Dialog.Overlay className="fixed inset-0 bg-black/40" />
       <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-lg w-[520px] max-w-[95vw] p-4">
         <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
-        <Dialog.Description className="text-sm text-gray-500 mb-3">Tanggal: {precheck?.date_local ?? '-'}</Dialog.Description>
+        <Dialog.Description className="text-sm text-gray-500 mb-3">
+          Tanggal: {(() => {
+            const dateStr = precheck?.date || precheck?.date_local;
+            if (!dateStr) return '-';
+            try {
+              const date = new Date(dateStr);
+              return date.toLocaleDateString('id-ID', { 
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'long', 
+                year: 'numeric' 
+              });
+            } catch {
+              return dateStr;
+            }
+          })()}
+        </Dialog.Description>
         {loading ? (
           <div className="text-gray-600">Memuat...</div>
         ) : (
