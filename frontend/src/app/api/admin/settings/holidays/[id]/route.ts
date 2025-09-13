@@ -20,7 +20,7 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/v2/settings/holidays/${id}/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/holidays/${id}/`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${chk.accessToken}` },
   })

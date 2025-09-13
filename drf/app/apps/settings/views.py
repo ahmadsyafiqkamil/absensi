@@ -9,6 +9,7 @@ from .serializers import (
     HolidaySerializer, HolidayAdminSerializer, HolidayPublicSerializer
 )
 from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee, IsAdminOrReadOnly
+from api.pagination import DefaultPagination
 
 
 class WorkSettingsViewSet(viewsets.ViewSet):
@@ -193,6 +194,7 @@ class AdminWorkSettingsViewSet(WorkSettingsViewSet):
 class AdminHolidayViewSet(HolidayViewSet):
     """Admin-specific holiday ViewSet"""
     permission_classes = [IsAdmin]
+    pagination_class = DefaultPagination
     
     def get_serializer_class(self):
         return HolidayAdminSerializer

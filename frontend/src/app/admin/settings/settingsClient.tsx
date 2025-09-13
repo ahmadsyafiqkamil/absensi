@@ -61,8 +61,8 @@ export default function SettingsClient() {
       setError(null)
       try {
         const [s, h] = await Promise.all([
-          fetch('/api/admin/settings/work').then(r => r.json()),
-          fetch(`/api/admin/settings/holidays?page=${1}&page_size=${10}`).then(r => r.json()),
+          fetch('/api/admin/settings/work', { credentials: 'include' }).then(r => r.json()),
+          fetch(`/api/admin/settings/holidays?page=${1}&page_size=${10}`, { credentials: 'include' }).then(r => r.json()),
         ])
         // Set default values for new fields if they don't exist
         const settingsWithDefaults = {
@@ -88,12 +88,18 @@ export default function SettingsClient() {
   async function loadHolidays(page: number, pageSize: number) {
     setHolidaysLoading(true)
     try {
-      const resp = await fetch(`/api/admin/settings/holidays?page=${page}&page_size=${pageSize}`)
+      const resp = await fetch(`/api/admin/settings/holidays?page=${page}&page_size=${pageSize}`, {
+        credentials: 'include'
+      })
       const data: PaginatedHolidays = await resp.json().catch(() => ({ count: 0, next: null, previous: null, results: [] }))
-      setHolidays(data.results)
+      setHolidays(data.results || [])
       setHolidaysCount(data.count || 0)
       setHolidaysPage(page)
       setHolidaysPageSize(pageSize)
+    } catch (error) {
+      console.error('Error loading holidays:', error) // Debug log
+      setHolidays([])
+      setHolidaysCount(0)
     } finally {
       setHolidaysLoading(false)
     }
@@ -161,20 +167,30 @@ export default function SettingsClient() {
     const resp = await fetch('/api/admin/settings/holidays', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ date, note }),
     })
     const data = await resp.json().catch(() => ({}))
     if (!resp.ok) {
-      setError((data as { detail?: string })?.detail || 'Gagal menambah libur')
-      return
+      const anyData = data as any
+      const fieldError = anyData?.date?.[0] || anyData?.non_field_errors?.[0] || anyData?.detail
+      const message = fieldError
+        ? (String(fieldError).includes('already exists') ? 'Tanggal libur sudah terdaftar' : String(fieldError))
+        : 'Gagal menambah libur'
+      setError(message)
+      return false
     }
     // reload current page
     await loadHolidays(holidaysPage, holidaysPageSize)
+    return true
   }
 
   async function deleteHoliday(id: number) {
     setError(null)
-    const resp = await fetch(`/api/admin/settings/holidays/${id}`, { method: 'DELETE' })
+    const resp = await fetch(`/api/admin/settings/holidays/${id}`, { 
+      method: 'DELETE',
+      credentials: 'include'
+    })
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}))
       setError((data as { detail?: string })?.detail || 'Gagal menghapus libur')
@@ -916,11 +932,11 @@ export default function SettingsClient() {
   )
 }
 
-function AddHolidayForm({ onAdd }: { onAdd: (date: string, note: string) => void }) {
+function AddHolidayForm({ onAdd }: { onAdd: (date: string, note: string) => Promise<boolean> }) {
   const [date, setDate] = useState('')
   const [note, setNote] = useState('')
   return (
-    <form className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end" onSubmit={(e) => { e.preventDefault(); if (!date) return; onAdd(date, note); setDate(''); setNote('') }}>
+    <form className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end" onSubmit={async (e) => { e.preventDefault(); if (!date) return; const ok = await onAdd(date, note); if (ok) { setDate(''); setNote('') } }}>
       <div className="grid gap-1">
         <Label>Tanggal</Label>
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -967,7 +983,9 @@ function HolidaysTable({
     },
   ], [onDelete])
 
-  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() })
+  // Safety check for data
+  const safeData = data || []
+  const table = useReactTable({ data: safeData, columns, getCoreRowModel: getCoreRowModel() })
 
   const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize))
   const prevPage = Math.max(1, page - 1)
@@ -992,7 +1010,7 @@ function HolidaysTable({
             {loading ? (
               <tr><td colSpan={columns.length} className="px-3 py-6 text-center text-gray-500">Memuat...</td></tr>
             ) : (
-              table.getRowModel().rows.map(r => (
+              (table.getRowModel()?.rows || []).map(r => (
                 <tr key={r.id} className="border-t">
                   {r.getVisibleCells().map(c => (
                     <td key={c.id} className="px-3 py-2">
@@ -1002,7 +1020,7 @@ function HolidaysTable({
                 </tr>
               ))
             )}
-            {!loading && table.getRowModel().rows.length === 0 && (
+            {!loading && (table.getRowModel()?.rows || []).length === 0 && (
               <tr><td colSpan={columns.length} className="px-3 py-6 text-center text-gray-500">Belum ada data libur</td></tr>
             )}
           </tbody>

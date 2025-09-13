@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
   const url = new URL(req.url)
   const search = url.search ? url.search : ''
-  const resp = await fetch(`${chk.backendBase}/api/v2/settings/holidays/${search}`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/holidays/${search}`, {
     headers: { Authorization: `Bearer ${chk.accessToken}` },
     cache: 'no-store',
   })
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
   const body = await req.json().catch(() => ({}))
-  const resp = await fetch(`${chk.backendBase}/api/v2/settings/holidays/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/holidays/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
     body: JSON.stringify(body),
