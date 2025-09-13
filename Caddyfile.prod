@@ -87,7 +87,7 @@
     # Reverse proxy to backend
     reverse_proxy backend:8000 {
         # Health check
-        health_uri /api/health
+        health_uri /api/v2/core/health
         health_interval 30s
         health_timeout 10s
 

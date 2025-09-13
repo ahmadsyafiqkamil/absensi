@@ -20,21 +20,26 @@ type PaginatedDivisions = {
 async function getDivisions(page: number, pageSize: number): Promise<PaginatedDivisions> {
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
-  // Use admin API endpoint (which already proxies to v2)
-  const url = new URL(`http://localhost:3000/api/admin/divisions`)
+  
+  // Use backend URL for server-side calls
+  const backendUrl = getBackendUrl()
+  const url = new URL(`/api/v2/employees/admin/divisions/`, backendUrl)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
-  const cookieHeader = (await cookies()).getAll().map(c => `${c.name}=${c.value}`).join('; ')
+  
   const res = await fetch(url.toString(), {
     headers: {
-      // Forward cookies so the route can read access_token
-      Cookie: cookieHeader,
-      // Keep Authorization for completeness, though the route uses cookies
-      Authorization: `Bearer ${token}`,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
     },
     cache: 'no-store',
   })
-  if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
+  
+  if (!res.ok) {
+    console.error(`Failed to fetch divisions: ${res.status} ${res.statusText}`)
+    return { count: 0, next: null, previous: null, results: [] }
+  }
+  
   const data = await res.json()
   // Handle both array and paginated response
   if (Array.isArray(data)) {

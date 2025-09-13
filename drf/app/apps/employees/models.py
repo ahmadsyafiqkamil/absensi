@@ -28,9 +28,9 @@ class Position(TimeStampedModel):
     )
     approval_level = models.PositiveSmallIntegerField(
         default=1,
-        choices=[(1, 'Division Level'), (2, 'Organization Level')],
+        choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level')],
         verbose_name="Approval Level",
-        help_text="1 = Division-level approval, 2 = Organization-level (final) approval"
+        help_text="0 = No approval (view-only), 1 = Division-level approval, 2 = Organization-level (final) approval"
     )
 
     class Meta:

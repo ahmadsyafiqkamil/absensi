@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getBackendUrl } from '@/lib/api-utils';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const accessToken = (await cookies()).get('access_token')?.value;
+    let accessToken = (await cookies()).get('access_token')?.value;
+    if (!accessToken) {
+      const authHeader = req.headers.get('authorization') || req.headers.get('Authorization')
+      if (authHeader?.startsWith('Bearer ')) {
+        accessToken = authHeader.slice('Bearer '.length)
+      }
+    }
 
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
@@ -13,7 +19,7 @@ export async function GET() {
     const backendUrl = getBackendUrl();
 
     // Check if user is admin
-    const meResponse = await fetch(`${backendUrl}/api/auth/me`, {
+    const meResponse = await fetch(`${backendUrl}/api/v2/users/me`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -30,8 +36,17 @@ export async function GET() {
       return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
+    // Forward pagination query params if present
+    const { searchParams } = new URL(req.url)
+    const page = searchParams.get('page')
+    const pageSize = searchParams.get('page_size')
+
+    const backendUrlObj = new URL(`${backendUrl}/api/v2/employees/admin/divisions/`)
+    if (page) backendUrlObj.searchParams.set('page', page)
+    if (pageSize) backendUrlObj.searchParams.set('page_size', pageSize)
+
     // Fetch divisions from backend (namespaced admin route)
-    const response = await fetch(`${backendUrl}/api/admin/divisions/`, {
+    const response = await fetch(backendUrlObj.toString(), {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -63,7 +78,7 @@ export async function POST(req: Request) {
     const backendUrl = getBackendUrl();
 
     // Verify admin
-    const meResponse = await fetch(`${backendUrl}/api/auth/me`, {
+    const meResponse = await fetch(`${backendUrl}/api/v2/users/me`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });
@@ -77,7 +92,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const resp = await fetch(`${backendUrl}/api/admin/divisions/`, {
+    const resp = await fetch(`${backendUrl}/api/v2/employees/admin/divisions/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

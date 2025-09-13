@@ -7,8 +7,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 # Reuse legacy serializers/models during migration
-from api.models import GroupPermission, GroupPermissionTemplate
-from api.serializers import (
+from .models import GroupPermission, GroupPermissionTemplate
+from .serializers import (
     GroupSerializer, GroupAdminSerializer, GroupCreateSerializer, GroupUpdateSerializer,
     GroupDetailSerializer, GroupWithPermissionsSerializer,
     GroupPermissionSerializer, GroupPermissionCreateSerializer, GroupPermissionUpdateSerializer,

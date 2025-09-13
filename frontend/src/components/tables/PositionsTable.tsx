@@ -124,7 +124,9 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
   const handleOpenEdit = useCallback(async (id: number) => {
     setEditingId(id)
     setErrorMsg("")
-    const resp = await fetch(`/api/admin/positions/${id}`)
+    const resp = await fetch(`/api/admin/positions/${id}`, {
+      credentials: 'include'
+    })
     const d = await resp.json().catch(() => ({} as any))
     if (!resp.ok) {
       alert(d?.detail || 'Failed to load position')
@@ -137,17 +139,28 @@ export default function PositionsTable({ data }: { data: PositionRow[] }) {
   }, [])
   const handleSave = useCallback(async () => {
     if (!editingId) return
+    
+    // Validate data before sending
+    if (!editName.trim()) {
+      setErrorMsg("Position name cannot be empty")
+      return
+    }
+    
     setSaving(true)
     setErrorMsg("")
     try {
+      const requestData = { 
+        name: editName.trim(),
+        can_approve_overtime_org_wide: Boolean(editCanApproveOrgWide),
+        approval_level: parseInt(editApprovalLevel.toString(), 10)
+      }
+      
+      
       const resp = await fetch(`/api/admin/positions/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: editName,
-          can_approve_overtime_org_wide: editCanApproveOrgWide,
-          approval_level: editApprovalLevel
-        })
+        credentials: 'include',
+        body: JSON.stringify(requestData)
       })
       const data = await resp.json().catch(() => ({} as any))
       if (!resp.ok) throw new Error(data?.detail || 'Failed to update position')

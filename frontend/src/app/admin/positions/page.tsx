@@ -21,16 +21,33 @@ type PaginatedPositions = {
 
 async function getPositions(page: number, pageSize: number): Promise<PaginatedPositions> {
   const token = (await cookies()).get('access_token')?.value
-  const backend = getBackendUrl()
-  const url = new URL(`${backend}/api/admin/positions/`)
+  if (!token) return { count: 0, next: null, previous: null, results: [] }
+  
+  // Use backend URL for server-side calls
+  const backendUrl = getBackendUrl()
+  const url = new URL(`/api/v2/employees/positions/`, backendUrl)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
+  
   const res = await fetch(url.toString(), {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
     cache: 'no-store',
   })
-  if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-  return res.json()
+  
+  if (!res.ok) {
+    console.error(`Failed to fetch positions: ${res.status} ${res.statusText}`)
+    return { count: 0, next: null, previous: null, results: [] }
+  }
+  
+  const data = await res.json()
+  // Handle both array and paginated response
+  if (Array.isArray(data)) {
+    return { count: data.length, next: null, previous: null, results: data }
+  }
+  return data
 }
 
 export default async function AdminPositionsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
