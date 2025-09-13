@@ -10,6 +10,7 @@ export interface ApprovalCapabilities {
 
 export function getApprovalCapabilities(position: Position | null): ApprovalCapabilities {
   if (!position) {
+    console.log('[getApprovalCapabilities] position is null/undefined')
     return {
       overtime: false,
       attendance_correction: false,
@@ -22,13 +23,26 @@ export function getApprovalCapabilities(position: Position | null): ApprovalCapa
   const level = position.approval_level || 0
   const orgWide = position.can_approve_overtime_org_wide || false
 
-  return {
+  // Debug log to see what's in the position object
+  console.log('[getApprovalCapabilities] position:', {
+    name: position.name,
+    approval_level: position.approval_level,
+    can_approve_overtime_org_wide: position.can_approve_overtime_org_wide,
+    computed_level: level,
+    computed_orgWide: orgWide
+  })
+
+  const capabilities = {
     overtime: level > 0,
     attendance_correction: level > 0,
     monthly_summary: level > 0,
     division_level: level >= 1,
     organization_level: level >= 2 && orgWide
   }
+
+  console.log('[getApprovalCapabilities] computed capabilities:', capabilities)
+  
+  return capabilities
 }
 
 export function canApproveOvertime(position: Position | null): boolean {

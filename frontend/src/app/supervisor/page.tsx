@@ -13,8 +13,44 @@ async function getMe() {
   return data
 }
 
+async function getEmployeeMe() {
+  try {
+    // For server-side, we need to use the backend directly with auth token
+    const { cookies } = await import('next/headers')
+    const accessToken = (await cookies()).get('access_token')?.value
+    
+    if (!accessToken) {
+      console.log('[SupervisorPage getEmployeeMe] No access token found')
+      return null
+    }
+
+    // Call backend v2 API directly for server-side
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000'
+    const res = await fetch(`${backendUrl}/api/v2/employees/me`, { 
+      cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!res.ok) {
+      console.log('[SupervisorPage getEmployeeMe] Backend API call failed:', res.status, res.statusText)
+      return null
+    }
+    
+    const data = await res.json()
+    console.log('[SupervisorPage getEmployeeMe] Backend API response:', data)
+    return data
+  } catch (error) {
+    console.log('[SupervisorPage getEmployeeMe] API error:', error)
+    return null
+  }
+}
+
 export default async function SupervisorPage() {
   const me = await getMe()
+  const employee = await getEmployeeMe()
   
   if (!me) {
     return (
@@ -30,8 +66,8 @@ export default async function SupervisorPage() {
     )
   }
 
-  // Check position-based approval level instead of group membership
-  const position = me?.position || null
+  // Prefer employee.me position (has approval_level) over auth.me
+  const position = employee?.position || me?.position || null
   const approvalCapabilities = getApprovalCapabilities(position)
   const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level
 

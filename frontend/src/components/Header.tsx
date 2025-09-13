@@ -19,16 +19,19 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     let cancelled = false;
     async function loadFullname() {
       try {
-        // Use v2 API for employee profile (updated)
-        const employeeResp = await fetch('/api/employee/employees', { cache: 'no-store' });
-        if (employeeResp.ok) {
-          const employeeData = await employeeResp.json().catch(() => ({}));
-          const list = Array.isArray(employeeData) ? employeeData : (employeeData?.results ?? []);
-          const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
-          const name = emp?.fullname?.trim?.();
-          if (!cancelled && name) {
-            setDisplayName(name);
-            return;
+        // Skip employee profile fetch for admin users (admin may not have employee profile)
+        const isAdminRole = role?.toLowerCase?.() === 'admin'
+
+        if (!isAdminRole) {
+          // Use v2 API for current employee profile
+          const employeeResp = await fetch('/api/employee/me', { cache: 'no-store' });
+          if (employeeResp.ok) {
+            const emp = await employeeResp.json().catch(() => ({}));
+            const name = emp?.fullname?.trim?.();
+            if (!cancelled && name) {
+              setDisplayName(name);
+              return;
+            }
           }
         }
 

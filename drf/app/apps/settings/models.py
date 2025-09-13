@@ -50,6 +50,28 @@ class WorkSettings(TimeStampedModel):
         help_text="Minimum extra minutes before overtime starts counting (e.g., 60 = 1 hour buffer)",
     )
 
+    # Attendance time restrictions
+    earliest_check_in_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Enable Earliest Check-in Restriction",
+        help_text="Enable restriction for earliest check-in time"
+    )
+    earliest_check_in_time = models.TimeField(
+        default=time(6, 0),
+        verbose_name="Earliest Check-in Time",
+        help_text="Earliest time employees can check-in (e.g., 06:00)"
+    )
+    latest_check_out_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Enable Latest Check-out Restriction", 
+        help_text="Enable restriction for latest check-out time"
+    )
+    latest_check_out_time = models.TimeField(
+        default=time(22, 0),
+        verbose_name="Latest Check-out Time",
+        help_text="Latest time employees can check-out (e.g., 22:00)"
+    )
+
     class Meta:
         verbose_name = "Work Settings"
         verbose_name_plural = "Work Settings"

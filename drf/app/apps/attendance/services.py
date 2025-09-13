@@ -28,6 +28,14 @@ class AttendanceService:
             # Get current time in user's timezone
             current_time = timezone.now().astimezone(ZoneInfo(timezone_name))
             current_date = current_time.date()
+
+            # Enforce earliest check-in restriction if enabled
+            if self.work_settings and getattr(self.work_settings, 'earliest_check_in_enabled', False):
+                if current_time.time() < self.work_settings.earliest_check_in_time:
+                    return {
+                        'success': False,
+                        'error': f"Check-in tidak diperbolehkan sebelum jam {self.work_settings.earliest_check_in_time.strftime('%H:%M')}"
+                    }
             
             # Check if attendance already exists for today
             attendance, created = Attendance.objects.get_or_create(
@@ -100,6 +108,14 @@ class AttendanceService:
             # Get current time in user's timezone
             current_time = timezone.now().astimezone(ZoneInfo(timezone_name))
             current_date = current_time.date()
+
+            # Enforce latest check-out restriction if enabled
+            if self.work_settings and getattr(self.work_settings, 'latest_check_out_enabled', False):
+                if current_time.time() > self.work_settings.latest_check_out_time:
+                    return {
+                        'success': False,
+                        'error': f"Check-out tidak diperbolehkan setelah jam {self.work_settings.latest_check_out_time.strftime('%H:%M')}"
+                    }
             
             # Get today's attendance
             try:

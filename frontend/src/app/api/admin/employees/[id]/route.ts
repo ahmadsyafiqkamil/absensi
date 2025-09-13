@@ -20,7 +20,9 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
   const { id } = await ctx.params
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/v2/employees/${id}/`, {
+  
+  // Use admin-specific endpoint for employee details
+  const resp = await fetch(`${chk.backendBase}/api/v2/employees/admin/employees/${id}/`, {
     headers: { Authorization: `Bearer ${chk.accessToken}` },
     cache: 'no-store',
   })
@@ -33,7 +35,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
   const body = await req.json().catch(() => ({}))
-  const resp = await fetch(`${chk.backendBase}/api/v2/employees/${id}/`, {
+  
+  // Use admin-specific endpoint for employee updates
+  const resp = await fetch(`${chk.backendBase}/api/v2/employees/admin/employees/${id}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
     body: JSON.stringify(body),
@@ -46,7 +50,9 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/v2/employees/${id}/`, {
+  
+  // Use admin-specific endpoint for employee deletion
+  const resp = await fetch(`${chk.backendBase}/api/v2/employees/admin/employees/${id}/`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${chk.accessToken}` },
   })

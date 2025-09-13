@@ -9,12 +9,58 @@ async function getMe() {
   return data
 }
 
+async function getEmployeeMe() {
+  try {
+    // For server-side, we need to use the backend directly with auth token
+    const { cookies } = await import('next/headers')
+    const accessToken = (await cookies()).get('access_token')?.value
+    
+    if (!accessToken) {
+      console.log('[getEmployeeMe] No access token found')
+      return null
+    }
+
+    // Call backend v2 API directly for server-side
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000'
+    const res = await fetch(`${backendUrl}/api/v2/employees/me`, { 
+      cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!res.ok) {
+      console.log('[getEmployeeMe] Backend API call failed:', res.status, res.statusText)
+      return null
+    }
+    
+    const data = await res.json()
+    console.log('[getEmployeeMe] Backend API response:', data)
+    return data
+  } catch (error) {
+    console.log('[getEmployeeMe] API error:', error)
+    return null
+  }
+}
+
 export default async function Home() {
   const me = await getMe()
+  const employee = await getEmployeeMe()
   
   // If user is logged in, redirect to appropriate dashboard
   if (me) {
-    return <RoleBasedRedirect user={me} />
+    // Merge employee position data into user object for RoleBasedRedirect
+    const userWithPosition = {
+      ...me,
+      position: employee?.position || me?.position || null
+    }
+    console.log('[Home] merged user data:', {
+      username: userWithPosition.username,
+      groups: userWithPosition.groups,
+      position: userWithPosition.position
+    })
+    return <RoleBasedRedirect user={userWithPosition} />
   }
   
   const groups: string[] = me?.groups || []

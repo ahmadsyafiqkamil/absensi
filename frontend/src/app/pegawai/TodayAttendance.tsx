@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 type Attendance = {
@@ -73,6 +73,10 @@ export default function TodayAttendance() {
       const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
       const [currentDate, setCurrentDate] = useState<string>('')
       const [overtimeData, setOvertimeData] = useState<any>(null)
+      
+      // Ref to track if midnight reset is already scheduled
+      const midnightResetScheduled = useRef<boolean>(false)
+      const midnightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   function toISODate(d: Date, timezone?: string) {
     if (timezone) {
@@ -181,46 +185,58 @@ export default function TodayAttendance() {
     return () => clearInterval(tick)
   }, [currentDate, fetchTodayData, workSettings?.timezone])
 
-  // Calculate time until next midnight in the work timezone
+  // Schedule reset at midnight in the work timezone (only once per timezone change)
   useEffect(() => {
     if (!workSettings?.timezone) return
+    
+    // Clear any existing timeout first
+    if (midnightTimeoutRef.current) {
+      clearTimeout(midnightTimeoutRef.current)
+      midnightTimeoutRef.current = null
+    }
+    
+    // Reset the scheduled flag
+    midnightResetScheduled.current = false
     
     const calculateNextMidnight = () => {
       const nowDate = new Date()
       const tz = workSettings.timezone || 'Asia/Dubai'
       
-      // Get current time in the work timezone
-      const tzDate = new Date(nowDate.toLocaleString("en-US", {timeZone: tz}))
+      // Get current time in the target timezone
+      const nowInTz = new Date(nowDate.toLocaleString("en-US", {timeZone: tz}))
       
-      // Calculate next midnight in that timezone
-      const nextMidnight = new Date(tzDate)
-      nextMidnight.setHours(24, 0, 0, 0)
+      // Calculate next midnight in the target timezone
+      const nextMidnight = new Date(nowInTz)
+      nextMidnight.setHours(0, 0, 0, 0) // Set to midnight
+      nextMidnight.setDate(nextMidnight.getDate() + 1) // Next day
       
-      // Convert back to local time for setTimeout
+      // Convert the midnight time back to local time for setTimeout
       const localMidnight = new Date(nextMidnight.toLocaleString("en-US", {timeZone: tz}))
       const ms = localMidnight.getTime() - nowDate.getTime()
       
       return Math.max(ms, 1000) // Ensure at least 1 second
     }
 
-    const scheduleNextReset = () => {
-      const ms = calculateNextMidnight()
-      const t = setTimeout(() => {
-        console.log('Scheduled reset triggered')
-        const newDate = toISODate(new Date(), workSettings?.timezone || 'Asia/Dubai')
-        setCurrentDate(newDate)
-        setData(null)
-        setIsHoliday(false)
-        fetchTodayData(newDate)
-        scheduleNextReset() // Schedule next reset
-      }, ms)
-      
-      return () => clearTimeout(t)
+    const ms = calculateNextMidnight()
+    console.log(`Scheduling reset in ${Math.round(ms / 1000 / 60)} minutes for timezone ${workSettings.timezone}`)
+    
+    midnightResetScheduled.current = true
+    midnightTimeoutRef.current = setTimeout(() => {
+      console.log('Scheduled reset triggered at midnight')
+      midnightResetScheduled.current = false
+      // Force a page reload to get fresh data for the new day
+      window.location.reload()
+    }, ms)
+    
+    return () => {
+      console.log('Clearing midnight reset timeout')
+      if (midnightTimeoutRef.current) {
+        clearTimeout(midnightTimeoutRef.current)
+        midnightTimeoutRef.current = null
+      }
+      midnightResetScheduled.current = false
     }
-
-    const cleanup = scheduleNextReset()
-    return cleanup
-  }, [workSettings?.timezone, fetchTodayData])
+  }, [workSettings?.timezone])
 
   const workHours = useMemo(() => {
     if (!data || !data.total_work_minutes) return '-'

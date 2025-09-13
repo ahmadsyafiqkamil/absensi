@@ -31,13 +31,41 @@ export async function PUT(req: Request) {
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
   const body = await req.json().catch(() => ({}))
-  const id = body?.id
-  if (!id) return NextResponse.json({ detail: 'id is required' }, { status: 400 })
-  const resp = await fetch(`${chk.backendBase}/api/v2/settings/work/${id}/`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
-    body: JSON.stringify(body),
-  })
+  
+  // Cek apakah WorkSettings sudah ada
+  let settingsExists = false
+  let id = body?.id
+  
+  try {
+    const getResp = await fetch(`${chk.backendBase}/api/v2/settings/work/`, {
+      headers: { Authorization: `Bearer ${chk.accessToken}` },
+    })
+    if (getResp.ok) {
+      const settings = await getResp.json()
+      settingsExists = true
+      id = settings.id
+    }
+  } catch (e) {
+    console.error('Error checking settings:', e)
+  }
+  
+  let resp
+  if (settingsExists && id) {
+    // Update existing settings
+    resp = await fetch(`${chk.backendBase}/api/v2/settings/work/${id}/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
+      body: JSON.stringify(body),
+    })
+  } else {
+    // Create new settings
+    resp = await fetch(`${chk.backendBase}/api/v2/settings/work/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
+      body: JSON.stringify(body),
+    })
+  }
+  
   const data = await resp.json().catch(() => ({}))
   return NextResponse.json(data, { status: resp.status })
 }

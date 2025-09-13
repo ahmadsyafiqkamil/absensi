@@ -115,10 +115,16 @@ export default function SettingsClient() {
     setSaving(true)
     setError(null)
     try {
+      // Pastikan settings memiliki ID
+      const settingsToSave = { ...settings }
+      if (!settingsToSave.id && settings.id) {
+        settingsToSave.id = settings.id
+      }
+      
       const resp = await fetch('/api/admin/settings/work', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(settingsToSave),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error((data as { detail?: string })?.detail || 'Gagal menyimpan settings')
