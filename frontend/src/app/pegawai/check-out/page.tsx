@@ -24,7 +24,7 @@ export default function CheckOutPage() {
       setLoading(true)
       setError(null)
       try {
-        const r = await fetch('/api/attendance/precheck', { method: 'POST' })
+        const r = await fetch('/api/v2/attendance/precheck', { method: 'GET' })
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d?.detail || 'Gagal precheck')
         setPrecheck(d)
@@ -85,7 +85,7 @@ export default function CheckOutPage() {
     setSubmitting(true)
     setError(null)
     try {
-      const resp = await fetch('/api/attendance/check-out', {
+      const resp = await fetch('/api/v2/attendance/check-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

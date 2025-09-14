@@ -93,9 +93,9 @@ export default function TodayAttendance() {
     
     try {
       const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
-        fetch(`/api/attendance/me${q}&page=1&page_size=1`),
-        fetch(`/api/attendance/holidays/${q}`),
-        fetch('/api/employee/settings/work'),
+        fetch(`/api/v2/attendance/attendance${q}&page=1&page_size=1`),
+        fetch(`/api/v2/settings/holidays/${q}`),
+        fetch('/api/v2/settings/work'),
         fetch(`/api/overtime/report?start_date=${targetDate}&end_date=${targetDate}`),
       ])
       

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import CalendarClient from '@/app/admin/calendar/CalendarClient'
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { locationService } from '@/lib/location'
 
 type WorkSettings = {
   id: number
@@ -159,28 +160,54 @@ export default function SettingsClient() {
     setError(null)
     setLocating(true)
     try {
-      await new Promise<void>((resolve, reject) => {
-        if (!('geolocation' in navigator)) {
-          reject(new Error('Geolocation tidak didukung browser'))
-          return
-        }
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const { latitude, longitude } = pos.coords
-            setSettings({
-              ...settings,
-              office_latitude: Number(latitude.toFixed(7)),
-              office_longitude: Number(longitude.toFixed(7)),
-              office_radius_meters: settings.office_radius_meters ?? 100,
-            })
-            resolve()
-          },
-          (err) => reject(err),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        )
+      const loc = await locationService.getCurrentLocation({
+        enableHighAccuracy: false,
+        timeout: 60000,
+        maximumAge: 30000,
       })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal mengambil lokasi')
+      setSettings({
+        ...settings,
+        office_latitude: Number(loc.lat.toFixed(7)),
+        office_longitude: Number(loc.lng.toFixed(7)),
+        office_radius_meters: settings.office_radius_meters ?? 100,
+      })
+    } catch (e: any) {
+      // Fallback: try watchPosition briefly if position is unavailable (code 2)
+      const code = typeof e?.code === 'number' ? e.code : undefined
+      if (code === 2 && 'geolocation' in navigator) {
+        try {
+          const loc = await new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+            const watchId = navigator.geolocation.watchPosition(
+              (pos) => {
+                navigator.geolocation.clearWatch(watchId)
+                resolve({
+                  lat: Number(pos.coords.latitude.toFixed(6)),
+                  lng: Number(pos.coords.longitude.toFixed(6)),
+                })
+              },
+              (err) => {
+                navigator.geolocation.clearWatch(watchId)
+                reject(err)
+              },
+              { enableHighAccuracy: true, maximumAge: 0 }
+            )
+            setTimeout(() => {
+              navigator.geolocation.clearWatch(watchId)
+              reject(new Error('Gagal mengambil lokasi (timeout)'))
+            }, 20000)
+          })
+          setSettings({
+            ...settings,
+            office_latitude: Number(loc.lat.toFixed(7)),
+            office_longitude: Number(loc.lng.toFixed(7)),
+            office_radius_meters: settings.office_radius_meters ?? 100,
+          })
+          return
+        } catch (_) {
+          // fall through to show original error
+        }
+      }
+      setError(e?.message || 'Gagal mengambil lokasi')
     } finally {
       setLocating(false)
     }

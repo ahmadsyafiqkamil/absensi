@@ -82,7 +82,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
     setLoading(true)
     setError(null)
     try {
-      const r = await fetch('/api/attendance/precheck', { method: 'POST' })
+      const r = await fetch('/api/v2/attendance/precheck', { method: 'GET' })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.detail || 'Gagal precheck')
       setPrecheck(d)
@@ -112,11 +112,11 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
     setSubmitting(true)
     setError(null)
     try {
-      const path = kind === 'in' ? '/api/attendance/check-in' : '/api/attendance/check-out'
+      const path = kind === 'in' ? '/api/v2/attendance/check-in' : '/api/v2/attendance/check-out'
       const resp = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy_m: loc.acc, employee_note: note || undefined }),
+        body: JSON.stringify({ latitude: loc.lat, longitude: loc.lng, accuracy: loc.acc, note: note || undefined }),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data?.detail || 'Gagal submit')
@@ -144,7 +144,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       <Dialog.Overlay className="fixed inset-0 bg-black/40" />
       <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-lg w-[520px] max-w-[95vw] p-4">
         <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
-        <Dialog.Description className="text-sm text-gray-500 mb-3">Tanggal: {precheck?.date_local ?? '-'}</Dialog.Description>
+        <Dialog.Description className="text-sm text-gray-500 mb-3">Tanggal: {precheck?.date_local ?? precheck?.date ?? '-'}</Dialog.Description>
         {loading ? (
           <div className="text-gray-600">Memuat...</div>
         ) : (

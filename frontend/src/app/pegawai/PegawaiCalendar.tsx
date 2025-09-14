@@ -38,8 +38,8 @@ export default function PegawaiCalendar() {
       try {
         const q = `?start=${monthRange.start}&end=${monthRange.end}`
         const [attResp, holResp] = await Promise.all([
-          fetch(`/api/attendance/me/${q}`, { cache: 'no-store' }),
-          fetch(`/api/attendance/holidays/${q}`, { cache: 'no-store' }),
+          fetch(`/api/v2/attendance/attendance/${q}`, { cache: 'no-store' }),
+          fetch(`/api/v2/settings/holidays/${q}`, { cache: 'no-store' }),
         ])
         const attData: AttendanceResponse | any = await attResp.json().catch(() => ({ results: [] }))
         const holData: { results?: Holiday[] } | any = await holResp.json().catch(() => ({ results: [] }))
