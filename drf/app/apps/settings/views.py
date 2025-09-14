@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -11,7 +11,7 @@ from .serializers import (
 from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee, IsAdminOrReadOnly
 
 
-class WorkSettingsViewSet(viewsets.ViewSet):
+class WorkSettingsViewSet(viewsets.GenericViewSet):
     """Work settings ViewSet (singleton pattern)"""
     permission_classes = [permissions.IsAuthenticated]
     

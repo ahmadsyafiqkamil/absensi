@@ -6,7 +6,7 @@ async function ensureAdmin() {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return { ok: false, status: 401 as const }
   const backendBase = getBackendUrl()
-  const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+  const meResponse = await fetch(`${backendBase}/api/v2/auth/me/`, {
     headers: { 'Authorization': `Bearer ${accessToken}` },
     cache: 'no-store',
   })
@@ -20,7 +20,7 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/settings/holidays/${id}/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/holidays/${id}/`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${chk.accessToken}` },
   })

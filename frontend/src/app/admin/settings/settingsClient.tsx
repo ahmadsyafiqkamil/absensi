@@ -64,13 +64,43 @@ export default function SettingsClient() {
           fetch('/api/admin/settings/work').then(r => r.json()),
           fetch(`/api/admin/settings/holidays?page=${1}&page_size=${10}`).then(r => r.json()),
         ])
+        
+        // Check if work settings exist, if not create default settings
+        let settingsData = s
+        if (s.error || !s.id) {
+          // No work settings exist, create default settings
+          settingsData = {
+            id: null,
+            timezone: 'Asia/Dubai',
+            start_time: '09:00:00',
+            end_time: '17:00:00',
+            required_minutes: 480,
+            grace_minutes: 0,
+            workdays: [0, 1, 2, 3, 4],
+            friday_start_time: '09:00:00',
+            friday_end_time: '13:00:00',
+            friday_required_minutes: 240,
+            friday_grace_minutes: 0,
+            office_latitude: null,
+            office_longitude: null,
+            office_radius_meters: 100,
+            overtime_rate_workday: '0.50',
+            overtime_rate_holiday: '0.75',
+            overtime_threshold_minutes: 60,
+            earliest_check_in_enabled: false,
+            earliest_check_in_time: '06:00:00',
+            latest_check_out_enabled: false,
+            latest_check_out_time: '22:00:00'
+          }
+        }
+        
         // Set default values for new fields if they don't exist
         const settingsWithDefaults = {
-          ...s,
-          earliest_check_in_enabled: s.earliest_check_in_enabled ?? false,
-          earliest_check_in_time: s.earliest_check_in_time ?? '06:00',
-          latest_check_out_enabled: s.latest_check_out_enabled ?? false,
-          latest_check_out_time: s.latest_check_out_time ?? '22:00'
+          ...settingsData,
+          earliest_check_in_enabled: settingsData.earliest_check_in_enabled ?? false,
+          earliest_check_in_time: settingsData.earliest_check_in_time ?? '06:00',
+          latest_check_out_enabled: settingsData.latest_check_out_enabled ?? false,
+          latest_check_out_time: settingsData.latest_check_out_time ?? '22:00'
         }
         setSettings(settingsWithDefaults)
         setHolidays(h?.results ?? [])

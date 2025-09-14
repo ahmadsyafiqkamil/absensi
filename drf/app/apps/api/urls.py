@@ -112,12 +112,13 @@ urlpatterns = [
     
     # New modular app endpoints
             path('v2/', include([
+            path('auth/', include('apps.auth.urls')),
+            path('users/', include('apps.users.urls')),
             path('employees/', include('apps.employees.urls')),
             path('settings/', include('apps.settings.urls')),
             path('attendance/', include('apps.attendance.urls')),
             path('corrections/', include('apps.corrections.urls')),
             path('overtime/', include('apps.overtime.urls')),
             path('reporting/', include('apps.reporting.urls')),
-            # Add other apps as they are migrated
         ])),
 ]

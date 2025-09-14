@@ -13,7 +13,7 @@ export async function GET() {
     const backendUrl = getBackendUrl();
 
     // Check if user is admin
-    const meResponse = await fetch(`${backendUrl}/api/auth/me`, {
+    const meResponse = await fetch(`${backendUrl}/api/v2/auth/me/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -31,7 +31,7 @@ export async function GET() {
     }
 
     // Fetch divisions from backend (namespaced admin route)
-    const response = await fetch(`${backendUrl}/api/admin/divisions/`, {
+    const response = await fetch(`${backendUrl}/api/v2/employees/admin/divisions/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     const backendUrl = getBackendUrl();
 
     // Verify admin
-    const meResponse = await fetch(`${backendUrl}/api/auth/me`, {
+    const meResponse = await fetch(`${backendUrl}/api/v2/auth/me/`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const resp = await fetch(`${backendUrl}/api/admin/divisions/`, {
+    const resp = await fetch(`${backendUrl}/api/v2/employees/admin/divisions/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

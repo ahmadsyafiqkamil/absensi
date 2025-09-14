@@ -33,7 +33,7 @@ export const API_VERSIONS = {
 
 export type ApiVersion = keyof typeof API_VERSIONS
 
-function joinUrl(path: string, version: ApiVersion = 'V2') {
+function joinUrl(path: string, version: ApiVersion = 'LEGACY') {
   const basePath = API_VERSIONS[version]
   const backendUrl = getBackendBaseUrl()
   return `${backendUrl}${basePath}${path.startsWith('/') ? path : `/${path}`}`
@@ -43,7 +43,7 @@ function joinUrl(path: string, version: ApiVersion = 'V2') {
 export async function backendFetch(
   path: string,
   init?: RequestInit,
-  version: ApiVersion = 'V2'
+  version: ApiVersion = 'LEGACY'
 ): Promise<Response> {
   const url = joinUrl(path, version);
   const maxRetries = 3;
@@ -87,7 +87,7 @@ export async function backendFetch(
 // Legacy API functions (for backward compatibility)
 export async function loginRequest(username: string, password: string) {
   const backendUrl = getBackendBaseUrl()
-  const url = `${backendUrl}/api/v2/auth/login/`
+  const url = `${backendUrl}/api/auth/login`
   
   console.log('Login request to:', url);
   
@@ -111,9 +111,9 @@ export async function loginRequest(username: string, password: string) {
 }
 
 export async function meRequest(accessToken: string) {
-  const resp = await backendFetch('/auth/me/', {
+  const resp = await backendFetch('/auth/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
-  }, 'V2')
+  }, 'LEGACY')
   const data = await resp.json().catch(() => ({}))
   return { resp, data }
 }
@@ -139,8 +139,8 @@ export function getV2Url(path: string) {
 // Health check function to verify backend connectivity
 export async function checkBackendHealth(): Promise<boolean> {
   try {
-    // Use the V2 health endpoint
-    const response = await fetch(`${getBackendBaseUrl()}/api/v2/auth/health/`, {
+    // Use the main API endpoint as health check
+    const response = await fetch(`${getBackendBaseUrl()}/api/`, {
       method: 'GET',
       cache: 'no-store',
       signal: AbortSignal.timeout(5000), // 5 second timeout
@@ -167,7 +167,7 @@ export async function proxyToBackend(
     method = 'GET',
     body,
     queryParams,
-    version = 'V2'
+    version = 'LEGACY'
   } = options;
 
   try {

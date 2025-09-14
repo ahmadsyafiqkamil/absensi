@@ -19,23 +19,30 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
     let cancelled = false;
     async function loadFullname() {
       try {
-        // Use legacy API directly (more reliable)
-        const legacyResp = await fetch('/api/employee/employees', { cache: 'no-store' });
-        if (legacyResp.ok) {
-          const legacyData = await legacyResp.json().catch(() => ({}));
-          const list = Array.isArray(legacyData) ? legacyData : (legacyData?.results ?? []);
-          const emp = Array.isArray(list) && list.length > 0 ? list[0] : null;
-          const name = emp?.fullname?.trim?.();
+        // First try to get current user info from auth/me (V2)
+        const authResp = await fetch('/api/v2/auth/me', { cache: 'no-store' });
+        if (authResp.ok) {
+          const authData = await authResp.json().catch(() => ({}));
+          
+          // Check if employee info is included in auth response
+          const name = authData?.employee?.fullname?.trim?.();
           if (!cancelled && name) {
             setDisplayName(name);
             return;
           }
+          
+          // Fallback to username from auth data
+          const fallbackName = authData?.username || username;
+          if (!cancelled && fallbackName) {
+            setDisplayName(fallbackName);
+            return;
+          }
         }
 
-        // If legacy API fails, try auth/me as fallback
-        const authResp = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (authResp.ok) {
-          const authData = await authResp.json().catch(() => ({}));
+        // If V2 API fails, try legacy auth/me as fallback
+        const legacyAuthResp = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (legacyAuthResp.ok) {
+          const authData = await legacyAuthResp.json().catch(() => ({}));
           const name = authData?.position?.name || username;
           if (!cancelled && name) {
             setDisplayName(name);
