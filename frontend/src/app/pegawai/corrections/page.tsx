@@ -140,7 +140,7 @@ export default function PegawaiCorrectionsPage() {
         params.append('status', filters.status);
       }
       
-      const response = await authFetch(`/api/attendance/corrections?${params.toString()}`);
+      const response = await authFetch(`/api/v2/corrections/correction-records?${params.toString()}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -284,7 +284,7 @@ export default function PegawaiCorrectionsPage() {
         formData.append('proposed_check_out_time', correctionForm.proposed_check_out_time);
       }
 
-      const response = await authFetch('/api/attendance/corrections/request', {
+      const response = await authFetch('/api/v2/corrections/request', {
         method: 'POST',
         body: formData
       });
@@ -328,7 +328,7 @@ export default function PegawaiCorrectionsPage() {
         formData.append('proposed_check_out_time', manualCorrectionForm.proposed_check_out_time);
       }
 
-      const response = await authFetch('/api/attendance/corrections/request', {
+      const response = await authFetch('/api/v2/corrections/request', {
         method: 'POST',
         body: formData
       });

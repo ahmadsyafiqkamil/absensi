@@ -37,7 +37,15 @@ class AttendanceCorrection(TimeStampedModel):
         Attendance,
         on_delete=models.CASCADE,
         related_name="corrections",
-        verbose_name="Original Attendance Record"
+        verbose_name="Original Attendance Record",
+        null=True,
+        blank=True
+    )
+    date_local = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date for Manual Correction",
+        help_text="Required for manual corrections when no attendance record exists"
     )
     
     # Correction details
@@ -112,7 +120,8 @@ class AttendanceCorrection(TimeStampedModel):
         verbose_name_plural = "Attendance Corrections"
     
     def __str__(self) -> str:
-        return f"Correction {self.id} - {self.user.username} - {self.attendance.date_local}"
+        date_str = self.attendance.date_local if self.attendance else self.date_local
+        return f"Correction {self.id} - {self.user.username} - {date_str}"
     
     def save(self, *args, **kwargs):
         """Auto-set employee if not provided"""

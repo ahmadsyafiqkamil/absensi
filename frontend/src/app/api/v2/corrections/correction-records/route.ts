@@ -10,8 +10,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get query parameters
+    const { searchParams } = new URL(request.url)
+    const params = new URLSearchParams()
+    
+    // Forward all query parameters
+    for (const [key, value] of searchParams.entries()) {
+      params.append(key, value)
+    }
+
     const backend = getBackendUrl()
-    const url = `${backend}/api/v2/corrections/my-corrections/`
+    const url = `${backend}/api/v2/corrections/corrections/correction_records/?${params.toString()}`
 
     const resp = await fetch(url, {
       method: 'GET',
@@ -26,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data, { status: resp.status })
   } catch (error) {
-    console.error('Error proxying V2 my corrections API:', error)
+    console.error('Error proxying V2 correction records API:', error)
     return NextResponse.json({ detail: 'Internal server error' }, { status: 500 })
   }
 }
