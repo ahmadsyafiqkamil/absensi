@@ -1,37 +1,31 @@
-import { NextResponse } from 'next/server'
-import { getBackendUrl } from '@/lib/api-utils'
+import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
-export async function POST() {
+export async function GET(request: NextRequest) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
-    
+
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = getBackendUrl()
-    const resp = await fetch(`${backend}/api/v2/attendance/employee/attendance/precheck/`, {
-      method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const url = `${backend}/api/v2/attendance/precheck/`
+
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
       },
+      cache: 'no-store'
     })
 
-    if (!resp.ok) {
-      const errorData = await resp.json().catch(() => ({}))
-      return NextResponse.json(errorData, { status: resp.status })
-    }
+    const data = await resp.json().catch(() => ({}))
 
-    const data = await resp.json()
-    return NextResponse.json(data)
-    
+    return NextResponse.json(data, { status: resp.status })
   } catch (error) {
-    console.error('Error in V2 attendance precheck API:', error)
-    return NextResponse.json(
-      { detail: 'Internal server error' }, 
-      { status: 500 }
-    )
+    console.error('Error proxying V2 attendance precheck API:', error)
+    return NextResponse.json({ detail: 'Internal server error' }, { status: 500 })
   }
 }

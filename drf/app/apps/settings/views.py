@@ -11,7 +11,7 @@ from .serializers import (
 from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee, IsAdminOrReadOnly
 
 
-class WorkSettingsViewSet(viewsets.GenericViewSet):
+ class WorkSettingsViewSet(viewsets.GenericViewSet):
     """Work settings ViewSet (singleton pattern)"""
     permission_classes = [permissions.IsAuthenticated]
     
