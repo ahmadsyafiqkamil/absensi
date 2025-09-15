@@ -144,7 +144,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       <Dialog.Overlay className="fixed inset-0 bg-black/40" />
       <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-lg w-[520px] max-w-[95vw] p-4">
         <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
-        <Dialog.Description className="text-sm text-gray-500 mb-3">Tanggal: {precheck?.date_local ?? precheck?.date ?? '-'}</Dialog.Description>
+        <Dialog.Description className="text-sm text-gray-500 mb-3">Tanggal: {precheck?.date_local ?? '-'}</Dialog.Description>
         {loading ? (
           <div className="text-gray-600">Memuat...</div>
         ) : (
