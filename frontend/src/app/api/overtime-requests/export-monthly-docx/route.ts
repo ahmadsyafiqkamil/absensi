@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getBackendUrl } from '@/lib/api-utils'
 import { cookies } from 'next/headers'
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
     
@@ -14,8 +11,9 @@ export async function GET(
     }
 
     const backend = getBackendUrl()
-    const { id } = await params
-    const url = `${backend}/api/v2/overtime/overtime/${id}/export_pdf/`
+    const { searchParams } = new URL(request.url)
+    const queryString = searchParams.toString()
+    const url = `${backend}/api/overtime-requests/export_monthly_docx/?${queryString}`
     
     const resp = await fetch(url, {
       method: 'GET',
@@ -30,12 +28,12 @@ export async function GET(
       return NextResponse.json(errorData, { status: resp.status })
     }
 
-    // Get the PDF content
-    const pdfBuffer = await resp.arrayBuffer()
+    // Get the DOCX content
+    const docxBuffer = await resp.arrayBuffer()
     
     // Get filename from response headers if available
     const contentDisposition = resp.headers.get('content-disposition')
-    let filename = `Surat_Perintah_Lembur_${id}.pdf`
+    let filename = 'laporan-overtime-bulanan.docx'
     
     if (contentDisposition) {
       const filenameMatch = contentDisposition.match(/filename="([^"]+)"/)
@@ -44,17 +42,17 @@ export async function GET(
       }
     }
     
-    // Return PDF with proper headers
-    return new NextResponse(pdfBuffer, {
+    // Return DOCX with proper headers
+    return new NextResponse(docxBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-cache'
       }
     })
   } catch (error) {
-    console.error('Error in overtime PDF export API:', error)
+    console.error('Error in overtime monthly DOCX export API:', error)
     return NextResponse.json(
       { detail: 'Internal server error' }, 
       { status: 500 }

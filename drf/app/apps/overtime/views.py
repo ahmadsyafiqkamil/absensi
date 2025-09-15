@@ -18,6 +18,11 @@ from .serializers import (
 )
 from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee
 from .services import OvertimeService
+from django.http import HttpResponse
+from django.conf import settings
+import os
+import tempfile
+import requests
 
 
 # Overtime Request Views
@@ -99,6 +104,266 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         """Auto-set user when creating"""
         serializer.save(user=self.request.user)
 
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Download approved overtime request as DOCX (v2)"""
+        overtime_request = self.get_object()
+
+        if overtime_request.status != 'approved':
+            return Response(
+                {"detail": "Hanya overtime yang sudah disetujui yang dapat didownload"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate DOCX on-the-fly using template when available
+        try:
+            docx_bytes, filename = self._generate_docx(overtime_request)
+            response = HttpResponse(
+                docx_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal generate dokumen: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=['get'])
+    def export_pdf(self, request, pk=None):
+        """Export approved overtime request to PDF using converter service (v2)"""
+        overtime_request = self.get_object()
+
+        if overtime_request.status != 'approved':
+            return Response(
+                {"detail": "Overtime request must be approved to export PDF."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # 1) Generate a temporary DOCX
+            docx_bytes, base_filename = self._generate_docx(overtime_request)
+
+            with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+                tmp.write(docx_bytes)
+                tmp_path = tmp.name
+
+            try:
+                # 2) Convert via converter service
+                with open(tmp_path, 'rb') as f:
+                    files = {
+                        'file': (
+                            'document.docx',
+                            f,
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        )
+                    }
+                    data = {'method': 'file'}
+                    converter_url = 'http://docx_converter:5000/convert'
+                    r = requests.post(converter_url, files=files, data=data, timeout=60)
+                    if r.status_code != 200:
+                        return Response(
+                            {"detail": f"DOCX converter error: {r.status_code}"},
+                            status=status.HTTP_502_BAD_GATEWAY,
+                        )
+
+                    pdf_content = r.content
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+            # 3) Return PDF
+            pdf_filename = base_filename.replace('.docx', '.pdf')
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{pdf_filename}"'
+            return response
+        except Exception as e:
+            return Response(
+                {"detail": f"Gagal export PDF: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def _get_template_path(self):
+        """Return best template path for overtime document or None."""
+        template_dir = os.path.join(settings.BASE_DIR, 'template')
+        if not os.path.isdir(template_dir):
+            return None
+
+        priority_names = [
+            'template_SURAT_PERINTAH_KERJA_LEMBUR.docx',
+            'template_overtime_clean.docx',
+            'template_overtime_working.docx',
+            'template_overtime_simple.docx',
+        ]
+
+        # Priority match
+        for name in priority_names:
+            path = os.path.join(template_dir, name)
+            if os.path.exists(path):
+                return path
+
+        # Fallback to any latest .docx
+        docx_files = [
+            os.path.join(template_dir, f)
+            for f in os.listdir(template_dir)
+            if f.endswith('.docx') and not f.startswith('~$')
+        ]
+        if not docx_files:
+            return None
+        docx_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return docx_files[0]
+
+    def _generate_docx(self, overtime_request):
+        """Generate DOCX bytes for the overtime_request. Returns (bytes, filename)."""
+        try:
+            from docx import Document
+        except Exception:
+            raise RuntimeError('python-docx is not installed')
+
+        template_path = self._get_template_path()
+        if template_path and os.path.exists(template_path):
+            doc = Document(template_path)
+        else:
+            # Minimal fallback document
+            doc = Document()
+            doc.add_heading('Surat Perintah Kerja Lembur', level=1)
+
+        # Build replacements
+        employee = overtime_request.employee
+        employee_name = None
+        if employee:
+            # Prefer explicit display name
+            try:
+                employee_name = employee.display_name
+            except Exception:
+                employee_name = getattr(employee, 'fullname', None)
+        if not employee_name:
+            if employee and getattr(employee, 'user', None):
+                employee_name = employee.user.get_full_name() or employee.user.username
+            else:
+                employee_name = '-'
+
+        employee_nip = getattr(employee, 'nip', '-') if employee else '-'
+        nip_18 = employee_nip if employee_nip and len(employee_nip) >= 18 else employee_nip
+        if nip_18 and len(nip_18) < 18:
+            nip_18 = nip_18 + ('0' * (18 - len(nip_18)))
+        nip_9 = employee_nip[:9] if employee_nip else '-'
+
+        division_name = employee.get_division_name() if employee else '-'
+        position_name = employee.get_position_name() if employee else '-'
+
+        current_dt = timezone.now()
+        tahun = current_dt.strftime('%Y')
+        bulan = current_dt.strftime('%B')
+        hari = current_dt.strftime('%d')
+        tanggal_doc = current_dt.strftime('%d %B %Y')
+
+        tanggal_lembur = overtime_request.date.strftime('%d %B %Y') if overtime_request.date else '-'
+        jam_lembur = f"{overtime_request.total_hours} jam"
+        deskripsi = overtime_request.work_description
+        jumlah = f"{overtime_request.total_amount or 0}"
+
+        # Approver info
+        def _approver_name(user):
+            if not user:
+                return '-'
+            try:
+                emp = getattr(user, 'employee_profile', None)
+                if emp and getattr(emp, 'fullname', None):
+                    return emp.fullname
+            except Exception:
+                pass
+            return user.get_full_name() or user.username
+
+        def _approver_nip(user):
+            try:
+                emp = getattr(user, 'employee_profile', None)
+                return getattr(emp, 'nip', '-') if emp else '-'
+            except Exception:
+                return '-'
+
+        lvl1_name = _approver_name(getattr(overtime_request, 'level1_approved_by', None))
+        lvl1_nip = _approver_nip(getattr(overtime_request, 'level1_approved_by', None))
+        lvl1_at = getattr(overtime_request, 'level1_approved_at', None)
+        lvl1_date = lvl1_at.strftime('%d %B %Y %H:%M') if lvl1_at else '-'
+
+        final_name = _approver_name(getattr(overtime_request, 'final_approved_by', None))
+        final_nip = _approver_nip(getattr(overtime_request, 'final_approved_by', None))
+        final_at = getattr(overtime_request, 'final_approved_at', None)
+        final_date = final_at.strftime('%d %B %Y %H:%M') if final_at else '-'
+
+        nomor_dok = f"{overtime_request.id}/SPKL/KJRI-DXB/{tahun}"
+
+        replacements = {
+            # Document info
+            '{{NOMOR_DOKUMEN}}': nomor_dok,
+            '{{TANGGAL_DOKUMEN}}': tanggal_doc,
+            '{{TAHUN}}': tahun,
+            '{{BULAN}}': bulan,
+            '{{HARI}}': hari,
+
+            # Employee info
+            '{{NAMA_PEGAWAI}}': employee_name,
+            '{{NIP_PEGAWAI}}': employee_nip or '-',
+            '{{NIP}}': employee_nip or '-',
+            '{{NIP_LENGKAP}}': nip_18 or '-',
+            '{{NIP_18_DIGIT}}': nip_18 or '-',
+            '{{NIP_9_DIGIT}}': nip_9 or '-',
+            '{{JABATAN_PEGAWAI}}': position_name,
+            '{{DIVISI_PEGAWAI}}': division_name,
+
+            # Overtime details
+            '{{TANGGAL_LEMBUR}}': tanggal_lembur,
+            '{{JAM_LEMBUR}}': jam_lembur,
+            '{{DESKRIPSI_PEKERJAAN}}': deskripsi,
+            '{{JUMLAH_GAJI_LEMBUR}}': jumlah,
+
+            # Approval info
+            '{{LEVEL1_APPROVER}}': lvl1_name,
+            '{{LEVEL1_APPROVER_NIP}}': lvl1_nip,
+            '{{LEVEL1_APPROVAL_DATE}}': lvl1_date,
+            '{{FINAL_APPROVER}}': final_name,
+            '{{FINAL_APPROVER_NIP}}': final_nip,
+            '{{FINAL_APPROVAL_DATE}}': final_date,
+        }
+
+        # Replace in paragraphs
+        for paragraph in doc.paragraphs:
+            for old, new in replacements.items():
+                if old in paragraph.text:
+                    inline = paragraph.runs
+                    for i in range(len(inline)):
+                        inline[i].text = inline[i].text.replace(old, str(new))
+
+        # Replace in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for old, new in replacements.items():
+                            if old in paragraph.text:
+                                inline = paragraph.runs
+                                for i in range(len(inline)):
+                                    inline[i].text = inline[i].text.replace(old, str(new))
+
+        # Serialize to bytes
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+            tmp_path = tmp.name
+            doc.save(tmp_path)
+        try:
+            with open(tmp_path, 'rb') as f:
+                content = f.read()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        base_filename = f"Surat_Perintah_Kerja_Lembur_{employee_nip or 'pegawai'}_{overtime_request.date}.docx"
+        return content, base_filename
     @action(detail=True, methods=['post'], permission_classes=[IsSupervisor])
     def approve(self, request, pk=None):
         """Approve an overtime request (Level 1 or Final)"""

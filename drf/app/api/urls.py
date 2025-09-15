@@ -124,8 +124,13 @@ urlpatterns += [
          views.OvertimeRequestViewSet.as_view({'get': 'export_list_pdf'}),
          name='overtime-export-list-pdf'),
 
+    # Download individual overtime request DOCX
+    path('overtime-requests/<int:pk>/download/',
+         views.OvertimeRequestViewSet.as_view({'get': 'download'}),
+         name='overtime-download'),
+
     # Export individual overtime request to PDF
-    path('overtime-requests/<int:pk>/export-pdf',
+    path('overtime-requests/<int:pk>/export-pdf/',
          views.OvertimeRequestViewSet.as_view({'get': 'export_pdf'}),
          name='overtime-export-pdf'),
 
