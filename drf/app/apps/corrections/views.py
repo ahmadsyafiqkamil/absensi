@@ -169,6 +169,9 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
 
             # Build date filter
             date_filter = Q()
+            # Keep explicit date bounds for use with manual corrections
+            start_bound = None
+            end_bound = None
             if month:
                 # Parse month (YYYY-MM format)
                 try:
@@ -180,6 +183,8 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
                         end_of_month = datetime.date(int(year), int(month_num) + 1, 1) - timedelta(days=1)
                     
                     date_filter = Q(date_local__gte=start_of_month) & Q(date_local__lte=end_of_month)
+                    start_bound = start_of_month
+                    end_bound = end_of_month
                 except (ValueError, TypeError):
                     return Response(
                         {'detail': 'Invalid month format. Use YYYY-MM'}, 
@@ -190,6 +195,8 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
                     start = datetime.strptime(start_date, '%Y-%m-%d').date()
                     end = datetime.strptime(end_date, '%Y-%m-%d').date()
                     date_filter = Q(date_local__gte=start) & Q(date_local__lte=end)
+                    start_bound = start
+                    end_bound = end
                 except ValueError:
                     return Response(
                         {'detail': 'Invalid date format. Use YYYY-MM-DD'}, 
@@ -204,6 +211,8 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
                 else:
                     end_of_month = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
                 date_filter = Q(date_local__gte=start_of_month) & Q(date_local__lte=end_of_month)
+                start_bound = start_of_month
+                end_bound = end_of_month
 
             # Get attendance records for the user
             attendance_records = Attendance.objects.filter(
@@ -293,6 +302,44 @@ class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
                         'correction_type': correction.correction_type if correction else None,
                         'correction_reason': correction.reason if correction else None
                     })
+
+            # Also include manual correction requests (no linked attendance)
+            try:
+                from .models import AttendanceCorrection as AC
+                manual_qs = AC.objects.filter(user=user, attendance__isnull=True)
+                if start_bound and end_bound:
+                    manual_qs = manual_qs.filter(date_local__gte=start_bound, date_local__lte=end_bound)
+                for corr in manual_qs:
+                    # Build a minimal, synthetic record compatible with frontend expectations
+                    correction_records.append({
+                        'id': -corr.id,  # negative id to avoid clashing with attendance ids
+                        'date_local': corr.date_local.isoformat() if corr.date_local else None,
+                        'check_in_at_utc': None,
+                        'check_out_at_utc': None,
+                        'check_in_lat': None,
+                        'check_in_lng': None,
+                        'check_out_lat': None,
+                        'check_out_lng': None,
+                        'check_in_ip': None,
+                        'check_out_ip': None,
+                        'minutes_late': 0,
+                        'total_work_minutes': 0,
+                        'is_holiday': False,
+                        'within_geofence': True,
+                        'note': None,
+                        'employee_note': None,
+                        'created_at': corr.created_at.isoformat(),
+                        'updated_at': corr.updated_at.isoformat(),
+                        'correction_status': corr.status,
+                        'correction_reasons': ['manual_request'],
+                        'proposed_check_in_local': corr.requested_check_in.isoformat() if corr.requested_check_in else None,
+                        'proposed_check_out_local': corr.requested_check_out.isoformat() if corr.requested_check_out else None,
+                        'correction_type': corr.correction_type,
+                        'correction_reason': corr.reason,
+                    })
+            except Exception:
+                # Fail-safe: do not break if manual correction aggregation fails
+                pass
 
             # Apply status filter if specified
             if status_filter != 'all':
