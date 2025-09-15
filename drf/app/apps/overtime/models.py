@@ -263,6 +263,7 @@ class MonthlySummaryRequest(TimeStampedModel):
     """Model for monthly summary requests"""
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('level1_approved', 'Level 1 Approved'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
     ]
@@ -295,6 +296,22 @@ class MonthlySummaryRequest(TimeStampedModel):
         default='pending',
         verbose_name="Status"
     )
+    # Level 1 Approval (e.g., Head of Division)
+    level1_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="level1_approved_monthly_summary_records",
+        verbose_name="Level 1 Approved By"
+    )
+    level1_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Level 1 Approved At"
+    )
+
+    # Final Approval (e.g., KSDM)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -359,8 +376,18 @@ class MonthlySummaryRequest(TimeStampedModel):
         """Check if request is rejected"""
         return self.status == 'rejected'
     
-    def approve(self, approved_by):
-        """Approve the monthly summary request"""
+    def approve_level1(self, approved_by):
+        """Perform level 1 approval"""
+        self.status = 'level1_approved'
+        self.level1_approved_by = approved_by
+        self.level1_approved_at = timezone.now()
+        self.save()
+
+    def approve_final(self, approved_by):
+        """Perform final approval. If level1 not set, fill it too."""
+        if not self.level1_approved_by:
+            self.level1_approved_by = approved_by
+            self.level1_approved_at = timezone.now()
         self.status = 'approved'
         self.approved_by = approved_by
         self.approved_at = timezone.now()

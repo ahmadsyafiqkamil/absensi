@@ -106,12 +106,23 @@ function formatDateTime(dateString: string): string {
 }
 
 function formatPeriod(periodString: string): string {
-  const [year, month] = periodString.split('-');
+  if (!periodString || typeof periodString !== 'string') {
+    return 'N/A';
+  }
+  const parts = periodString.split('-');
+  if (parts.length !== 2) {
+    return 'N/A';
+  }
+  const [year, month] = parts;
   const monthNames = [
     'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
     'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'
   ];
-  return `${monthNames[parseInt(month) - 1]} ${year}`;
+  const monthIndex = parseInt(month) - 1;
+  if (monthIndex < 0 || monthIndex >= monthNames.length) {
+    return 'N/A';
+  }
+  return `${monthNames[monthIndex]} ${year}`;
 }
 
 function getStatusColor(status: string): string {
@@ -205,7 +216,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor(row => getEmployeeName(row.original.employee), {
+      columnHelper.accessor(row => getEmployeeName(row.employee), { 
         id: 'employee',
         header: 'Karyawan',
         cell: ({ row }) => (
@@ -306,17 +317,20 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
           let canReject = false;
           let buttonText = 'Setujui';
           let disabledReason = '';
+          let approvalLevel: 1 | 2 | null = null;
           
           if (isAdmin) {
             // Admin can approve any status except rejected/approved/completed
             canApprove = status === 'pending' || status === 'level1_approved';
             canReject = status === 'pending' || status === 'level1_approved';
             buttonText = status === 'level1_approved' ? 'Final Approve' : 'Setujui';
+            approvalLevel = status === 'level1_approved' ? 2 : 2; // admin defaults to final
           } else if (isOrgWide) {
             // Org-wide supervisor can only final approve after level1_approved
             canApprove = status === 'level1_approved';
             canReject = status === 'pending' || status === 'level1_approved';
             buttonText = 'Final Approve';
+            approvalLevel = 2;
             if (status === 'pending') {
               disabledReason = 'Menunggu Level 1 Approval';
               canApprove = false;
@@ -326,6 +340,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
             canApprove = status === 'pending';
             canReject = status === 'pending';
             buttonText = 'Level 1 Approve';
+            approvalLevel = 1;
           }
           
           if (status === 'approved' || status === 'rejected' || status === 'completed' || status === 'cancelled') {
@@ -500,8 +515,20 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
     setProcessing(true);
     try {
-      const endpoint = `/api/v2/overtime/monthly-summary/${selectedRequest.id}/${actionType}/`;
-      const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
+      // Backend v2 expects a unified approve endpoint with an action payload
+      const endpoint = `/api/v2/overtime/monthly-summary/${selectedRequest.id}/approve/`;
+      // Decide approval_level client-side based on role and current status
+      let approval_level: 1 | 2 | undefined = undefined;
+      if (actionType === 'approve') {
+        if (supervisorInfo?.isAdmin || supervisorInfo?.isOrgWide) {
+          approval_level = selectedRequest.status === 'level1_approved' ? 2 : 2;
+        } else {
+          approval_level = 1;
+        }
+      }
+      const body = actionType === 'approve'
+        ? { action: 'approve', approval_level }
+        : { action: 'reject', reason: rejectionReason };
 
       const response = await authFetch(endpoint, {
         method: 'POST',
@@ -512,8 +539,9 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `Failed to ${actionType} monthly summary request`);
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData.detail || errorData.error || JSON.stringify(errorData) || 'Unknown error';
+        throw new Error(msg || `Failed to ${actionType} monthly summary request`);
       }
 
       // Close modal and refresh data
@@ -621,13 +649,13 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Semua Status</option>
-                <option value="pending">Menunggu</option>
-                <option value="level1_approved">Level 1 Approved</option>
-                <option value="approved">Final Approved</option>
-                <option value="rejected">Ditolak</option>
-                <option value="completed">Selesai</option>
-                <option value="cancelled">Dibatalkan</option>
+                <option key="all-status" value="">Semua Status</option>
+                <option key="pending" value="pending">Menunggu</option>
+                <option key="level1_approved" value="level1_approved">Level 1 Approved</option>
+                <option key="approved" value="approved">Final Approved</option>
+                <option key="rejected" value="rejected">Ditolak</option>
+                <option key="completed" value="completed">Selesai</option>
+                <option key="cancelled" value="cancelled">Dibatalkan</option>
               </select>
             </div>
             
@@ -640,7 +668,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                 onChange={(e) => setDivisionFilter(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Semua Divisi</option>
+                <option key="all-divisions" value="">Semua Divisi</option>
                 {divisions.map((division) => (
                   <option key={division.id} value={division.id.toString()}>
                     {division.name}
@@ -658,7 +686,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                 onChange={(e) => setPeriodFilter(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Semua Periode</option>
+                <option key="all-periods" value="">Semua Periode</option>
                 {uniquePeriods.map((period) => (
                   <option key={period} value={period}>
                     {formatPeriod(period)}

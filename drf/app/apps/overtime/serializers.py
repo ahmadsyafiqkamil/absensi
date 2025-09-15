@@ -167,37 +167,40 @@ class MonthlySummaryRequestSerializer(serializers.ModelSerializer):
     """Base monthly summary request serializer"""
     user = UserBasicSerializer(read_only=True)
     employee = EmployeeSerializer(read_only=True)
+    level1_approved_by = UserBasicSerializer(read_only=True)
+    approved_by = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = MonthlySummaryRequest
         fields = [
-            "id", "user", "employee", "month", "year", "purpose", "status", "requested_at"
+            "id", "user", "employee", "month", "year", "purpose", "status",
+            "level1_approved_by", "level1_approved_at",
+            "approved_by", "approved_at", "rejection_reason",
+            "requested_at"
         ]
-        read_only_fields = ["id", "status", "requested_at"]
+        read_only_fields = ["id", "status", "requested_at", "level1_approved_by", "level1_approved_at", "approved_by", "approved_at", "rejection_reason"]
 
 
 class MonthlySummaryRequestAdminSerializer(MonthlySummaryRequestSerializer):
     """Admin monthly summary request serializer with full access"""
     class Meta(MonthlySummaryRequestSerializer.Meta):
-        fields = MonthlySummaryRequestSerializer.Meta.fields + [
-            "approved_by", "approved_at", "rejection_reason", 
-            "created_at", "updated_at"
-        ]
+        fields = MonthlySummaryRequestSerializer.Meta.fields + ["created_at", "updated_at"]
 
 
 class MonthlySummaryRequestSupervisorSerializer(MonthlySummaryRequestSerializer):
     """Supervisor monthly summary request serializer with limited access"""
     class Meta(MonthlySummaryRequestSerializer.Meta):
-        fields = MonthlySummaryRequestSerializer.Meta.fields + [
-            "approved_by", "approved_at", "rejection_reason"
-        ]
+        fields = MonthlySummaryRequestSerializer.Meta.fields
 
 
 class MonthlySummaryRequestEmployeeSerializer(MonthlySummaryRequestSerializer):
     """Employee monthly summary request serializer with minimal access"""
     class Meta(MonthlySummaryRequestSerializer.Meta):
         fields = [
-            "id", "user", "employee", "month", "year", "purpose", "status", "requested_at"
+            "id", "user", "employee", "month", "year", "purpose", "status",
+            "level1_approved_by", "level1_approved_at",
+            "approved_by", "approved_at", "rejection_reason",
+            "requested_at"
         ]
 
 
@@ -231,16 +234,22 @@ class MonthlySummaryRequestCreateUpdateSerializer(serializers.ModelSerializer):
 class MonthlySummaryRequestApprovalSerializer(serializers.Serializer):
     """Serializer for approving/rejecting monthly summary requests"""
     action = serializers.ChoiceField(choices=['approve', 'reject'])
+    approval_level = serializers.ChoiceField(choices=[1, 2], required=False)
     reason = serializers.CharField(required=False, allow_blank=True)
     
     def validate(self, data):
         """Validate approval data"""
         action = data.get('action')
         reason = data.get('reason')
+        approval_level = data.get('approval_level')
         
         if action == 'reject' and not reason:
             raise serializers.ValidationError(
                 "Rejection reason is required when rejecting a monthly summary request"
+            )
+        if action == 'approve' and approval_level not in [1, 2]:
+            raise serializers.ValidationError(
+                "approval_level must be 1 or 2 when approving"
             )
         
         return data

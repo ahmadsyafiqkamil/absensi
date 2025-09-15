@@ -178,7 +178,9 @@ export default function OvertimeRequestsManager() {
   // Apply month filter when monthFilter changes
   useEffect(() => {
     if (monthFilter) {
-      const [year, month] = monthFilter.split('-');
+      const parts = monthFilter.split('-');
+      const year = parts[0] || '';
+      const month = parts[1] || '';
       setColumnFilters(prev => {
         const existingFilter = prev.find(filter => filter.id === 'date_requested');
         if (existingFilter) {

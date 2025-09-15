@@ -364,6 +364,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
 
         base_filename = f"Surat_Perintah_Kerja_Lembur_{employee_nip or 'pegawai'}_{overtime_request.date}.docx"
         return content, base_filename
+
     @action(detail=True, methods=['post'], permission_classes=[IsSupervisor])
     def approve(self, request, pk=None):
         """Approve an overtime request (Level 1 or Final)"""
@@ -634,7 +635,22 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         result = service.get_overtime_summary(request.user, start_date, end_date)
 
         if result['success']:
-            return Response(result['summary'])
+            summary = result['summary']
+            # Enrich with supervisor capability flags for frontend UI logic
+            is_admin = request.user.is_superuser or request.user.groups.filter(name='admin').exists()
+            can_org_wide = False
+            try:
+                emp = getattr(request.user, 'employee_profile', None)
+                pos = getattr(emp, 'position', None) if emp else None
+                if pos and getattr(pos, 'can_approve_overtime_org_wide', False):
+                    can_org_wide = True
+            except Exception:
+                can_org_wide = False
+            summary.update({
+                'can_approve_overtime_org_wide': can_org_wide,
+                'is_admin': is_admin,
+            })
+            return Response(summary)
         else:
             return Response(
                 {"error": result['message']},
@@ -662,12 +678,18 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         if self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
             return MonthlySummaryRequest.objects.all()
         elif self.request.user.groups.filter(name='supervisor').exists():
-            # Supervisors can see monthly summary requests of employees in their division
-            if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.division:
-                return MonthlySummaryRequest.objects.filter(
-                    employee__division=self.request.user.employee_profile.division
-                )
-            return MonthlySummaryRequest.objects.none()
+            # Mirror overtime visibility: org-wide supervisors see all; else only their division
+            if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.position:
+                if self.request.user.employee_profile.position.can_approve_overtime_org_wide:
+                    return MonthlySummaryRequest.objects.all()
+                elif self.request.user.employee_profile.division:
+                    return MonthlySummaryRequest.objects.filter(
+                        employee__division=self.request.user.employee_profile.division
+                    )
+                else:
+                    return MonthlySummaryRequest.objects.none()
+            else:
+                return MonthlySummaryRequest.objects.none()
         else:
             # Regular employees can only see their own monthly summary requests
             return MonthlySummaryRequest.objects.filter(user=self.request.user)
@@ -676,9 +698,160 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         """Set user when creating monthly summary request"""
         serializer.save(user=self.request.user)
     
+    def _get_monthly_template_path(self):
+        """Return best template path for monthly overtime summary document or None."""
+        template_dir = os.path.join(settings.BASE_DIR, 'template')
+        if not os.path.isdir(template_dir):
+            return None
+
+        priority_names = [
+            'template_rekap_lembur.docx',
+            'template_rekap_lembur_bulanan.docx',
+        ]
+
+        for name in priority_names:
+            path = os.path.join(template_dir, name)
+            if os.path.exists(path):
+                return path
+
+        # Fallback to any latest .docx in template dir
+        docx_files = [
+            os.path.join(template_dir, f)
+            for f in os.listdir(template_dir)
+            if f.endswith('.docx') and not f.startswith('~$')
+        ]
+        if not docx_files:
+            return None
+        docx_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return docx_files[0]
+
+    def _generate_monthly_summary_docx(self, monthly_summary):
+        """Generate DOCX bytes for the monthly summary request. Returns (bytes, filename)."""
+        try:
+            from docx import Document
+        except Exception:
+            raise RuntimeError('python-docx is not installed')
+
+        template_path = self._get_monthly_template_path()
+        if template_path and os.path.exists(template_path):
+            doc = Document(template_path)
+        else:
+            doc = Document()
+            doc.add_heading('Rekap Lembur Bulanan', level=1)
+
+        employee = monthly_summary.employee
+        employee_name = None
+        if employee:
+            try:
+                employee_name = employee.display_name
+            except Exception:
+                employee_name = getattr(employee, 'fullname', None)
+        if not employee_name:
+            if employee and getattr(employee, 'user', None):
+                employee_name = employee.user.get_full_name() or employee.user.username
+            else:
+                employee_name = '-'
+
+        employee_nip = getattr(employee, 'nip', '-') if employee else '-'
+        division_name = employee.get_division_name() if employee else '-'
+        position_name = employee.get_position_name() if employee else '-'
+
+        # Determine month range
+        from calendar import monthrange
+        year = monthly_summary.year
+        month = monthly_summary.month
+        last_day = monthrange(year, month)[1]
+        from datetime import date as _date
+        start_date = _date(year, month, 1)
+        end_date = _date(year, month, last_day)
+
+        # Fetch approved overtime requests for this employee in period
+        requests_qs = OvertimeRequest.objects.filter(
+            employee=employee,
+            status='approved',
+            date__gte=start_date,
+            date__lte=end_date,
+        ).order_by('date')
+
+        total_hours = 0
+        total_amount = 0
+        rows = []
+        for r in requests_qs:
+            hrs = float(r.total_hours or 0)
+            amt = float(r.total_amount or 0)
+            total_hours += hrs
+            total_amount += amt
+            rows.append({
+                'date': r.date,
+                'hours': hrs,
+                'amount': amt,
+                'desc': r.work_description,
+            })
+
+        # Build replacements
+        bulan_tahun = f"{month:02d}/{year}"
+        replacements = {
+            '{{NAMA_PEGAWAI}}': employee_name,
+            '{{NIP_PEGAWAI}}': employee_nip or '-',
+            '{{JABATAN_PEGAWAI}}': position_name,
+            '{{DIVISI_PEGAWAI}}': division_name,
+            '{{PERIODE}}': bulan_tahun,
+            '{{TOTAL_JAM_LEMBUR}}': f"{total_hours:.2f}",
+            '{{TOTAL_GAJI_LEMBUR}}': f"{total_amount:.2f}",
+        }
+
+        # Replace placeholders in paragraphs
+        for paragraph in doc.paragraphs:
+            for old, new in replacements.items():
+                if old in paragraph.text:
+                    runs = paragraph.runs
+                    for i in range(len(runs)):
+                        runs[i].text = runs[i].text.replace(old, str(new))
+
+        # Replace placeholders in tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for old, new in replacements.items():
+                            if old in paragraph.text:
+                                runs = paragraph.runs
+                                for i in range(len(runs)):
+                                    runs[i].text = runs[i].text.replace(old, str(new))
+
+        # Append overtime table at the end
+        table = doc.add_table(rows=1, cols=4)
+        hdr_cells = table.rows[0].cells
+        hdr_cells[0].text = 'Tanggal'
+        hdr_cells[1].text = 'Jam Lembur'
+        hdr_cells[2].text = 'Jumlah'
+        hdr_cells[3].text = 'Deskripsi'
+        for item in rows:
+            row_cells = table.add_row().cells
+            row_cells[0].text = item['date'].strftime('%d %b %Y')
+            row_cells[1].text = f"{item['hours']:.2f}j"
+            row_cells[2].text = f"{item['amount']:.2f}"
+            row_cells[3].text = item['desc'] or ''
+
+        # Serialize to bytes
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+            tmp_path = tmp.name
+            doc.save(tmp_path)
+        try:
+            with open(tmp_path, 'rb') as f:
+                content = f.read()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        filename = f"rekap_lembur_{employee_nip or 'pegawai'}_{year}-{month:02d}.docx"
+        return content, filename
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approve or reject a monthly summary request"""
+        """Approve or reject a monthly summary request (two-level approval)"""
         if not (request.user.is_superuser or 
                 request.user.groups.filter(name__in=['admin', 'supervisor']).exists()):
             return Response(
@@ -691,14 +864,30 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         
         if serializer.is_valid():
             action = serializer.validated_data['action']
+            approval_level = serializer.validated_data.get('approval_level')
             reason = serializer.validated_data.get('reason', '')
             
             if action == 'approve':
-                monthly_summary.approve(request.user)
-                return Response(
-                    {"message": "Monthly summary request approved successfully"}, 
-                    status=status.HTTP_200_OK
-                )
+                # Determine approval level based on role if not provided
+                if approval_level is None:
+                    # Org-wide approvers (admin) default to final approval
+                    if request.user.is_superuser or request.user.groups.filter(name='admin').exists():
+                        approval_level = 2
+                    else:
+                        approval_level = 1
+
+                if approval_level == 1:
+                    if monthly_summary.status != 'pending':
+                        return Response({"detail": "Request is not pending approval."}, status=status.HTTP_400_BAD_REQUEST)
+                    monthly_summary.approve_level1(request.user)
+                    return Response({"message": "Monthly summary request level 1 approved"}, status=status.HTTP_200_OK)
+                elif approval_level == 2:
+                    if monthly_summary.status not in ['pending', 'level1_approved']:
+                        return Response({"detail": "Request is not awaiting final approval."}, status=status.HTTP_400_BAD_REQUEST)
+                    monthly_summary.approve_final(request.user)
+                    return Response({"message": "Monthly summary request final approved"}, status=status.HTTP_200_OK)
+                else:
+                    return Response({"detail": "Invalid approval_level"}, status=status.HTTP_400_BAD_REQUEST)
             elif action == 'reject':
                 monthly_summary.reject(request.user, reason)
                 return Response(
@@ -722,6 +911,63 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         serializer = MonthlySummaryRequestListSerializer(queryset, many=True)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['get'])
+    def export_docx(self, request, pk=None):
+        """Export approved monthly summary to DOCX."""
+        summary = self.get_object()
+        if summary.status != 'approved':
+            return Response({"detail": "Monthly summary must be approved to export."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            docx_bytes, filename = self._generate_monthly_summary_docx(summary)
+            response = HttpResponse(
+                docx_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response({"detail": f"Gagal export DOCX: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'])
+    def export_pdf(self, request, pk=None):
+        """Export approved monthly summary to PDF using converter service."""
+        summary = self.get_object()
+        if summary.status != 'approved':
+            return Response({"detail": "Monthly summary must be approved to export PDF."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            # Generate DOCX first
+            docx_bytes, base_filename = self._generate_monthly_summary_docx(summary)
+            with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+                tmp.write(docx_bytes)
+                tmp_path = tmp.name
+            try:
+                with open(tmp_path, 'rb') as f:
+                    files = {
+                        'file': (
+                            'document.docx',
+                            f,
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        )
+                    }
+                    data = {'method': 'file'}
+                    converter_url = 'http://docx_converter:5000/convert'
+                    r = requests.post(converter_url, files=files, data=data, timeout=60)
+                    if r.status_code != 200:
+                        return Response({"detail": f"DOCX converter error: {r.status_code}"}, status=status.HTTP_502_BAD_GATEWAY)
+                    pdf_content = r.content
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+            pdf_filename = base_filename.replace('.docx', '.pdf')
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{pdf_filename}"'
+            return response
+        except Exception as e:
+            return Response({"detail": f"Gagal export PDF: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'])
     def my_summaries(self, request):
         """Get current user's monthly summary requests"""
