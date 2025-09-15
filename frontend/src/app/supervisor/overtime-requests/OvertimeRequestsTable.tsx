@@ -201,7 +201,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor(row => getEmployeeName(row.original.employee), {
+      columnHelper.accessor('employee', {
         id: 'employee',
         header: 'Karyawan',
         cell: ({ row }) => (
