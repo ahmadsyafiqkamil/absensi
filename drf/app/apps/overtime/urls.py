@@ -25,6 +25,7 @@ employee_router.register(r'monthly-summary', views.MonthlySummaryRequestViewSet,
 urlpatterns = [
     # Main endpoints
     path('', include(router.urls)),
+    path('summary/', views.OvertimeRequestViewSet.as_view({'get': 'summary'}), name='overtime-summary'),
     
     # Role-specific endpoints
     path('admin/', include((admin_router.urls, 'admin'), namespace='overtime-admin')),

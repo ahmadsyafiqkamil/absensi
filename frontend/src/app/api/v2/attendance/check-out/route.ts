@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { getBackendUrl } from '@/lib/backend'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const backend = getBackendUrl()
+    const backend = getBackendBaseUrl()
     const url = `${backend}/api/v2/attendance/attendance/check_out/`
 
     const resp = await fetch(url, {

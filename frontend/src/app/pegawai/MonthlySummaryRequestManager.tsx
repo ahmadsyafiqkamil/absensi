@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import * as Dialog from '@radix-ui/react-dialog';
 import { authFetch } from '@/lib/authFetch';
-import { getBackendUrl } from '@/lib/backend';
+import { getBackendBaseUrl } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -141,7 +141,7 @@ export default function OvertimeSummaryRequestManager() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/`);
+      const response = await authFetch(`${getBackendBaseUrl()}/api/employee/monthly-summary-requests/`);
       
       if (response.ok) {
         const data: OvertimeSummaryRequestsResponse = await response.json();
@@ -174,7 +174,7 @@ export default function OvertimeSummaryRequestManager() {
       const submitData = { ...formData };
       
       console.log(submitData);
-      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/`, {
+      const response = await authFetch(`${getBackendBaseUrl()}/api/employee/monthly-summary-requests/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -315,7 +315,7 @@ export default function OvertimeSummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/${request.id}/export_docx/`);
+                      const response = await authFetch(`${getBackendBaseUrl()}/api/employee/monthly-summary-requests/${request.id}/export_docx/`);
                       
                       if (response.ok) {
                         // Get blob from response
@@ -347,7 +347,7 @@ export default function OvertimeSummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/${request.id}/export_pdf/`);
+                      const response = await authFetch(`${getBackendBaseUrl()}/api/employee/monthly-summary-requests/${request.id}/export_pdf/`);
                       
                       if (response.ok) {
                         // Get blob from response

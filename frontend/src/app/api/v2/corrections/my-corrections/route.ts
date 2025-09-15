@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { getBackendUrl } from '@/lib/backend'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = getBackendUrl()
+    const backend = getBackendBaseUrl()
     const url = `${backend}/api/v2/corrections/my-corrections/`
 
     const resp = await fetch(url, {

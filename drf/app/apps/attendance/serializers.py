@@ -22,7 +22,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = [
-            "id", "date_local", "timezone", "check_in_at_utc", "check_out_at_utc",
+            "id", "user", "employee", "date_local", "timezone", "check_in_at_utc", "check_out_at_utc",
             "total_work_minutes", "minutes_late", "status", "is_holiday", "within_geofence"
         ]
         read_only_fields = ["id", "total_work_minutes", "minutes_late", "status", "is_holiday"]

@@ -17,6 +17,7 @@ from .serializers import (
     MonthlySummaryRequestListSerializer
 )
 from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee
+from .services import OvertimeService
 
 
 # Overtime Request Views
@@ -32,12 +33,20 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         """Return appropriate serializer based on user role"""
-        if self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
+        if self.action in ['create', 'update', 'partial_update']:
+            return OvertimeRequestCreateUpdateSerializer
+        elif self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
             return OvertimeRequestAdminSerializer
         elif self.request.user.groups.filter(name='supervisor').exists():
             return OvertimeRequestSupervisorSerializer
         else:
             return OvertimeRequestEmployeeSerializer
+    
+    def get_serializer_context(self):
+        """Add request context to serializer"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
     
     def get_queryset(self):
         """Filter overtime requests based on user role and date range"""
@@ -48,10 +57,18 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             queryset = queryset
         elif self.request.user.groups.filter(name='supervisor').exists():
             # Supervisors can see overtime requests of employees in their division
-            if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.division:
-                queryset = queryset.filter(
-                    employee__division=self.request.user.employee_profile.division
-                )
+            # If they have org-wide approval, they can see all overtime requests
+            if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.position:
+                if self.request.user.employee_profile.position.can_approve_overtime_org_wide:
+                    # Org-wide approval: can see all overtime requests
+                    queryset = queryset
+                elif self.request.user.employee_profile.division:
+                    # Division-only approval: can see only their division's requests
+                    queryset = queryset.filter(
+                        employee__division=self.request.user.employee_profile.division
+                    )
+                else:
+                    queryset = queryset.none()
             else:
                 queryset = queryset.none()
         else:
@@ -79,46 +96,74 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """Set user when creating overtime request"""
+        """Auto-set user when creating"""
         serializer.save(user=self.request.user)
-    
-    @action(detail=True, methods=['post'])
+
+    @action(detail=True, methods=['post'], permission_classes=[IsSupervisor])
     def approve(self, request, pk=None):
-        """Approve, reject, or cancel an overtime request"""
-        if not (request.user.is_superuser or 
-                request.user.groups.filter(name__in=['admin', 'supervisor']).exists()):
-            return Response(
-                {"error": "Only admins and supervisors can approve overtime requests"}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        overtime_request = self.get_object()
-        serializer = OvertimeRequestApprovalSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            action = serializer.validated_data['action']
-            reason = serializer.validated_data.get('reason', '')
+        """Approve an overtime request (Level 1 or Final)"""
+        try:
+            overtime_request = self.get_object()
+        except OvertimeRequest.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        supervisor = request.user
+        approval_level = request.data.get('approval_level')
+
+        if approval_level == 1:
+            if overtime_request.status != 'pending':
+                return Response({"detail": "Request is not pending approval."}, status=status.HTTP_400_BAD_REQUEST)
             
-            if action == 'approve':
-                overtime_request.approve(request.user)
-                return Response(
-                    {"message": "Overtime request approved successfully"}, 
-                    status=status.HTTP_200_OK
-                )
-            elif action == 'reject':
-                overtime_request.reject(request.user, reason)
-                return Response(
-                    {"message": "Overtime request rejected successfully"}, 
-                    status=status.HTTP_200_OK
-                )
-            elif action == 'cancel':
-                overtime_request.cancel(request.user)
-                return Response(
-                    {"message": "Overtime request cancelled successfully"}, 
-                    status=status.HTTP_200_OK
-                )
+            overtime_request.status = 'level1_approved'
+            overtime_request.level1_approved_by = supervisor
+            overtime_request.level1_approved_at = timezone.now()
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response(serializer.data)
+
+        elif approval_level == 2:
+            if overtime_request.status not in ['pending', 'level1_approved']:
+                return Response({"detail": "Request is not awaiting final approval."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            overtime_request.status = 'approved'
+            # If level 1 was skipped, fill it in too
+            if not overtime_request.level1_approved_by:
+                overtime_request.level1_approved_by = supervisor
+                overtime_request.level1_approved_at = timezone.now()
+            
+            overtime_request.final_approved_by = supervisor
+            overtime_request.final_approved_at = timezone.now()
+            overtime_request.save()
+            
+            serializer = self.get_serializer(overtime_request)
+            return Response(serializer.data)
+
+        else:
+            return Response({"detail": "Invalid or missing approval_level."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsSupervisor])
+    def reject(self, request, pk=None):
+        """Reject an overtime request"""
+        try:
+            overtime_request = self.get_object()
+        except OvertimeRequest.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        supervisor = request.user
+        rejection_reason = request.data.get('rejection_reason', '')
+
+        # Check if request can be rejected
+        if overtime_request.status not in ['pending', 'level1_approved']:
+            return Response({"detail": "Request cannot be rejected in current status."}, status=status.HTTP_400_BAD_REQUEST)
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Set rejection status and reason
+        overtime_request.status = 'rejected'
+        overtime_request.rejection_reason = rejection_reason
+        overtime_request.save()
+        
+        serializer = self.get_serializer(overtime_request)
+        return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def pending(self, request):
@@ -164,6 +209,172 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         
         serializer = OvertimeRequestListSerializer(queryset, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def potential_overtime(self, request):
+        """Get attendance records that could be submitted as overtime requests"""
+        user = self.request.user
+        
+        # Only employees can view their potential overtime
+        if not user.groups.filter(name='pegawai').exists():
+            return Response(
+                {"detail": "Hanya pegawai yang dapat melihat potensi lembur"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            employee = user.employee_profile
+        except:
+            return Response(
+                {"detail": "User tidak memiliki profil employee"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get date range (default: last 30 days)
+        from datetime import date, timedelta
+        from apps.attendance.models import Attendance
+        from apps.settings.models import WorkSettings
+        
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            try:
+                start_date = date.fromisoformat(start_date)
+            except ValueError:
+                return Response(
+                    {"detail": "Format start_date tidak valid. Gunakan YYYY-MM-DD"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            start_date = date.today() - timedelta(days=30)
+        
+        if end_date:
+            try:
+                end_date = date.fromisoformat(end_date)
+            except ValueError:
+                return Response(
+                    {"detail": "Format end_date tidak valid. Gunakan YYYY-MM-DD"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            end_date = date.today()
+        
+        # Get work settings
+        try:
+            ws = WorkSettings.objects.first()
+        except:
+            ws = None
+        
+        # Get overtime threshold (default: 30 minutes)
+        overtime_threshold = int(ws.overtime_threshold_minutes or 30) if ws else 30
+        
+        # Get attendance records for the date range
+        # Exclude records that already have overtime requests
+        attendance_records = Attendance.objects.filter(
+            user=user,
+            date_local__gte=start_date,
+            date_local__lte=end_date,
+            check_in_at_utc__isnull=False,
+            check_out_at_utc__isnull=False
+        ).exclude(
+            overtime_requests__isnull=False
+        ).order_by('date_local')
+        
+        potential_records = []
+        
+        for att in attendance_records:
+            # Determine required minutes based on day of week and settings
+            if att.date_local.weekday() == 4:  # Friday
+                required_minutes = int(ws.friday_required_minutes or 240) if ws else 240
+            else:
+                required_minutes = int(ws.required_minutes or 480) if ws else 480
+            
+            # Calculate potential overtime (total work - required - threshold)
+            potential_overtime_minutes = att.total_work_minutes - required_minutes - overtime_threshold
+            
+            # Only include if there's potential overtime (worked more than required + threshold)
+            if potential_overtime_minutes > 0:
+                potential_overtime_hours = potential_overtime_minutes / 60
+                
+                # Calculate potential overtime amount
+                potential_amount = 0
+                if employee.gaji_pokok and ws:
+                    monthly_hours = 22 * 8
+                    hourly_wage = float(employee.gaji_pokok) / monthly_hours
+                    
+                    # Determine rate
+                    if att.is_holiday:
+                        rate = float(ws.overtime_rate_holiday or 0.75)
+                    else:
+                        rate = float(ws.overtime_rate_workday or 0.50)
+                    
+                    potential_amount = potential_overtime_hours * hourly_wage * rate
+                
+                # Format times
+                check_in_time = None
+                check_out_time = None
+                
+                if att.check_in_at_utc:
+                    check_in_time = att.check_in_at_utc.strftime('%H:%M')
+                if att.check_out_at_utc:
+                    check_out_time = att.check_out_at_utc.strftime('%H:%M')
+                
+                potential_records.append({
+                    'date_local': att.date_local.isoformat(),
+                    'weekday': att.date_local.strftime('%A'),
+                    'check_in_time': check_in_time,
+                    'check_out_time': check_out_time,
+                    'total_work_minutes': att.total_work_minutes,
+                    'required_minutes': required_minutes,
+                    'overtime_threshold_minutes': overtime_threshold,
+                    'potential_overtime_minutes': potential_overtime_minutes,
+                    'potential_overtime_hours': round(potential_overtime_hours, 2),
+                    'potential_overtime_amount': round(potential_amount, 2),
+                    'is_holiday': att.is_holiday,
+                    'within_geofence': att.within_geofence,
+                    'can_submit': True,  # All records here are eligible for submission
+                })
+        
+        return Response({
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'overtime_threshold_minutes': overtime_threshold,
+            'total_potential_records': len(potential_records),
+            'total_potential_hours': sum(r['potential_overtime_hours'] for r in potential_records),
+            'total_potential_amount': sum(r['potential_overtime_amount'] for r in potential_records),
+            'potential_records': potential_records,
+        })
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get overtime summary for current user"""
+        # Get date range from query params
+        end_date = date.today()
+        start_date = end_date.replace(day=1)
+
+        start_date_str = request.query_params.get('start_date', start_date.isoformat())
+        end_date_str = request.query_params.get('end_date', end_date.isoformat())
+
+        try:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        except ValueError:
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        service = OvertimeService()
+        result = service.get_overtime_summary(request.user, start_date, end_date)
+
+        if result['success']:
+            return Response(result['summary'])
+        else:
+            return Response(
+                {"error": result['message']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 # Monthly Summary Request Views
@@ -284,10 +495,16 @@ class SupervisorOvertimeRequestViewSet(OvertimeRequestViewSet):
     
     def get_queryset(self):
         # Supervisors can see overtime requests of employees in their division
-        if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.division:
-            return OvertimeRequest.objects.filter(
-                employee__division=self.request.user.employee_profile.division
-            )
+        # If they have org-wide approval, they can see all overtime requests
+        if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.position:
+            if self.request.user.employee_profile.position.can_approve_overtime_org_wide:
+                # Org-wide approval: can see all overtime requests
+                return OvertimeRequest.objects.all()
+            elif self.request.user.employee_profile.division:
+                # Division-only approval: can see only their division's requests
+                return OvertimeRequest.objects.filter(
+                    employee__division=self.request.user.employee_profile.division
+                )
         return OvertimeRequest.objects.none()
 
 

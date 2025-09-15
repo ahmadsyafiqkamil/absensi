@@ -9,6 +9,52 @@ import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning'
 import { PermissionGuard, ApprovalButton } from '@/components/ui/permission-guard'
 import { useSupervisorApprovalLevel } from '@/lib/hooks'
 import { formatCurrency, formatDate, formatTime, formatDuration } from '@/app/utils/formatters'
+import { authFetch } from '@/lib/authFetch'
+
+interface OvertimeRequest {
+  id: number
+  date: string
+  status: 'pending' | 'level1_approved' | 'approved' | 'rejected'
+  employee: {
+    id: number
+    name: string
+    nip: string
+    division: {
+      id: number
+      name: string
+    }
+  }
+  total_hours: string
+  total_amount: string
+  purpose: string
+  work_description: string
+  level1_approved_by: { username: string } | null
+  level1_approved_at: string | null
+  final_approved_by: { username: string } | null
+  final_approved_at: string | null
+}
+
+interface OvertimeRequestsResponse {
+  results: OvertimeRequest[]
+  count: number
+}
+
+interface OvertimeReport {
+  summary: {
+    total_records: number
+    total_overtime_minutes: number
+    total_overtime_amount: number
+    pending_overtime_count: number
+    average_overtime_per_day: number
+  }
+  overtime_records: OvertimeRecord[]
+  filters: any
+}
+
+interface SupervisorInfo {
+  division: string
+  employeeCount: number
+}
 
 interface OvertimeRecord {
   id: number
@@ -29,23 +75,11 @@ interface OvertimeRecord {
   overtime_approved: boolean
   approved_by: string | null
   approved_at: string | null
-}
-
-interface OvertimeReport {
-  summary: {
-    total_records: number
-    total_overtime_minutes: number
-    total_overtime_amount: number
-    pending_overtime_count: number
-    average_overtime_per_day: number
-  }
-  overtime_records: OvertimeRecord[]
-  filters: any
-}
-
-interface SupervisorInfo {
-  division: string
-  employeeCount: number
+  status: 'pending' | 'level1_approved' | 'approved' | 'rejected'
+  level1_approved_by: { username: string } | null
+  level1_approved_at: string | null
+  final_approved_by: { username: string } | null
+  final_approved_at: string | null
 }
 
 export default function OvertimeApprovalsClient() {
@@ -100,10 +134,46 @@ export default function OvertimeApprovalsClient() {
       if (dateRange.startDate) params.append('start_date', dateRange.startDate)
       if (dateRange.endDate) params.append('end_date', dateRange.endDate)
 
-      const response = await fetch(`/api/overtime/report?${params.toString()}`)
+      const response = await authFetch(`/api/v2/overtime/overtime/?${params.toString()}`)
       if (response.ok) {
-        const data = await response.json()
-        setOvertimeData(data)
+        const data: OvertimeRequestsResponse = await response.json()
+        // Remap data to fit the old structure for now
+        const remappedData: OvertimeReport = {
+          summary: {
+            total_records: data.count,
+            total_overtime_minutes: data.results.reduce((acc, cur) => acc + parseFloat(cur.total_hours) * 60, 0),
+            total_overtime_amount: data.results.reduce((acc, cur) => acc + parseFloat(cur.total_amount), 0),
+            pending_overtime_count: data.results.filter(r => r.status === 'pending' || r.status === 'level1_approved').length,
+            average_overtime_per_day: 0, // Placeholder
+          },
+          overtime_records: data.results.map(r => ({
+            id: r.id,
+            date: r.date,
+            weekday: new Date(r.date).toLocaleDateString('id-ID', { weekday: 'long' }),
+            employee: {
+              name: r.employee.name,
+              nip: r.employee.nip,
+              division: r.employee.division.name,
+            },
+            check_in: '', // Placeholder
+            check_out: '', // Placeholder
+            total_work_minutes: 0, // Placeholder
+            required_minutes: 0, // Placeholder
+            overtime_minutes: parseFloat(r.total_hours) * 60,
+            overtime_amount: parseFloat(r.total_amount),
+            is_holiday: false, // Placeholder
+            overtime_approved: r.status === 'approved',
+            approved_by: r.final_approved_by?.username ?? null,
+            approved_at: r.final_approved_at ?? null,
+            status: r.status,
+            level1_approved_by: r.level1_approved_by,
+            level1_approved_at: r.level1_approved_at,
+            final_approved_by: r.final_approved_by,
+            final_approved_at: r.final_approved_at,
+          })),
+          filters: {},
+        }
+        setOvertimeData(remappedData)
       } else {
         console.error('Failed to fetch overtime data')
       }
@@ -121,11 +191,14 @@ export default function OvertimeApprovalsClient() {
 
     setApproving(id)
     try {
-      const response = await fetch(`/api/overtime/approve/${id}`, {
+      const response = await authFetch(`/api/v2/overtime/overtime/${id}/approve/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          approval_level: approvalLevel
+        })
       })
 
       if (response.ok) {
@@ -351,18 +424,20 @@ export default function OvertimeApprovalsClient() {
                         <OvertimeStatus approved={record.overtime_approved} />
                       </td>
                       <td className="py-3 px-2">
-                        {!record.overtime_approved ? (
+                        {record.status === 'pending' || record.status === 'level1_approved' ? (
                           <ApprovalButton
                             onApprove={() => handleApproveOvertime(record.id)}
                             disabled={approving === record.id}
                             loading={approving === record.id}
                             className="w-full"
+                            approvalLevel={approvalLevel}
+                            recordStatus={record.status}
                           />
                         ) : (
                           <div className="text-sm text-gray-500">
-                            <div className="font-medium text-green-600">✓ Approved</div>
-                            <div>by: {record.approved_by}</div>
-                            {record.approved_at && (<div className="text-xs">{formatDate(record.approved_at)}</div>)}
+                            <div className="font-medium text-green-600">✓ {record.status}</div>
+                            {record.level1_approved_by && <div>L1 by: {record.level1_approved_by.username}</div>}
+                            {record.final_approved_by && <div>Final by: {record.final_approved_by.username}</div>}
                           </div>
                         )}
                       </td>

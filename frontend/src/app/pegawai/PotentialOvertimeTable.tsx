@@ -81,11 +81,12 @@ function formatWorkHours(minutes: number): string {
 
 interface PotentialOvertimeTableProps {
   onQuickSubmit?: (date: string, hours: number, defaultDescription: string) => void;
+  refreshTrigger?: number; // Add refresh trigger prop
 }
 
 const columnHelper = createColumnHelper<PotentialOvertimeRecord>();
 
-export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvertimeTableProps) {
+export default function PotentialOvertimeTable({ onQuickSubmit, refreshTrigger }: PotentialOvertimeTableProps) {
   const [data, setData] = useState<PotentialOvertimeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +116,13 @@ export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvert
     }
   }, [dateRange]);
 
+  // Refresh when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger && dateRange.start_date && dateRange.end_date) {
+      fetchPotentialOvertime();
+    }
+  }, [refreshTrigger]);
+
   const fetchPotentialOvertime = async () => {
     try {
       setLoading(true);
@@ -124,7 +132,7 @@ export default function PotentialOvertimeTable({ onQuickSubmit }: PotentialOvert
       if (dateRange.start_date) queryParams.append('start_date', dateRange.start_date);
       if (dateRange.end_date) queryParams.append('end_date', dateRange.end_date);
 
-      const response = await fetch(`/api/overtime-requests/potential?${queryParams.toString()}`);
+      const response = await fetch(`/api/v2/overtime/potential?${queryParams.toString()}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch potential overtime data');

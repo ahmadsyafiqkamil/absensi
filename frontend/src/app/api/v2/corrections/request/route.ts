@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { getBackendUrl } from '@/lib/backend'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 
 export async function POST(request: NextRequest) {
   try {
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     console.log('Transformed form data values:', Array.from(transformedData.entries()))
 
     // Build backend URL
-    const backend = getBackendUrl()
+    const backend = getBackendBaseUrl()
     const backendUrl = `${backend}/api/v2/corrections/corrections/`
 
     // Forward request to backend

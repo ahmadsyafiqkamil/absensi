@@ -169,6 +169,7 @@ export default function OvertimeRequestsManager() {
   });
   const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -201,9 +202,14 @@ export default function OvertimeRequestsManager() {
       setLoading(true);
       setError(null);
       
+      const params = new URLSearchParams();
+      if (monthFilter) {
+        params.append('month', monthFilter);
+      }
+
       const [requestsResponse, summaryResponse] = await Promise.all([
-        authFetch('/api/overtime-requests/'),
-        authFetch('/api/overtime-requests/summary/')
+        authFetch(`/api/overtime-requests/?${params.toString()}`),
+        authFetch(`/api/overtime-requests/summary/?${params.toString()}`)
       ]);
 
       if (!requestsResponse.ok || !summaryResponse.ok) {
@@ -226,6 +232,34 @@ export default function OvertimeRequestsManager() {
     e.preventDefault();
     setSubmitting(true);
     setFormErrors({});
+
+    // Client-side validation
+    const errors: Record<string, string> = {};
+    
+    if (!formData.date_requested) {
+      errors.date_requested = 'Tanggal lembur harus diisi';
+    }
+    
+    if (!formData.overtime_hours) {
+      errors.overtime_hours = 'Jam lembur harus diisi';
+    } else {
+      const hours = parseFloat(formData.overtime_hours);
+      if (isNaN(hours) || hours < 0.5) {
+        errors.overtime_hours = 'Jam lembur minimal 0.5 jam';
+      } else if (hours > 12) {
+        errors.overtime_hours = 'Jam lembur maksimal 12 jam';
+      }
+    }
+    
+    if (!formData.work_description.trim()) {
+      errors.work_description = 'Deskripsi pekerjaan harus diisi';
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const response = await authFetch('/api/overtime-requests/', {
@@ -264,6 +298,9 @@ export default function OvertimeRequestsManager() {
       
       // Refresh data
       await fetchData();
+      
+      // Trigger refresh for PotentialOvertimeTable
+      setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit overtime request');
     } finally {
@@ -656,7 +693,7 @@ export default function OvertimeRequestsManager() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {summary.total_requests}
+                {summary?.total_requests || 0}
               </div>
               <p className="text-xs text-gray-500">
                 Pengajuan lembur
@@ -670,7 +707,7 @@ export default function OvertimeRequestsManager() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-orange-600">
-                {summary.pending_requests}
+                {summary?.pending_requests || 0}
               </div>
               <p className="text-xs text-gray-500">
                 Belum disetujui
@@ -684,7 +721,7 @@ export default function OvertimeRequestsManager() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {summary.level1_approved_requests || 0}
+                {summary?.level1_approved_requests || 0}
               </div>
               <p className="text-xs text-gray-500">
                 Menunggu final approval
@@ -698,7 +735,7 @@ export default function OvertimeRequestsManager() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {summary.total_approved_hours.toFixed(1)}j
+                {(summary.total_approved_hours || 0).toFixed(1)}j
               </div>
               <p className="text-xs text-gray-500">
                 Jam lembur disetujui
@@ -712,7 +749,7 @@ export default function OvertimeRequestsManager() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(summary.total_approved_amount)}
+                {formatCurrency(summary?.total_approved_amount || 0)}
               </div>
               <p className="text-xs text-gray-500">
                 Yang disetujui
@@ -791,7 +828,7 @@ export default function OvertimeRequestsManager() {
                     id="overtime_hours"
                     name="overtime_hours"
                     type="number"
-                    step="0.5"
+                    step="0.1"
                     min="0.5"
                     max="12"
                     value={formData.overtime_hours}
@@ -803,7 +840,9 @@ export default function OvertimeRequestsManager() {
                   {formErrors.overtime_hours && (
                     <p className="text-sm text-red-600">{formErrors.overtime_hours}</p>
                   )}
-                  <p className="text-sm text-gray-500">Maksimal 12 jam per hari</p>
+                  <p className="text-sm text-gray-500">
+                    Minimal 0.5 jam, maksimal 12 jam per hari. Gunakan format desimal (contoh: 1.5, 2.5, 3.0)
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -844,7 +883,10 @@ export default function OvertimeRequestsManager() {
       </div>
 
       {/* Potential Overtime Table */}
-      <PotentialOvertimeTable onQuickSubmit={handleQuickSubmit} />
+      <PotentialOvertimeTable 
+        onQuickSubmit={handleQuickSubmit} 
+        refreshTrigger={refreshTrigger}
+      />
 
       {/* Riwayat Section */}
       <div className="flex justify-between items-center">

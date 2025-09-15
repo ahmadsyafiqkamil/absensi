@@ -1,28 +1,18 @@
-import { cookies } from 'next/headers'
-import { getBackendUrl } from '@/lib/api-utils'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 import { NextRequest, NextResponse } from 'next/server'
-
-const BACKEND_URL = getBackendUrl()
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const accessToken = cookieStore.get('access_token')?.value
-
-    // Debug logging
-    console.log('Available cookies:', Array.from(cookieStore.getAll()).map(c => c.name))
-    console.log('Access token present:', !!accessToken)
-    console.log('Access token value (first 20 chars):', accessToken?.substring(0, 20))
+    const accessToken = await getAccessToken()
 
     if (!accessToken) {
-      console.log('No access token found in cookies')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Forward query parameters
     const { searchParams } = new URL(request.url)
     const queryString = searchParams.toString()
-    const url = `${BACKEND_URL}/api/overtime-requests/summary/${queryString ? `?${queryString}` : ''}`
+    const url = `${getBackendBaseUrl()}/api/v2/overtime/summary/${queryString ? `?${queryString}` : ''}`
 
     const response = await fetch(url, {
       method: 'GET',
@@ -32,13 +22,25 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const data = await response.json()
-
     if (!response.ok) {
-      return NextResponse.json(data, { status: response.status })
+      const errorData = await response.json()
+      return NextResponse.json(errorData, { status: response.status })
     }
 
-    return NextResponse.json(data)
+    const data = await response.json()
+    
+    // Map backend response to frontend expected format
+    const mappedData = {
+      total_requests: data.total_requests || 0,
+      pending_requests: data.pending_requests || 0,
+      level1_approved_requests: data.level1_approved_requests || 0,
+      approved_requests: data.approved_requests || 0,
+      rejected_requests: data.rejected_requests || 0,
+      total_approved_hours: data.total_hours || 0,
+      total_approved_amount: data.total_amount || 0,
+    }
+
+    return NextResponse.json(mappedData)
   } catch (error) {
     console.error('Error fetching overtime summary:', error)
     return NextResponse.json(

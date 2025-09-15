@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { getBackendUrl } from '@/lib/backend'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       params.append(key, value)
     }
 
-    const backend = getBackendUrl()
+    const backend = getBackendBaseUrl()
     const url = `${backend}/api/v2/corrections/corrections/correction_records/?${params.toString()}`
 
     const resp = await fetch(url, {

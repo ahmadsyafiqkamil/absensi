@@ -24,7 +24,8 @@ class OvertimeRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = OvertimeRequest
         fields = [
-            "id", "request_type", "date", "start_time", "end_time", "total_hours",
+            "id", "user", "employee", "attendance",
+            "request_type", "date", "start_time", "end_time", "total_hours",
             "purpose", "work_description", "status", "requested_at"
         ]
         read_only_fields = ["id", "total_hours", "status", "requested_at"]
@@ -52,19 +53,24 @@ class OvertimeRequestEmployeeSerializer(OvertimeRequestSerializer):
     """Employee overtime request serializer with minimal access"""
     class Meta(OvertimeRequestSerializer.Meta):
         fields = [
-            "id", "request_type", "date", "start_time", "end_time", "total_hours",
+            "id", "user", "employee", "request_type", "date", "start_time", "end_time", "total_hours",
             "purpose", "work_description", "status", "requested_at"
         ]
 
 
 class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating overtime requests"""
+    attendance_id = serializers.IntegerField(required=False, allow_null=True)
+    
     class Meta:
         model = OvertimeRequest
         fields = [
-            "attendance", "request_type", "date", "start_time", "end_time",
-            "purpose", "work_description"
+            "attendance_id", "request_type", "date", "start_time", "end_time",
+            "purpose", "work_description", "total_hours"
         ]
+        extra_kwargs = {
+            'attendance': {'required': False, 'allow_null': True}
+        }
     
     def validate(self, data):
         """Validate overtime request data"""
@@ -86,6 +92,56 @@ class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
             )
         
         return data
+    
+    def create(self, validated_data):
+        """Create overtime request with attendance handling"""
+        from apps.attendance.models import Attendance
+        from apps.settings.models import WorkSettings
+        from django.utils import timezone as dj_timezone
+        
+        # Handle attendance field
+        attendance_id = validated_data.pop('attendance_id', None)
+        attendance = None
+        
+        if attendance_id:
+            try:
+                attendance = Attendance.objects.get(id=attendance_id)
+            except Attendance.DoesNotExist:
+                pass
+        
+        if not attendance:
+            # Find or create attendance record for the date
+            request = self.context.get('request')
+            user = request.user if request else None
+            if not user:
+                # Fallback: try to get user from validated_data if available
+                user = validated_data.get('user')
+            
+            date = validated_data.get('date')
+            
+            if user and date:
+                # Try to find existing attendance record
+                attendance = Attendance.objects.filter(
+                    user=user,
+                    date_local=date
+                ).first()
+                
+                if not attendance:
+                    # Create new attendance record for overtime
+                    ws = WorkSettings.objects.first()
+                    tzname = ws.timezone if ws else dj_timezone.get_current_timezone_name()
+                    
+                    attendance = Attendance.objects.create(
+                        user=user,
+                        date_local=date,
+                        timezone=tzname,
+                        employee=user.employee_profile if hasattr(user, 'employee_profile') else None
+                    )
+        
+        if attendance:
+            validated_data['attendance'] = attendance
+        
+        return super().create(validated_data)
 
 
 class OvertimeRequestApprovalSerializer(serializers.Serializer):
@@ -115,7 +171,7 @@ class MonthlySummaryRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonthlySummaryRequest
         fields = [
-            "id", "month", "year", "purpose", "status", "requested_at"
+            "id", "user", "employee", "month", "year", "purpose", "status", "requested_at"
         ]
         read_only_fields = ["id", "status", "requested_at"]
 
@@ -141,7 +197,7 @@ class MonthlySummaryRequestEmployeeSerializer(MonthlySummaryRequestSerializer):
     """Employee monthly summary request serializer with minimal access"""
     class Meta(MonthlySummaryRequestSerializer.Meta):
         fields = [
-            "id", "month", "year", "purpose", "status", "requested_at"
+            "id", "user", "employee", "month", "year", "purpose", "status", "requested_at"
         ]
 
 

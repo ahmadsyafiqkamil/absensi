@@ -39,15 +39,9 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
           }
         }
 
-        // If V2 API fails, try legacy auth/me as fallback
-        const legacyAuthResp = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (legacyAuthResp.ok) {
-          const authData = await legacyAuthResp.json().catch(() => ({}));
-          const name = authData?.position?.name || username;
-          if (!cancelled && name) {
-            setDisplayName(name);
-            return;
-          }
+        // If V2 API fails, use username as fallback
+        if (!cancelled) {
+          setDisplayName(username);
         }
 
         // Final fallback to username

@@ -10,20 +10,8 @@ export const getBackendBaseUrl = () => {
   }
 }
 
-// Runtime URL determination - this will work correctly for both server and client
-export const getBackendUrl = () => {
-  // Use different URLs for server vs client in Docker environment
-  if (typeof window === 'undefined') {
-    // Server-side (API routes): use container-to-container networking
-    return process.env.BACKEND_URL || 'http://backend:8000'
-  } else {
-    // Client-side (browser): use host networking
-    return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
-  }
-}
-
 // For backward compatibility - this will be set at runtime when called
-export const BACKEND_BASE_URL = getBackendUrl()
+export const BACKEND_BASE_URL = getBackendBaseUrl()
 
 // API version configuration
 export const API_VERSIONS = {
@@ -119,9 +107,14 @@ export async function meRequest(accessToken: string) {
 }
 
 // Server-only: reads access_token from cookies
-export async function meFromServerCookies() {
+export async function getAccessToken() {
   const { cookies } = await import('next/headers')
-  const token = (await cookies()).get('access_token')?.value
+  return (await cookies()).get('access_token')?.value
+}
+
+// Server-only: reads access_token from cookies
+export async function meFromServerCookies() {
+  const token = await getAccessToken()
   if (!token) return { resp: new Response(null, { status: 401 }), data: {} }
   return meRequest(token)
 }

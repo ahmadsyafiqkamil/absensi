@@ -45,7 +45,7 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     ;(async () => {
-      const r = await fetch('/api/auth/me')
+      const r = await fetch('/api/v2/auth/me/')
       if (r.ok) setMe(await r.json())
     })()
   }, [])

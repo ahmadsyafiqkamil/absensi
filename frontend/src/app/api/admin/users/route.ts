@@ -11,7 +11,7 @@ export async function GET() {
 
     // Verify admin
     const backendBase = getBackendUrl();
-    const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+    const meResponse = await fetch(`${backendBase}/api/v2/auth/me/`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });

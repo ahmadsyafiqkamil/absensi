@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { authFetch } from '@/lib/authFetch';
-import { getBackendUrl } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -151,15 +150,16 @@ function getStatusText(status: string): string {
   }
 }
 
-function getEmployeeName(employee: Employee): string {
+function getEmployeeName(employee?: Employee | null): string {
+  if (!employee) return '-';
   if (employee.fullname) {
     return employee.fullname;
   }
   const user = employee.user;
-  if (user.first_name || user.last_name) {
-    return `${user.first_name} ${user.last_name}`.trim();
+  if (user?.first_name || user?.last_name) {
+    return `${user.first_name || ''} ${user.last_name || ''}`.trim() || user?.username || '-';
   }
-  return user.username;
+  return user?.username || '-';
 }
 
 function getReportTypeText(reportType: string): string {
@@ -205,14 +205,14 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor(row => getEmployeeName(row.employee), {
+      columnHelper.accessor(row => getEmployeeName(row.original.employee), {
         id: 'employee',
         header: 'Karyawan',
         cell: ({ row }) => (
           <div>
             <div className="font-medium">{getEmployeeName(row.original.employee)}</div>
             <div className="text-xs text-gray-500">
-              {row.original.employee.division?.name || 'No Division'} • {row.original.employee.nip}
+              {row.original.employee?.division?.name || 'No Division'} • {row.original.employee?.nip || '-'}
             </div>
           </div>
         ),
@@ -391,7 +391,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
     // Division filter
     if (divisionFilter) {
       filtered = filtered.filter(item => 
-        item.employee.division?.id.toString() === divisionFilter
+        (item.employee?.division?.id?.toString?.() || '') === divisionFilter
       );
     }
     
@@ -435,16 +435,19 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
       setError(null);
       
       // Fetch data individually to avoid Promise.all issues
-      const monthlySummaryResponse = await authFetch(`${getBackendUrl()}/api/supervisor/monthly-summary-requests/`);
-      const divisionsResponse = await authFetch(`${getBackendUrl()}/api/supervisor/divisions/`);
-      const supervisorResponse = await authFetch(`${getBackendUrl()}/api/supervisor/approvals/summary`);
+      const monthlySummaryResponse = await authFetch(`/api/v2/overtime/monthly-summary/`);
+      const divisionsResponse = await authFetch(`/api/v2/employees/divisions/`);
+      const supervisorResponse = await authFetch(`/api/v2/overtime/summary/`);
 
       if (!monthlySummaryResponse.ok) {
         throw new Error('Failed to fetch monthly summary requests');
       }
 
-      const monthlySummaryData: OvertimeSummaryRequestsResponse = await monthlySummaryResponse.json();
-      setData(monthlySummaryData.results);
+      const monthlySummaryData: any = await monthlySummaryResponse.json();
+      const monthlyItems: OvertimeSummaryRequest[] = Array.isArray(monthlySummaryData)
+        ? monthlySummaryData
+        : (monthlySummaryData?.results ?? []);
+      setData(monthlyItems);
 
       // Fetch supervisor info (optional, for determining role)
       if (supervisorResponse.ok) {
@@ -467,9 +470,9 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
         // Extract unique divisions from the monthly summary data and merge with API data
         const uniqueDivisions = Array.from(
           new Map([
-            ...monthlySummaryData.results
-              .filter(req => req.employee.division)
-              .map(req => [req.employee.division!.id, req.employee.division!]),
+            ...monthlyItems
+              .filter(req => req?.employee?.division)
+              .map(req => [req.employee!.division!.id, req.employee!.division!]),
             ...(divisionsData.results || divisionsData || []).map((div: any) => [div.id, div])
           ].filter(([_, division]) => division)).values()
         );
@@ -478,9 +481,9 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
         // Fallback: extract divisions from monthly summary data
         const uniqueDivisions = Array.from(
           new Map(
-            monthlySummaryData.results
-              .filter(req => req.employee.division)
-              .map(req => [req.employee.division!.id, req.employee.division!])
+            monthlyItems
+              .filter(req => req?.employee?.division)
+              .map(req => [req.employee!.division!.id, req.employee!.division!])
           ).values()
         );
         setDivisions(uniqueDivisions as {id: number, name: string}[]);
@@ -497,7 +500,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
     setProcessing(true);
     try {
-      const endpoint = `${getBackendUrl()}/api/supervisor/monthly-summary-requests/${selectedRequest.id}/${actionType}/`;
+      const endpoint = `/api/v2/overtime/monthly-summary/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
 
       const response = await authFetch(endpoint, {
@@ -546,7 +549,8 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
   // Get unique periods and report types for filters
   const uniquePeriods = useMemo(() => {
-    const periods = Array.from(new Set(data.map(item => item.request_period)));
+    const safeData = Array.isArray(data) ? data : [];
+    const periods = Array.from(new Set(safeData.map(item => item.request_period)));
     return periods.sort().reverse(); // Most recent first
   }, [data]);
 

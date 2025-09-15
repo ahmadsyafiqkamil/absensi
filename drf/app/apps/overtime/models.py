@@ -10,6 +10,7 @@ class OvertimeRequest(TimeStampedModel):
     """Model for overtime request management"""
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('level1_approved', 'Level 1 Approved'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('cancelled', 'Cancelled'),
@@ -74,25 +75,58 @@ class OvertimeRequest(TimeStampedModel):
         default='pending',
         verbose_name="Status"
     )
-    approved_by = models.ForeignKey(
+    
+    # Level 1 Approval (e.g., Head of Division)
+    level1_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="approved_overtime_request_records",
-        verbose_name="Approved By"
+        related_name="level1_approved_overtime_requests",
+        verbose_name="Level 1 Approved By"
     )
-    approved_at = models.DateTimeField(
+    level1_approved_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Approved At"
+        verbose_name="Level 1 Approved At"
     )
+
+    # Final Approval (e.g., KSDM)
+    final_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="final_approved_overtime_requests",
+        verbose_name="Final Approved By"
+    )
+    final_approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Final Approved At"
+    )
+
     rejection_reason = models.TextField(
         null=True,
         blank=True,
         verbose_name="Rejection Reason"
     )
     
+    # Deprecated fields (to be removed later)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_overtime_request_records",
+        verbose_name="Approved By (deprecated)"
+    )
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Approved At (deprecated)"
+    )
+
     # Financial details
     hourly_rate = models.DecimalField(
         max_digits=8,
@@ -174,6 +208,9 @@ class OvertimeRequest(TimeStampedModel):
     def approve(self, approved_by):
         """Approve the overtime request"""
         self.status = 'approved'
+        self.final_approved_by = approved_by
+        self.final_approved_at = timezone.now()
+        # For backward compatibility, fill old fields too
         self.approved_by = approved_by
         self.approved_at = timezone.now()
         self.save()

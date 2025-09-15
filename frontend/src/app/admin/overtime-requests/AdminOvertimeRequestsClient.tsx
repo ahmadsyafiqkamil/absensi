@@ -224,8 +224,8 @@ export default function AdminOvertimeRequestsClient() {
 
     setProcessing(true);
     try {
-      const endpoint = `/api/overtime-requests/${selectedRequest.id}/${actionType}/`;
-      const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
+      const endpoint = `/api/v2/overtime/overtime/${selectedRequest.id}/${actionType}/`;
+      const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : actionType === 'approve' ? { approval_level: 2 } : {};
 
       const response = await fetch(endpoint, {
         method: 'POST',

@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     
     # New modular apps
     'apps.core',
+    'apps.authentication',
     'apps.users',
     'apps.employees',
     'apps.attendance',

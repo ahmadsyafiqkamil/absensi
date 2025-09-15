@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend';
+import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
-import { getBackendUrl } from '@/lib/backend'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = getBackendUrl()
+    const backend = getBackendBaseUrl()
     const url = `${backend}/api/v2/attendance/attendance/precheck/`
 
     // Backend expects POST; map GET to POST with empty body
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const backend = getBackendUrl()
+    const backend = getBackendBaseUrl()
     const url = `${backend}/api/v2/attendance/attendance/precheck/`
 
     const resp = await fetch(url, {

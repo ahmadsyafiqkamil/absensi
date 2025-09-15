@@ -45,14 +45,6 @@ def me(request):
         # Also add position data at top level for compatibility with frontend
         if employee_data.get('position'):
             user_data['position'] = employee_data['position']
-    elif hasattr(user, 'employee'):  # Legacy compatibility
-        from api.serializers import EmployeeSerializer as LegacyEmployeeSerializer
-        employee_data = LegacyEmployeeSerializer(user.employee).data
-        user_data['employee'] = employee_data
-        
-        # Also add position data at top level for compatibility with frontend
-        if employee_data.get('position'):
-            user_data['position'] = employee_data['position']
     
     return Response(user_data)
 
@@ -85,10 +77,6 @@ def employee_me(request):
     if hasattr(user, 'employee_profile'):
         from apps.employees.serializers import EmployeeSerializer
         employee_data = EmployeeSerializer(user.employee_profile).data
-        return Response(employee_data)
-    elif hasattr(user, 'employee'):  # Legacy compatibility
-        from api.serializers import EmployeeSerializer as LegacyEmployeeSerializer
-        employee_data = LegacyEmployeeSerializer(user.employee).data
         return Response(employee_data)
     else:
         return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)

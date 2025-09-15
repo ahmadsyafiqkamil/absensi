@@ -130,25 +130,26 @@ class Attendance(TimeStampedModel):
             work_hours = work_settings.get_work_hours_for_date(self.date_local)
             required_minutes = work_hours['required_minutes']
             
-            # Calculate overtime
-            if self.total_work_minutes > required_minutes:
-                overtime_minutes = self.total_work_minutes - required_minutes
+            # Get overtime threshold
+            overtime_threshold = int(work_settings.overtime_threshold_minutes or 60)
+            
+            # Calculate overtime with threshold buffer (same logic as v1)
+            if self.total_work_minutes > (required_minutes + overtime_threshold):
+                overtime_minutes = self.total_work_minutes - required_minutes - overtime_threshold
                 
-                # Apply threshold
-                if overtime_minutes > work_settings.overtime_threshold_minutes:
-                    # Calculate overtime amount
-                    monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
-                    hourly_wage = float(self.employee.gaji_pokok) / monthly_hours
-                    
-                    # Determine rate
-                    if self.is_holiday:
-                        rate = float(work_settings.overtime_rate_holiday or 0.75)
-                    else:
-                        rate = float(work_settings.overtime_rate_workday or 0.50)
-                    
-                    overtime_amount = (overtime_minutes / 60) * hourly_wage * rate
-                    return overtime_minutes, round(overtime_amount, 2)
+                # Calculate overtime amount
+                monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
+                hourly_wage = float(self.employee.gaji_pokok) / monthly_hours
                 
+                # Determine rate
+                if self.is_holiday:
+                    rate = float(work_settings.overtime_rate_holiday or 0.75)
+                else:
+                    rate = float(work_settings.overtime_rate_workday or 0.50)
+                
+                overtime_amount = (overtime_minutes / 60) * hourly_wage * rate
+                return overtime_minutes, round(overtime_amount, 2)
+            
             return 0, 0
             
         except Exception:
