@@ -48,13 +48,38 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     attendance = AttendanceSerializer(read_only=True)
     
+    # Computed fields for frontend compatibility
+    type = serializers.CharField(source='correction_type', read_only=True)
+    attachment = serializers.CharField(source='supporting_document', read_only=True)
+    
     class Meta:
         model = AttendanceCorrection
         fields = [
-            "id", "correction_type", "requested_check_in", "requested_check_out",
-            "requested_note", "reason", "status", "requested_at"
+            "id", "correction_type", "type", "requested_check_in", "requested_check_out",
+            "requested_note", "reason", "status", "requested_at", "date_local",
+            "supporting_document", "attachment", "created_at", "user", "employee", "attendance"
         ]
-        read_only_fields = ["id", "status", "requested_at"]
+        read_only_fields = ["id", "status", "requested_at", "created_at", "type", "attachment"]
+    
+    def to_representation(self, instance):
+        """Custom representation to include computed fields for frontend"""
+        data = super().to_representation(instance)
+        
+        # Add computed fields for frontend compatibility
+        if instance.date_local:
+            # Return date in ISO format that can be parsed by JavaScript Date
+            data['date_local'] = instance.date_local.isoformat() + 'T00:00:00Z'
+        elif instance.attendance and instance.attendance.date_local:
+            # Fallback to attendance date if correction date is not set
+            data['date_local'] = instance.attendance.date_local.isoformat() + 'T00:00:00Z'
+        
+        # Add proposed times in local format (same as requested times for now)
+        if instance.requested_check_in:
+            data['proposed_check_in_local'] = instance.requested_check_in.isoformat()
+        if instance.requested_check_out:
+            data['proposed_check_out_local'] = instance.requested_check_out.isoformat()
+        
+        return data
 
 
 class AttendanceCorrectionAdminSerializer(AttendanceCorrectionSerializer):

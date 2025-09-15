@@ -1,244 +1,313 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Attendance = {
-  id: number
-  date_local: string
-  timezone: string
-  check_in_at_utc: string | null
-  check_in_lat: string | null
-  check_in_lng: string | null
-  check_out_at_utc: string | null
-  check_out_lat: string | null
-  check_out_lng: string | null
-  minutes_late: number
-  total_work_minutes: number
-  within_geofence?: boolean
-  employee_note?: string | null
-  note?: string | null
-  overtime_minutes?: number
-  overtime_amount?: number
-  overtime_approved?: boolean
-}
+  id: number;
+  date_local: string;
+  timezone: string;
+  check_in_at_utc: string | null;
+  check_in_lat: string | null;
+  check_in_lng: string | null;
+  check_out_at_utc: string | null;
+  check_out_lat: string | null;
+  check_out_lng: string | null;
+  minutes_late: number;
+  total_work_minutes: number;
+  within_geofence?: boolean;
+  employee_note?: string | null;
+  note?: string | null;
+  overtime_minutes?: number;
+  overtime_amount?: number;
+  overtime_approved?: boolean;
+};
 
 type WorkSettings = {
-  id: number
-  timezone: string
-  workdays: string[]
-  start_time: string
-  end_time: string
-  friday_start_time: string
-  friday_end_time: string
-  office_latitude: string
-  office_longitude: string
-  geofence_radius_meters: number
-}
+  id: number;
+  timezone: string;
+  workdays: string[];
+  start_time: string;
+  end_time: string;
+  friday_start_time: string;
+  friday_end_time: string;
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
+};
 
 function fmtTime(iso: string | null, tz: string) {
-  if (!iso) return '-'
+  if (!iso) return "-";
   try {
-    const d = new Date(iso)
-    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: tz || 'Asia/Dubai' })
+    const d = new Date(iso);
+    return d.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: tz || "Asia/Dubai",
+    });
   } catch {
-    return '-'
+    return "-";
   }
 }
 
 function fmtDate(date: Date, timezone: string) {
-  return date.toLocaleDateString('id-ID', { 
-    weekday: 'long', 
-    day: '2-digit', 
-    month: 'long', 
-    year: 'numeric',
-    timeZone: timezone
-  })
+  return date.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: timezone,
+  });
 }
 
 function fmtTimeOnly(date: Date, timezone: string) {
-  return date.toLocaleTimeString('id-ID', { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    second: '2-digit',
-    timeZone: timezone
-  })
+  return date.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: timezone,
+  });
+}
+
+function toISODate(d: Date, timezone?: string) {
+  if (timezone) {
+    try {
+      const tzDate = new Date(d.toLocaleString("en-US", { timeZone: timezone }));
+      return `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(tzDate.getDate()).padStart(2, "0")}`;
+    } catch {
+      // fallback below
+    }
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export default function TodayAttendance() {
-        const [data, setData] = useState<Attendance | null>(null)
-      const [loading, setLoading] = useState(true)
-      const [isHoliday, setIsHoliday] = useState<boolean>(false)
-      const [now, setNow] = useState<Date>(new Date())
-      const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null)
-      const [currentDate, setCurrentDate] = useState<string>('')
-      const [overtimeData, setOvertimeData] = useState<any>(null)
+  console.log("TodayAttendance component rendering...");
 
-  function toISODate(d: Date, timezone?: string) {
-    if (timezone) {
-      try {
-        const tzDate = new Date(d.toLocaleString('en-US', { timeZone: timezone }))
-        return `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`
-      } catch {
-        // fallback below
-      }
-    }
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
+  const [data, setData] = useState<Attendance | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isHoliday, setIsHoliday] = useState<boolean>(false);
+  const [now, setNow] = useState<Date>(new Date());
+  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null);
+  const [currentDate, setCurrentDate] = useState<string>("");
+  const [overtimeData, setOvertimeData] = useState<any>(null);
+
+  // ---- FETCHERS -------------------------------------------------------------
 
   // Function to fetch today's attendance data
-  const fetchTodayData = useCallback(async (targetDate: string) => {
-    setLoading(true)
-    const q = `?start=${targetDate}&end=${targetDate}`
-    
-    try {
-      const [attResp, holResp, settingsResp, overtimeResp] = await Promise.all([
-        fetch(`/api/v2/attendance/attendance${q}&page=1&page_size=1`),
-        fetch(`/api/v2/settings/holidays/${q}`),
-        fetch('/api/v2/settings/work'),
-        fetch(`/api/overtime/report?start_date=${targetDate}&end_date=${targetDate}`),
-      ])
-      
-      const d = await attResp.json().catch(() => ({}))
-      const att = Array.isArray(d) ? (d[0] || null) : (d?.results?.[0] || null)
-      
-      // Only set data if it's for the current date
-      if (att && att.date_local === targetDate) {
-        setData(att)
-      } else {
-        setData(null)
-      }
+  const fetchTodayData = useCallback(
+    async (
+      targetDate: string,
+      options: { skipSettings?: boolean; showLoading?: boolean } = {}
+    ) => {
+      const { skipSettings = false, showLoading = false } = options;
 
-      const holD = await holResp.json().catch(() => ({}))
-      const holItems = Array.isArray(holD) ? holD : (holD?.results || [])
-      const isHolidayToday = Array.isArray(holItems) && holItems.some((h: any) => (h?.date || h?.date_local) === targetDate)
-      setIsHoliday(isHolidayToday)
+      console.log(
+        "fetchTodayData called for date:",
+        targetDate,
+        "skipSettings:",
+        skipSettings
+      );
 
-      // Fetch overtime data for today
+      if (showLoading) setLoading(true);
+
+      const q = `?start=${targetDate}&end=${targetDate}`;
+
       try {
-        const overtimeD = await overtimeResp.json().catch(() => ({}))
-        if (overtimeD.overtime_records && overtimeD.overtime_records.length > 0) {
-          const todayOvertime = overtimeD.overtime_records[0];
-          setOvertimeData(todayOvertime);
+        const requests: Promise<Response>[] = [
+          fetch(`/api/v2/attendance/attendance${q}&page=1&page_size=1`),
+          fetch(`/api/v2/settings/holidays/${q}`),
+          fetch(`/api/v2/overtime/overtime?start_date=${targetDate}&end_date=${targetDate}`),
+        ];
+
+        // Only fetch settings if not skipping (to prevent loops)
+        if (!skipSettings) {
+          requests.push(fetch("/api/v2/settings/work"));
+        }
+
+        const responses = await Promise.all(requests);
+        const [attResp, holResp, overtimeResp, settingsResp] = responses;
+
+        // --- Attendance
+        const d = await attResp.json().catch(() => ({}));
+        const att = Array.isArray(d) ? d[0] || null : d?.results?.[0] || null;
+
+        // Only set data if it's for the current date
+        if (att && att.date_local === targetDate) {
+          setData(att);
         } else {
+          setData(null);
+        }
+
+        // --- Holidays
+        const holD = await holResp.json().catch(() => ({}));
+        const holItems = Array.isArray(holD) ? holD : holD?.results || [];
+        const isHolidayToday =
+          Array.isArray(holItems) &&
+          holItems.some((h: any) => (h?.date || h?.date_local) === targetDate);
+        setIsHoliday(isHolidayToday);
+
+        // --- Overtime
+        try {
+          const overtimeD = await overtimeResp.json().catch(() => ({}));
+          if (overtimeD.overtime_records && overtimeD.overtime_records.length > 0) {
+            const todayOvertime = overtimeD.overtime_records[0];
+            setOvertimeData(todayOvertime);
+          } else {
+            setOvertimeData(null);
+          }
+        } catch (error) {
+          console.error("Error fetching overtime data:", error);
           setOvertimeData(null);
         }
+
+        // --- Settings (optional)
+        if (!skipSettings && settingsResp) {
+          const settingsData = await settingsResp.json().catch(() => ({}));
+          if (settingsResp.ok && settingsData) {
+            setWorkSettings(settingsData);
+          }
+        }
       } catch (error) {
-        console.error('Error fetching overtime data:', error);
-        setOvertimeData(null);
+        console.error("Error loading data:", error);
+      } finally {
+        if (showLoading) setLoading(false);
       }
+    },
+    []
+  );
 
-      const settingsData = await settingsResp.json().catch(() => ({}))
-      if (settingsResp.ok && settingsData) {
-        setWorkSettings(settingsData)
-      }
-    } catch (error) {
-      console.error('Error loading data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // ---- EFFECTS -------------------------------------------------------------
 
-  // Initial data fetch
+  // Fetch work settings once on mount (initial load shows skeleton)
   useEffect(() => {
-    const tz = workSettings?.timezone || 'Asia/Dubai'
-    const today = toISODate(new Date(), tz)
-    setCurrentDate(today)
-    fetchTodayData(today)
-  }, [fetchTodayData, workSettings?.timezone])
+    const fetchWorkSettings = async () => {
+      try {
+        const response = await fetch("/api/v2/settings/work");
+        if (response.ok) {
+          const settingsData = await response.json();
+          setWorkSettings(settingsData);
+        }
+      } catch (error) {
+        console.error("Error fetching work settings:", error);
+      } finally {
+        // kalau settings gagal sekalipun, jangan nge-stuck loading
+        setLoading(false);
+      }
+    };
+
+    fetchWorkSettings();
+  }, []);
+
+  // Initial data fetch - depends on workSettings
+  useEffect(() => {
+    if (workSettings) {
+      const tz = workSettings.timezone || "Asia/Dubai";
+      const today = toISODate(new Date(), tz);
+      setCurrentDate(today);
+      // initial fetch: tampilkan loading skeleton
+      fetchTodayData(today, { skipSettings: true, showLoading: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workSettings]); // fetchTodayData intentionally excluded
 
   // Listen for attendance refresh events (from check-in/check-out)
   useEffect(() => {
-    const handleAttendanceRefresh = () => {
-      console.log('Attendance refresh event received, refreshing data...')
-      const tz = workSettings?.timezone || 'Asia/Dubai'
-      const today = toISODate(new Date(), tz)
-      fetchTodayData(today)
-    }
+    const handler = () => {
+      console.log("Attendance refresh event received, refreshing data...");
+      const tz = workSettings?.timezone || "Asia/Dubai";
+      const today = toISODate(new Date(), tz);
+      // refresh tanpa flicker
+      fetchTodayData(today, { skipSettings: true, showLoading: false });
+    };
 
-    window.addEventListener('attendance-refresh', handleAttendanceRefresh)
-    return () => window.removeEventListener('attendance-refresh', handleAttendanceRefresh)
-  }, [fetchTodayData, workSettings?.timezone])
+    window.addEventListener("attendance-refresh", handler);
+    return () => window.removeEventListener("attendance-refresh", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workSettings?.timezone, fetchTodayData]);
 
-  // Update current time every second and check for date changes
+  // Update current time every 5 seconds and check for date changes
   useEffect(() => {
     const tick = setInterval(() => {
-      const newNow = new Date()
-      setNow(newNow)
-      
-      // Check if date has changed
-      const tz = workSettings?.timezone || 'Asia/Dubai'
-      const newDate = toISODate(newNow, tz)
+      const newNow = new Date();
+      setNow(newNow);
+
+      const tz = workSettings?.timezone || "Asia/Dubai";
+      const newDate = toISODate(newNow, tz);
+
       if (newDate !== currentDate) {
-        console.log('Date changed, resetting attendance data')
-        setCurrentDate(newDate)
-        setData(null) // Reset attendance data immediately
-        setIsHoliday(false) // Reset holiday status
-        fetchTodayData(newDate) // Fetch new day's data
+        console.log("Date changed, resetting attendance data");
+        setCurrentDate(newDate);
+        setData(null);
+        setIsHoliday(false);
+        // refresh tanpa flicker
+        fetchTodayData(newDate, { skipSettings: true, showLoading: false });
       }
-    }, 1000)
-    
-    return () => clearInterval(tick)
-  }, [currentDate, fetchTodayData, workSettings?.timezone])
+    }, 5000);
 
-  // Calculate time until next midnight in the work timezone
+    return () => clearInterval(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate, workSettings?.timezone, fetchTodayData]);
+
+  // Calculate time until next midnight in the work timezone (fixed)
   useEffect(() => {
-    if (!workSettings?.timezone) return
-    
-    const calculateNextMidnight = () => {
-      const nowDate = new Date()
-      const tz = workSettings.timezone || 'Asia/Dubai'
-      
-      // Get current time in the work timezone
-      const tzDate = new Date(nowDate.toLocaleString("en-US", {timeZone: tz}))
-      
-      // Calculate next midnight in that timezone
-      const nextMidnight = new Date(tzDate)
-      nextMidnight.setHours(24, 0, 0, 0)
-      
-      // Convert back to local time for setTimeout
-      const localMidnight = new Date(nextMidnight.toLocaleString("en-US", {timeZone: tz}))
-      const ms = localMidnight.getTime() - nowDate.getTime()
-      
-      return Math.max(ms, 1000) // Ensure at least 1 second
-    }
+    if (!workSettings?.timezone) return;
 
-    const scheduleNextReset = () => {
-      const ms = calculateNextMidnight()
+    const tz = workSettings.timezone || "Asia/Dubai";
+
+    const schedule = () => {
+      // Keduanya “diproyeksikan” di TZ yang sama agar basis konsisten
+      const tzNow = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+      const nextMidnightTz = new Date(tzNow);
+      nextMidnightTz.setHours(24, 0, 0, 0);
+
+      const ms = Math.max(nextMidnightTz.getTime() - tzNow.getTime(), 1000);
       const t = setTimeout(() => {
-        console.log('Scheduled reset triggered')
-        const newDate = toISODate(new Date(), workSettings?.timezone || 'Asia/Dubai')
-        setCurrentDate(newDate)
-        setData(null)
-        setIsHoliday(false)
-        fetchTodayData(newDate)
-        scheduleNextReset() // Schedule next reset
-      }, ms)
-      
-      return () => clearTimeout(t)
-    }
+        console.log("Scheduled reset triggered");
+        const newDate = toISODate(new Date(), tz);
+        setCurrentDate(newDate);
+        setData(null);
+        setIsHoliday(false);
+        // refresh tanpa flicker
+        fetchTodayData(newDate, { skipSettings: true, showLoading: false });
+        schedule(); // jadwalkan lagi untuk tengah malam berikutnya
+      }, ms);
 
-    const cleanup = scheduleNextReset()
-    return cleanup
-  }, [workSettings?.timezone, fetchTodayData])
+      return t;
+    };
+
+    const handle = schedule();
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workSettings?.timezone, fetchTodayData]);
+
+  // ---- DERIVED -------------------------------------------------------------
 
   const workHours = useMemo(() => {
-    if (!data || !data.total_work_minutes) return '-'
-    const h = Math.floor(data.total_work_minutes / 60)
-    const m = data.total_work_minutes % 60
-    return `${h}j ${m}m`
-  }, [data])
+    if (!data || !data.total_work_minutes) return "-";
+    const h = Math.floor(data.total_work_minutes / 60);
+    const m = data.total_work_minutes % 60;
+    return `${h}j ${m}m`;
+  }, [data]);
 
-  const tzNow = new Date(now.toLocaleString('en-US', { timeZone: (workSettings?.timezone || 'Asia/Dubai') }))
-  const jsDay = tzNow.getDay() // 0=Min..6=Sab
-  const isWeekend = jsDay === 0 || jsDay === 6
-  const statusHari = isWeekend || isHoliday ? 'Libur' : 'Hari Kerja'
-  const statusDetail = isWeekend ? 'Libur Akhir Pekan' : (isHoliday ? 'Libur Nasional' : 'Hari Kerja')
-  const statusColor = isWeekend || isHoliday ? 'text-blue-600' : 'text-green-600'
-  
-  // Use timezone from work settings, fallback to Asia/Dubai
-  const currentTimezone = workSettings?.timezone || 'Asia/Dubai'
-  const timezoneLabel = currentTimezone === 'Asia/Dubai' ? 'Dubai' : currentTimezone
+  const tzNow = new Date(
+    now.toLocaleString("en-US", { timeZone: workSettings?.timezone || "Asia/Dubai" })
+  );
+  const jsDay = tzNow.getDay(); // 0=Min..6=Sab
+  const isWeekend = jsDay === 0 || jsDay === 6;
+  const statusDetail = isWeekend ? "Libur Akhir Pekan" : isHoliday ? "Libur Nasional" : "Hari Kerja";
+  const statusColor = isWeekend || isHoliday ? "text-blue-600" : "text-green-600";
+
+  const currentTimezone = workSettings?.timezone || "Asia/Dubai";
+  const timezoneLabel = currentTimezone === "Asia/Dubai" ? "Dubai" : currentTimezone;
+
+  // ---- RENDER --------------------------------------------------------------
 
   if (loading) {
     return (
@@ -250,7 +319,7 @@ export default function TodayAttendance() {
           <div className="text-gray-500 text-center py-4">Memuat data...</div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -263,10 +332,14 @@ export default function TodayAttendance() {
         <div className="bg-gray-50 rounded-lg p-4 space-y-2">
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-800">{fmtDate(now, currentTimezone)}</div>
-            <div className="text-lg text-gray-600">{fmtTimeOnly(now, currentTimezone)} ({timezoneLabel})</div>
+            <div className="text-lg text-gray-600">
+              {fmtTimeOnly(now, currentTimezone)} ({timezoneLabel})
+            </div>
           </div>
           <div className="text-center">
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${statusColor} bg-gray-100`}>
+            <span
+              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${statusColor} bg-gray-100`}
+            >
               {statusDetail}
             </span>
           </div>
@@ -288,31 +361,29 @@ export default function TodayAttendance() {
                   {fmtTime(data.check_in_at_utc, data.timezone)}
                 </div>
                 <div className="text-xs mt-1">
-                  {data.check_in_lat && data.check_in_lng 
-                    ? (
-                      <span className={data.within_geofence === false ? 'text-orange-600' : 'text-green-600'}>
-                        {data.within_geofence === false ? '⚠️ Di luar kantor' : '✅ Di dalam kantor'}
-                      </span>
-                    )
-                    : '-'
-                  }
+                  {data.check_in_lat && data.check_in_lng ? (
+                    <span className={data.within_geofence === false ? "text-orange-600" : "text-green-600"}>
+                      {data.within_geofence === false ? "⚠️ Di luar kantor" : "✅ Di dalam kantor"}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
                 </div>
               </div>
-              
+
               <div className="bg-blue-50 rounded-lg p-3 text-center">
                 <div className="text-xs text-blue-600 mb-1">Check Out</div>
                 <div className="text-lg font-semibold text-blue-700">
                   {fmtTime(data.check_out_at_utc, data.timezone)}
                 </div>
                 <div className="text-xs mt-1">
-                  {data.check_out_lat && data.check_out_lng 
-                    ? (
-                      <span className={data.within_geofence === false ? 'text-orange-600' : 'text-green-600'}>
-                        {data.within_geofence === false ? '⚠️ Di luar kantor' : '✅ Di dalam kantor'}
-                      </span>
-                    )
-                    : '-'
-                  }
+                  {data.check_out_lat && data.check_out_lng ? (
+                    <span className={data.within_geofence === false ? "text-orange-600" : "text-green-600"}>
+                      {data.within_geofence === false ? "⚠️ Di luar kantor" : "✅ Di dalam kantor"}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
                 </div>
               </div>
             </div>
@@ -326,8 +397,12 @@ export default function TodayAttendance() {
                 </div>
                 <div>
                   <div className="text-xs text-gray-600 mb-1">Keterlambatan</div>
-                  <div className={`text-lg font-semibold ${data.minutes_late > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {data.minutes_late > 0 ? `${data.minutes_late}m` : '-'}
+                  <div
+                    className={`text-lg font-semibold ${
+                      data.minutes_late > 0 ? "text-red-600" : "text-green-600"
+                    }`}
+                  >
+                    {data.minutes_late > 0 ? `${data.minutes_late}m` : "-"}
                   </div>
                 </div>
               </div>
@@ -345,10 +420,12 @@ export default function TodayAttendance() {
                   </div>
                   <div>
                     <div className="text-xs text-orange-700 mb-1 font-medium">Status</div>
-                    <div className={`text-sm font-medium ${
-                      overtimeData.overtime_approved ? 'text-green-600' : 'text-yellow-600'
-                    }`}>
-                      {overtimeData.overtime_approved ? 'Approved' : 'Pending'}
+                    <div
+                      className={`text-sm font-medium ${
+                        overtimeData.overtime_approved ? "text-green-600" : "text-yellow-600"
+                      }`}
+                    >
+                      {overtimeData.overtime_approved ? "Approved" : "Pending"}
                     </div>
                   </div>
                 </div>
@@ -356,9 +433,9 @@ export default function TodayAttendance() {
                   <div className="mt-2 text-center">
                     <div className="text-xs text-orange-600 mb-1">Gaji Overtime</div>
                     <div className="text-sm font-semibold text-orange-800">
-                      {new Intl.NumberFormat('en-AE', {
-                        style: 'currency',
-                        currency: 'AED',
+                      {new Intl.NumberFormat("en-AE", {
+                        style: "currency",
+                        currency: "AED",
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       }).format(overtimeData.overtime_amount)}
@@ -375,7 +452,7 @@ export default function TodayAttendance() {
                 <div className="text-sm text-yellow-800">{data.employee_note}</div>
               </div>
             )}
-            
+
             {/* System Note (Geofence Warning) */}
             {data.note?.trim() && (
               <div className="bg-orange-50 rounded-lg p-3">
@@ -387,7 +464,5 @@ export default function TodayAttendance() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
-
-

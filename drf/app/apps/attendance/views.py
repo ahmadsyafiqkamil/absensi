@@ -3,7 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 from datetime import date, timedelta
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
 from .models import Attendance
+from api.pagination import DefaultPagination
 from .serializers import (
     AttendanceSerializer, AttendanceAdminSerializer, AttendanceSupervisorSerializer,
     AttendanceEmployeeSerializer, AttendanceCreateUpdateSerializer,
@@ -18,6 +21,12 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     """Attendance management ViewSet with role-based access"""
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['date_local', 'user', 'employee']
+    search_fields = ['user__username', 'user__first_name', 'user__last_name', 'employee__name']
+    ordering_fields = ['date_local', 'created_at', 'check_in_at_utc']
+    ordering = ['-date_local', '-created_at']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on user role"""
@@ -30,18 +39,45 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """Filter attendances based on user role"""
+        queryset = Attendance.objects.all()
+        
+        # Apply role-based filtering
         if self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
-            return Attendance.objects.all()
+            queryset = queryset
         elif self.request.user.groups.filter(name='supervisor').exists():
-            # Supervisors can see attendances of employees in their division
+            # Supervisors can see their own attendances and attendances of employees in their division
             if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.division:
-                return Attendance.objects.filter(
-                    employee__division=self.request.user.employee_profile.division
+                from django.db import models
+                queryset = queryset.filter(
+                    models.Q(user=self.request.user) |  # Own attendance
+                    models.Q(employee__division=self.request.user.employee_profile.division)  # Team attendance
                 )
-            return Attendance.objects.none()
+            else:
+                # If no division, supervisors can only see their own attendance
+                queryset = queryset.filter(user=self.request.user)
         else:
             # Regular employees can only see their own attendances
-            return Attendance.objects.filter(user=self.request.user)
+            queryset = queryset.filter(user=self.request.user)
+        
+        # Apply date range filtering if start and end parameters are provided
+        start_date = self.request.query_params.get('start')
+        end_date = self.request.query_params.get('end')
+        
+        if start_date:
+            try:
+                start_date_obj = date.fromisoformat(start_date)
+                queryset = queryset.filter(date_local__gte=start_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        if end_date:
+            try:
+                end_date_obj = date.fromisoformat(end_date)
+                queryset = queryset.filter(date_local__lte=end_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        return queryset
     
     @action(detail=False, methods=['post'])
     def check_in(self, request):

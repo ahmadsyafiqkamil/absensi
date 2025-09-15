@@ -162,7 +162,7 @@ def me(request):
     
     # Add position data for position-based approval system
     try:
-        employee = user.employee
+        employee = user.employee_profile
         if employee and employee.position:
             data["position"] = {
                 "id": employee.position.id,

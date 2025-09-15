@@ -58,11 +58,12 @@ export default function ApprovalsPage() {
     setLoading(true)
     setError(null)
     try {
-      const resp = await fetch('/api/attendance-corrections?status=pending')
+      // Use V2 API endpoint for supervisor corrections
+      const resp = await fetch('/api/v2/corrections/supervisor?status=pending')
       const data = await resp.json().catch(() => ({}))
       const list = Array.isArray(data) ? data : (data.results || [])
       setItems(list)
-      console.log('LOAD_DATA', { list })
+      console.log('LOAD_DATA_V2', { list, response: data })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal memuat data')
     } finally {
@@ -86,19 +87,20 @@ export default function ApprovalsPage() {
     setSubmittingId(id)
     setError(null)
     try {
-      const path = action === 'approve' ? `/api/attendance-corrections/${id}/approve` : `/api/attendance-corrections/${id}/reject`
-      console.log('APPROVAL_ACTION', { id, action, path })
+      // Use V2 API endpoints for approval actions
+      const path = action === 'approve' ? `/api/v2/corrections/${id}/approve` : `/api/v2/corrections/${id}/reject`
+      console.log('APPROVAL_ACTION_V2', { id, action, path })
       
       const resp = await fetch(path, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
-                  body: JSON.stringify({ 
-            decision_note: decisionNote
-          }) 
+        body: JSON.stringify({ 
+          decision_note: decisionNote
+        }) 
       })
       
       const d = await resp.json().catch(() => ({}))
-      console.log('APPROVAL_RESPONSE', { status: resp.status, ok: resp.ok, body: d })
+      console.log('APPROVAL_RESPONSE_V2', { status: resp.status, ok: resp.ok, body: d })
       
       if (!resp.ok) {
         // Handle specific error cases
@@ -119,10 +121,10 @@ export default function ApprovalsPage() {
       
       // Success - refresh data
       await load()
-      console.log('APPROVAL_SUCCESS', { id, action, response: d })
+      console.log('APPROVAL_SUCCESS_V2', { id, action, response: d })
       
     } catch (e) {
-      console.error('APPROVAL_ERROR', e)
+      console.error('APPROVAL_ERROR_V2', e)
       setError(e instanceof Error ? e.message : 'Gagal memproses')
     } finally {
       setSubmittingId(null)

@@ -2,6 +2,9 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
+from datetime import date
 from .models import OvertimeRequest, MonthlySummaryRequest
 from .serializers import (
     OvertimeRequestSerializer, OvertimeRequestAdminSerializer,
@@ -21,6 +24,11 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
     """Overtime request management ViewSet with role-based access"""
     serializer_class = OvertimeRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'request_type', 'user', 'employee']
+    search_fields = ['user__username', 'user__first_name', 'user__last_name', 'employee__name']
+    ordering_fields = ['created_at', 'date', 'status']
+    ordering = ['-created_at']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on user role"""
@@ -32,19 +40,43 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             return OvertimeRequestEmployeeSerializer
     
     def get_queryset(self):
-        """Filter overtime requests based on user role"""
+        """Filter overtime requests based on user role and date range"""
+        queryset = OvertimeRequest.objects.all()
+        
+        # Apply role-based filtering
         if self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
-            return OvertimeRequest.objects.all()
+            queryset = queryset
         elif self.request.user.groups.filter(name='supervisor').exists():
             # Supervisors can see overtime requests of employees in their division
             if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.division:
-                return OvertimeRequest.objects.filter(
+                queryset = queryset.filter(
                     employee__division=self.request.user.employee_profile.division
                 )
-            return OvertimeRequest.objects.none()
+            else:
+                queryset = queryset.none()
         else:
             # Regular employees can only see their own overtime requests
-            return OvertimeRequest.objects.filter(user=self.request.user)
+            queryset = queryset.filter(user=self.request.user)
+        
+        # Apply date range filtering if start_date and end_date parameters are provided
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            try:
+                start_date_obj = date.fromisoformat(start_date)
+                queryset = queryset.filter(date__gte=start_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        if end_date:
+            try:
+                end_date_obj = date.fromisoformat(end_date)
+                queryset = queryset.filter(date__lte=end_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        return queryset
     
     def perform_create(self, serializer):
         """Set user when creating overtime request"""
