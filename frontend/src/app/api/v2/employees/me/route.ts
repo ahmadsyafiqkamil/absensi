@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
 
     const backend = getBackendBaseUrl()
 
-    // Use legacy employee API instead of v2
-    const url = `${backend}/api/employee/employees`
+    // Use v2 employee me endpoint
+    const url = `${backend}/api/v2/employees/me/`
 
     const resp = await fetch(url, {
       method: 'GET',
@@ -25,12 +25,6 @@ export async function GET(request: NextRequest) {
     })
 
     const data = await resp.json().catch(() => ({}))
-
-    // Transform legacy API response to match expected format
-    if (resp.ok && data.results && Array.isArray(data.results) && data.results.length > 0) {
-      const employee = data.results[0]
-      return NextResponse.json(employee, { status: 200 })
-    }
 
     return NextResponse.json(data, { status: resp.status })
   } catch (error) {

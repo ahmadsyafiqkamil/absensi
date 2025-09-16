@@ -19,7 +19,7 @@ export async function GET() {
   if (!chk.ok) return NextResponse.json({ detail: 'Unauthorized' }, { status: chk.status })
   
   try {
-    const resp = await fetch(`${chk.backendBase}/api/settings/work/`, {
+    const resp = await fetch(`${chk.backendBase}/api/v2/settings/work/`, {
       headers: { Authorization: `Bearer ${chk.accessToken}` },
       cache: 'no-store',
     })

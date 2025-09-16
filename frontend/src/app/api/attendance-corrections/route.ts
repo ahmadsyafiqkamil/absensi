@@ -19,7 +19,7 @@ export async function GET() {
   if (!chk.ok) return NextResponse.json({ detail: 'Unauthorized' }, { status: chk.status })
   
   try {
-    const resp = await fetch(`${chk.backendBase}/api/attendance-corrections/`, {
+    const resp = await fetch(`${chk.backendBase}/api/v2/corrections/corrections/`, {
       headers: { Authorization: `Bearer ${chk.accessToken}` },
       cache: 'no-store',
     })
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     // Forward the request body (FormData) directly to the backend
     const body = await request.formData()
     
-    const resp = await fetch(`${chk.backendBase}/api/attendance-corrections/`, {
+    const resp = await fetch(`${chk.backendBase}/api/v2/corrections/corrections/`, {
       method: 'POST',
       headers: { 
         Authorization: `Bearer ${chk.accessToken}`,

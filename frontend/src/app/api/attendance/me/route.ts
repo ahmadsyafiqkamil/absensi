@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const backend = getBackendUrl()
   const url = new URL(req.url)
   const search = url.search ? url.search : ''
-  const resp = await fetch(`${backend}/api/attendance/${search}`, {
+  const resp = await fetch(`${backend}/api/v2/attendance/attendance/${search}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: 'no-store',
   })

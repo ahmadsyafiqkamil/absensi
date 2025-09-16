@@ -501,25 +501,25 @@ export default function PegawaiAttendanceReportPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-blue-600">{attendanceData.summary.total_days}</div>
+                <div className="text-2xl font-bold text-blue-600">{attendanceData?.summary?.total_days || 0}</div>
                 <div className="text-sm text-gray-600">Total Days</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-green-600">{attendanceData.summary.present_days}</div>
+                <div className="text-2xl font-bold text-green-600">{attendanceData?.summary?.present_days || 0}</div>
                 <div className="text-sm text-gray-600">Present Days</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-yellow-600">{attendanceData.summary.late_days}</div>
+                <div className="text-2xl font-bold text-yellow-600">{attendanceData?.summary?.late_days || 0}</div>
                 <div className="text-sm text-gray-600">Late Days</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-purple-600">{attendanceData.summary.attendance_rate}%</div>
+                <div className="text-2xl font-bold text-purple-600">{attendanceData?.summary?.attendance_rate || 0}%</div>
                 <div className="text-sm text-gray-600">Attendance Rate</div>
               </CardContent>
             </Card>
