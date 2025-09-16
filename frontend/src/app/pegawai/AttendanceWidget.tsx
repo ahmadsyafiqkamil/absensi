@@ -4,7 +4,17 @@ import { useCallback, useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Button } from '@/components/ui/button'
 
-type Precheck = { date_local: string; has_check_in: boolean; has_check_out: boolean }
+type Precheck = {
+  date_local: string;
+  has_check_in: boolean;
+  has_check_out: boolean;
+  time_restrictions?: {
+    earliest_check_in_enabled: boolean;
+    earliest_check_in_time: string;
+    latest_check_out_enabled: boolean;
+    latest_check_out_time: string;
+  };
+}
 
 // Custom event untuk refresh attendance data
 const ATTENDANCE_REFRESH_EVENT = 'attendance-refresh'
@@ -75,6 +85,8 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
   const [submitting, setSubmitting] = useState(false)
   const { loc, locating, error: geoError, getLocation, setError: setGeoError } = useGeo()
   const [note, setNote] = useState('')
+  const [currentTime, setCurrentTime] = useState<string>('')
+  const [timeRestrictionError, setTimeRestrictionError] = useState<string>('')
 
   const title = kind === 'in' ? 'Konfirmasi Check In' : 'Konfirmasi Check Out'
 
@@ -86,6 +98,10 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.detail || 'Gagal precheck')
       setPrecheck(d)
+      // Set current time (Asia/Dubai)
+      const now = new Date()
+      const timeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })
+      setCurrentTime(timeString)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal precheck')
     } finally {
@@ -102,10 +118,43 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
       setError(null)
       setPrecheck(null)
       setNote('')
+      setTimeRestrictionError('')
       setLoading(true)
       load()
     }
   }, [open, load, setGeoError])
+
+  function isCheckInAllowed(): { allowed: boolean; message?: string } {
+    const tr = precheck?.time_restrictions
+    if (!tr?.earliest_check_in_enabled) return { allowed: true }
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const [eh, em] = (tr.earliest_check_in_time || '00:00').split(':').map(Number)
+    const earliestMinutes = (eh || 0) * 60 + (em || 0)
+    if (currentMinutes < earliestMinutes) {
+      return {
+        allowed: false,
+        message: `Belum masuk jam check-in. Boleh mulai jam ${tr.earliest_check_in_time}. Waktu saat ini: ${currentTime}`,
+      }
+    }
+    return { allowed: true }
+  }
+
+  function isCheckOutAllowed(): { allowed: boolean; message?: string } {
+    const tr = precheck?.time_restrictions
+    if (!tr?.latest_check_out_enabled) return { allowed: true }
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const [lh, lm] = (tr.latest_check_out_time || '23:59').split(':').map(Number)
+    const latestMinutes = (lh || 0) * 60 + (lm || 0)
+    if (currentMinutes > latestMinutes) {
+      return {
+        allowed: false,
+        message: `Lewat batas check-out. Batas maksimal jam ${tr.latest_check_out_time}. Waktu saat ini: ${currentTime}`,
+      }
+    }
+    return { allowed: true }
+  }
 
   const submit = useCallback(async () => {
     if (!loc) return
@@ -119,7 +168,7 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
         body: JSON.stringify({ latitude: loc.lat, longitude: loc.lng, accuracy: loc.acc, note: note || undefined }),
       })
       const data = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(data?.detail || 'Gagal submit')
+      if (!resp.ok) throw new Error((data && (data.error || data.detail)) || 'Gagal submit')
       
       // Close modal
       onClose()
@@ -150,12 +199,34 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
         ) : (
           <div className="grid gap-3">
             {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{error}</div>}
+            {timeRestrictionError && (
+              <div className="bg-red-100 border-2 border-red-300 text-red-800 px-4 py-3 rounded">
+                <div className="flex items-center gap-2">
+                  <span>🚫</span>
+                  <div>
+                    <strong>Peringatan Waktu</strong>
+                    <div className="text-sm mt-1">{timeRestrictionError}</div>
+                  </div>
+                </div>
+              </div>
+            )}
             {geoError && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{geoError}</div>}
             {kind === 'in' ? (
               precheck?.has_check_in ? (
                 <div className="text-sm text-gray-700">Anda sudah check-in hari ini.</div>
               ) : (
                 <>
+                  {precheck?.time_restrictions?.earliest_check_in_enabled && (
+                    <div className="bg-orange-50 border border-orange-200 text-orange-800 px-3 py-2 rounded text-sm">
+                      <div className="flex items-center gap-2">
+                        <span>⚠️</span>
+                        <div>
+                          <strong>Pembatasan Waktu:</strong> Check-in hanya diizinkan mulai jam {precheck.time_restrictions.earliest_check_in_time}
+                          <div className="text-xs mt-1">Waktu saat ini: {currentTime}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
                   <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
                   {loc && (
@@ -168,7 +239,20 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
                     <label className="text-xs text-gray-600">Keterangan (opsional)</label>
                     <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan keterlambatan (jika terlambat)"></textarea>
                   </div>
-                  <Button disabled={!loc} onClick={() => setConfirming(true)}>Check In</Button>
+                  <Button
+                    disabled={!loc}
+                    onClick={() => {
+                      const chk = isCheckInAllowed()
+                      if (!chk.allowed) {
+                        setTimeRestrictionError(chk.message || 'Check-in tidak diizinkan saat ini')
+                        return
+                      }
+                      setTimeRestrictionError('')
+                      setConfirming(true)
+                    }}
+                  >
+                    Check In
+                  </Button>
                 </>
               )
             ) : !precheck?.has_check_in ? (
@@ -177,6 +261,17 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
               <div className="text-sm text-gray-700">Anda sudah check-out hari ini.</div>
             ) : (
               <>
+                {precheck?.time_restrictions?.latest_check_out_enabled && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm">
+                    <div className="flex items-center gap-2">
+                      <span>🚫</span>
+                      <div>
+                        <strong>Pembatasan Waktu:</strong> Check-out hanya diizinkan sampai jam {precheck.time_restrictions.latest_check_out_time}
+                        <div className="text-xs mt-1">Waktu saat ini: {currentTime}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="text-sm">Ambil lokasi Anda terlebih dahulu.</div>
                                   <Button variant="outline" onClick={getLocation} disabled={locating}>{locating ? 'Mengambil lokasi...' : 'Ambil Lokasi'}</Button>
                 {loc && (
@@ -189,7 +284,20 @@ function CheckModal({ kind, open, onClose }: { kind: 'in' | 'out'; open: boolean
                   <label className="text-xs text-gray-600">Keterangan (opsional)</label>
                   <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan kurang jam kerja (jika kurang)"></textarea>
                 </div>
-                <Button disabled={!loc} onClick={() => setConfirming(true)}>Check Out</Button>
+                <Button
+                  disabled={!loc}
+                  onClick={() => {
+                    const chk = isCheckOutAllowed()
+                    if (!chk.allowed) {
+                      setTimeRestrictionError(chk.message || 'Check-out tidak diizinkan saat ini')
+                      return
+                    }
+                    setTimeRestrictionError('')
+                    setConfirming(true)
+                  }}
+                >
+                  Check Out
+                </Button>
               </>
             )}
             {confirming && (

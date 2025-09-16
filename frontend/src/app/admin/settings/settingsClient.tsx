@@ -99,9 +99,9 @@ export default function SettingsClient() {
         const settingsWithDefaults = {
           ...settingsData,
           earliest_check_in_enabled: settingsData.earliest_check_in_enabled ?? false,
-          earliest_check_in_time: settingsData.earliest_check_in_time ?? '06:00',
+          earliest_check_in_time: settingsData.earliest_check_in_time ?? '06:00:00',
           latest_check_out_enabled: settingsData.latest_check_out_enabled ?? false,
-          latest_check_out_time: settingsData.latest_check_out_time ?? '22:00'
+          latest_check_out_time: settingsData.latest_check_out_time ?? '22:00:00'
         }
         setSettings(settingsWithDefaults)
         setHolidays(h?.results ?? [])
@@ -140,10 +140,21 @@ export default function SettingsClient() {
     setSaving(true)
     setError(null)
     try {
+      // Ensure time fields have seconds format for backend
+      const settingsToSave = {
+        ...settings,
+        earliest_check_in_time: settings.earliest_check_in_time?.includes(':') && !settings.earliest_check_in_time?.includes(':00:') 
+          ? settings.earliest_check_in_time + ':00' 
+          : settings.earliest_check_in_time,
+        latest_check_out_time: settings.latest_check_out_time?.includes(':') && !settings.latest_check_out_time?.includes(':00:') 
+          ? settings.latest_check_out_time + ':00' 
+          : settings.latest_check_out_time,
+      }
+      
       const resp = await fetch('/api/admin/settings/work', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(settingsToSave),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error((data as { detail?: string })?.detail || 'Gagal menyimpan settings')
@@ -400,7 +411,7 @@ export default function SettingsClient() {
                 <Label>Jam paling awal untuk absen</Label>
                 <Input
                   type="time"
-                  value={settings.earliest_check_in_time || '06:00'}
+                  value={settings.earliest_check_in_time?.substring(0, 5) || '06:00'}
                   onChange={(e) => setSettings({ ...settings, earliest_check_in_time: e.target.value })}
                   disabled={!settings.earliest_check_in_enabled}
                 />
@@ -412,7 +423,7 @@ export default function SettingsClient() {
             {settings.earliest_check_in_enabled && (
               <div className="mt-4 p-3 bg-orange-50 rounded-lg">
                 <div className="text-sm text-orange-800">
-                  <strong>Info:</strong> Pembatasan jam absensi aktif. Employee hanya bisa absen mulai jam {settings.earliest_check_in_time || '06:00'}
+                  <strong>Info:</strong> Pembatasan jam absensi aktif. Employee hanya bisa absen mulai jam {settings.earliest_check_in_time || '06:00:00'}
                 </div>
               </div>
             )}
@@ -438,7 +449,7 @@ export default function SettingsClient() {
                 <Label>Jam paling akhir untuk check-out</Label>
                 <Input
                   type="time"
-                  value={settings.latest_check_out_time || '22:00'}
+                  value={settings.latest_check_out_time?.substring(0, 5) || '22:00'}
                   onChange={(e) => setSettings({ ...settings, latest_check_out_time: e.target.value })}
                   disabled={!settings.latest_check_out_enabled}
                 />
@@ -450,7 +461,7 @@ export default function SettingsClient() {
             {settings.latest_check_out_enabled && (
               <div className="mt-4 p-3 bg-red-50 rounded-lg">
                 <div className="text-sm text-red-800">
-                  <strong>Info:</strong> Pembatasan jam check-out aktif. Employee hanya bisa check-out sampai jam {settings.latest_check_out_time || '22:00'}
+                  <strong>Info:</strong> Pembatasan jam check-out aktif. Employee hanya bisa check-out sampai jam {settings.latest_check_out_time || '22:00:00'}
                 </div>
               </div>
             )}

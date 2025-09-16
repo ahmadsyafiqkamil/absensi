@@ -29,6 +29,14 @@ class AttendanceService:
             current_time = timezone.now().astimezone(ZoneInfo(timezone_name))
             current_date = current_time.date()
             
+            # Check time restrictions if enabled
+            if self.work_settings and self.work_settings.earliest_check_in_enabled:
+                if current_time.time() < self.work_settings.earliest_check_in_time:
+                    return {
+                        'success': False,
+                        'error': f'Check-in tidak diizinkan sebelum jam {self.work_settings.earliest_check_in_time.strftime("%H:%M")}. Silakan coba lagi setelah jam tersebut.'
+                    }
+            
             # Check if attendance already exists for today
             attendance, created = Attendance.objects.get_or_create(
                 user=user,
@@ -100,6 +108,14 @@ class AttendanceService:
             # Get current time in user's timezone
             current_time = timezone.now().astimezone(ZoneInfo(timezone_name))
             current_date = current_time.date()
+            
+            # Check time restrictions if enabled
+            if self.work_settings and self.work_settings.latest_check_out_enabled:
+                if current_time.time() > self.work_settings.latest_check_out_time:
+                    return {
+                        'success': False,
+                        'error': f'Check-out tidak diizinkan setelah jam {self.work_settings.latest_check_out_time.strftime("%H:%M")}. Silakan hubungi admin untuk bantuan.'
+                    }
             
             # Get today's attendance
             try:
@@ -175,6 +191,16 @@ class AttendanceService:
             from apps.settings.models import Holiday
             is_holiday = Holiday.is_holiday_date(check_date)
             
+            # Get time restrictions info
+            time_restrictions = {}
+            if self.work_settings:
+                time_restrictions = {
+                    'earliest_check_in_enabled': self.work_settings.earliest_check_in_enabled,
+                    'earliest_check_in_time': self.work_settings.earliest_check_in_time.strftime('%H:%M') if self.work_settings.earliest_check_in_time else None,
+                    'latest_check_out_enabled': self.work_settings.latest_check_out_enabled,
+                    'latest_check_out_time': self.work_settings.latest_check_out_time.strftime('%H:%M') if self.work_settings.latest_check_out_time else None,
+                }
+            
             return {
                 'success': True,
                 'date': check_date.isoformat(),
@@ -183,6 +209,7 @@ class AttendanceService:
                 'has_check_in': bool(attendance.check_in_at_utc),
                 'has_check_out': bool(attendance.check_out_at_utc),
                 'work_hours': work_hours,
+                'time_restrictions': time_restrictions,
                 'status': attendance.status
             }
             
