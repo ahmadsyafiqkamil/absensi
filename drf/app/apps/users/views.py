@@ -55,6 +55,19 @@ class UserViewSet(viewsets.ModelViewSet):
         
         serializer = UserSerializer(user)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def check(self, request):
+        """Check if username exists"""
+        username = request.query_params.get('username')
+        if not username:
+            return Response({'error': 'Username parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        exists = User.objects.filter(username=username).exists()
+        return Response({
+            'username': username,
+            'exists': exists
+        })
 
 
 class AdminUserViewSet(UserViewSet):

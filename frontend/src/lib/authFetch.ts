@@ -81,7 +81,7 @@ export const authFetch = async (url: string, options: RequestInit = {}): Promise
 
       // Try to refresh token
       try {
-        const refreshResponse = await fetch('/api/auth/refresh', {
+        const refreshResponse = await fetch('/api/v2/auth/refresh/', {
           method: 'POST',
           credentials: 'include',
         });

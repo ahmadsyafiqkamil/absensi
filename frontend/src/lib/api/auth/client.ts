@@ -27,7 +27,7 @@ export const authApi = {
   // User authentication
   login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
     try {
-      const response = await legacyFetch('/api/auth/login', {
+      const response = await legacyFetch('/api/v2/auth/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -47,7 +47,7 @@ export const authApi = {
   // Refresh access token
   refresh: async (refreshToken: string): Promise<{ access: string }> => {
     try {
-      const response = await legacyFetch('/api/auth/refresh', {
+      const response = await legacyFetch('/api/v2/auth/refresh/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh: refreshToken })
@@ -67,7 +67,7 @@ export const authApi = {
   // Verify access token
   verify: async (accessToken: string): Promise<{ detail: string }> => {
     try {
-      const response = await legacyFetch('/api/auth/verify', {
+      const response = await legacyFetch('/api/v2/auth/verify/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,7 +105,7 @@ export const authApi = {
   // Get current user employee profile
   employeeMe: async (): Promise<Employee> => {
     try {
-      const response = await legacyFetch('/api/employees/me')
+      const response = await legacyFetch('/api/v2/auth/employee/me/')
 
       if (!response.ok) {
         const error = await response.json()
@@ -121,7 +121,7 @@ export const authApi = {
   // Logout user
   logout: async (): Promise<{ message: string }> => {
     try {
-      const response = await legacyFetch('/api/auth/logout', {
+      const response = await legacyFetch('/api/v2/auth/logout/', {
         method: 'POST'
       })
 
@@ -139,7 +139,7 @@ export const authApi = {
   // User management (admin only)
   listUsers: async (): Promise<User[]> => {
     try {
-      const response = await legacyFetch('/api/users')
+      const response = await legacyFetch('/api/v2/users/users/')
 
       if (!response.ok) {
         const error = await response.json()
@@ -155,7 +155,7 @@ export const authApi = {
   // Check if username exists
   checkUsername: async (username: string): Promise<{ username: string; exists: boolean }> => {
     try {
-      const response = await legacyFetch(`/api/users/check?username=${encodeURIComponent(username)}`)
+      const response = await legacyFetch(`/api/v2/users/users/check?username=${encodeURIComponent(username)}`)
 
       if (!response.ok) {
         const error = await response.json()
@@ -176,7 +176,7 @@ export const authApi = {
     group: 'admin' | 'supervisor' | 'pegawai'
   }): Promise<{ id: number; username: string; group: string; message: string }> => {
     try {
-      const response = await legacyFetch('/api/users/provision', {
+      const response = await legacyFetch('/api/v2/users/users/provision/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)

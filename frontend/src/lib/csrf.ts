@@ -24,7 +24,7 @@ export async function getCSRFToken(): Promise<string> {
   // If no token in cookies, try to fetch from backend
   console.log('No CSRF token in cookies, attempting to fetch...');
   try {
-    const response = await fetch('/api/csrf-token/', {
+    const response = await fetch('/api/v2/auth/csrf-token/', {
       method: 'GET',
       credentials: 'include',
       headers: {

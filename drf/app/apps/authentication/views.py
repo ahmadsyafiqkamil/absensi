@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth import logout
 from django.contrib.auth.models import User
+from django.middleware.csrf import get_token
 from apps.employees.serializers import EmployeeSerializer
 
 
@@ -80,3 +81,11 @@ def employee_me(request):
         return Response(employee_data)
     else:
         return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def csrf_token_view(request):
+    """Get CSRF token"""
+    csrf_token = get_token(request)
+    return Response({'csrfToken': csrf_token})
