@@ -74,7 +74,7 @@ services:
       - ./template:/app/app/template
     command: python manage.py runserver 0.0.0.0:8000
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/auth/health/')"]
       interval: 30s
       timeout: 10s
       retries: 3

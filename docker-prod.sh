@@ -36,7 +36,24 @@ if ! docker info &> /dev/null; then
     echo "❌ Docker daemon is not running. Please start Docker first."
     echo "💡 Try: sudo systemctl start docker"
     echo "💡 Or: sudo service docker start"
+    echo "💡 Or: open Docker Desktop application"
     exit 1
+fi
+
+# Check available disk space (at least 5GB)
+echo "💾 Checking available disk space..."
+available_space=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
+if [ "$available_space" -lt 5 ]; then
+    echo "⚠️  Warning: Low disk space detected (${available_space}GB available)"
+    echo "   Recommended: At least 5GB free space for production deployment"
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "❌ Deployment cancelled"
+        exit 1
+    fi
+else
+    echo "✅ Sufficient disk space available (${available_space}GB)"
 fi
 
 # Check if Docker Compose is installed
@@ -121,6 +138,23 @@ docker-compose --env-file production.env -f docker-compose.prod.yml up --build -
 echo "⏳ Waiting for services to be ready..."
 sleep 60
 
+# Run database migrations
+echo "🗄️  Running database migrations..."
+docker-compose --env-file production.env -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+
+# Collect static files
+echo "📦 Collecting static files..."
+docker-compose --env-file production.env -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
+
+# Create superuser if it doesn't exist
+echo "👤 Checking for superuser..."
+if ! docker-compose --env-file production.env -f docker-compose.prod.yml exec -T backend python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.filter(is_superuser=True).exists()" | grep -q "True"; then
+    echo "⚠️  No superuser found. You may need to create one manually:"
+    echo "   docker-compose --env-file production.env -f docker-compose.prod.yml exec backend python manage.py createsuperuser"
+else
+    echo "✅ Superuser exists"
+fi
+
 # Check database health
 echo "🔍 Checking database health..."
 if docker-compose --env-file production.env -f docker-compose.prod.yml exec -T mysql mysqladmin ping -h localhost --silent; then
@@ -135,7 +169,7 @@ echo "🔍 Checking backend health..."
 max_attempts=10
 attempt=1
 while [ $attempt -le $max_attempts ]; do
-    if curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
+    if curl -f http://localhost:8000/api/health > /dev/null 2>&1; then
         echo "✅ Backend is healthy"
         break
     else
@@ -147,6 +181,8 @@ done
 
 if [ $attempt -gt $max_attempts ]; then
     echo "❌ Backend health check failed"
+    echo "🔍 Checking backend logs..."
+    docker-compose --env-file production.env -f docker-compose.prod.yml logs backend
     exit 1
 fi
 
@@ -166,6 +202,8 @@ done
 
 if [ $attempt -gt $max_attempts ]; then
     echo "❌ Frontend health check failed"
+    echo "🔍 Checking frontend logs..."
+    docker-compose --env-file production.env -f docker-compose.prod.yml logs frontend
     exit 1
 fi
 
@@ -198,11 +236,24 @@ echo "   Stop services:       docker-compose --env-file production.env -f docker
 echo "   Restart services:    docker-compose --env-file production.env -f docker-compose.prod.yml restart"
 echo "   Rebuild:             docker-compose --env-file production.env -f docker-compose.prod.yml up --build -d"
 echo "   Backup database:     docker-compose --env-file production.env -f docker-compose.prod.yml --profile backup up -d"
+echo "   Scale services:      docker-compose --env-file production.env -f docker-compose.prod.yml up -d --scale backend=2"
+echo "   Update services:     docker-compose --env-file production.env -f docker-compose.prod.yml pull && docker-compose --env-file production.env -f docker-compose.prod.yml up -d"
+echo "   Clean up:            docker system prune -f && docker volume prune -f"
 echo ""
 echo "🔧 Monitoring:"
-echo "   Health checks:       curl https://${API_DOMAIN}/health/"
+echo "   Health checks:       curl https://${API_DOMAIN}/api/health"
+echo "   API Documentation:   https://${API_DOMAIN}/docs"
 echo "   Logs location:       ./logs/"
 echo "   Backup location:     ./backups/"
+echo "   Container status:    docker-compose --env-file production.env -f docker-compose.prod.yml ps"
+echo "   Resource usage:      docker stats"
+echo "   Database size:       docker-compose --env-file production.env -f docker-compose.prod.yml exec mysql du -sh /var/lib/mysql"
+echo ""
+echo "🔧 Maintenance:"
+echo "   Database backup:     ./scripts/backup.sh"
+echo "   Log rotation:        sudo logrotate -f /etc/logrotate.d/docker"
+echo "   Update certificates: docker-compose --env-file production.env -f docker-compose.prod.yml restart caddy"
+echo "   Database optimization: docker-compose --env-file production.env -f docker-compose.prod.yml exec mysql mysql -u root -p${MYSQL_ROOT_PASSWORD} -e 'OPTIMIZE TABLE absensi_db.*;'"
 echo ""
 echo "⚠️  Security Notes:"
 echo "   - All services are secured with SSL/TLS"
