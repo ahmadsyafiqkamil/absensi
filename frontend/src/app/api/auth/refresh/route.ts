@@ -10,7 +10,8 @@ export async function POST() {
   }
 
   const backend = getBackendUrl()
-  const resp = await fetch(`${backend}/api/auth/refresh`, {
+  // Use V2 refresh endpoint
+  const resp = await fetch(`${backend}/api/v2/auth/refresh/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh }),

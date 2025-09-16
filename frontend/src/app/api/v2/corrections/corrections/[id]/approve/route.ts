@@ -13,7 +13,7 @@ export async function POST(
     }
 
     const body = await request.json()
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     const url = `${backend}/api/v2/corrections/corrections/${(await params).id}/approve/`
 
     const resp = await fetch(url, {

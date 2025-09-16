@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const backend = getBackendUrl()
     const { searchParams } = new URL(request.url)
     const queryString = searchParams.toString()
-    const url = `${backend}/api/overtime-requests/export_list_pdf/?${queryString}`
+    const url = `${backend}/api/v2/overtime/overtime/export_list_pdf/?${queryString}`
     
     const resp = await fetch(url, {
       method: 'GET',

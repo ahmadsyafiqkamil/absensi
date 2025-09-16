@@ -6,7 +6,7 @@ const BACKEND_URL = getBackendUrl();
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
-    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/${url.search}`;
+    const backendUrl = `${BACKEND_URL}/api/v2/overtime/employee/monthly-summary/${url.search}`;
     
     const response = await fetch(backendUrl, {
       method: 'GET',
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const backendUrl = `${BACKEND_URL}/api/employee/monthly-summary-requests/`;
+    const backendUrl = `${BACKEND_URL}/api/v2/overtime/employee/monthly-summary/`;
     
     const response = await fetch(backendUrl, {
       method: 'POST',
