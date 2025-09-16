@@ -10,8 +10,8 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // Forward request to Django backend
-    const response = await fetch(`${BACKEND_URL}/api/admin/groups/${id}/`, {
+    // Forward request to Django backend (V2 API)
+    const response = await fetch(`${BACKEND_URL}/api/v2/users/admin/groups/${id}/`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -81,8 +81,8 @@ export async function PUT(
       return NextResponse.json(data);
     }
 
-    // For other updates, use the regular group endpoint
-    const response = await fetch(`${BACKEND_URL}/api/admin/groups/${id}/`, {
+    // For other updates, use the regular group endpoint (V2 API)
+    const response = await fetch(`${BACKEND_URL}/api/v2/users/admin/groups/${id}/`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -120,8 +120,8 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Forward request to Django backend
-    const response = await fetch(`${BACKEND_URL}/api/admin/groups/${id}/`, {
+    // Forward request to Django backend (V2 API)
+    const response = await fetch(`${BACKEND_URL}/api/v2/users/admin/groups/${id}/`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

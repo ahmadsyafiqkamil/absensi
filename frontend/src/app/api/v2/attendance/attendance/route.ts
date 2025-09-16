@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = getBackendBaseUrl()
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     const search = request.nextUrl.search || ''
     const url = `${backend}/api/v2/attendance/attendance/${search}`
 

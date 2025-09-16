@@ -13,7 +13,7 @@ export async function GET(
     }
 
     const resolvedParams = await params
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     const url = `${backend}/api/v2/attendance/attendance/${resolvedParams.id}/`
 
     const resp = await fetch(url, {

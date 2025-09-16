@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const backend = getBackendUrl()
     const { searchParams } = new URL(request.url)
     const queryString = searchParams.toString()
-    const url = `${backend}/api/overtime-requests/export_monthly_docx/?${queryString}`
+    const url = `${backend}/api/v2/overtime/overtime/export_monthly_docx/?${queryString}`
     
     const resp = await fetch(url, {
       method: 'GET',

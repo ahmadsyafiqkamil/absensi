@@ -12,7 +12,7 @@ export async function GET(
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     const url = `${backend}/api/v2/corrections/corrections/${(await params).id}/`
 
     const resp = await fetch(url, {
