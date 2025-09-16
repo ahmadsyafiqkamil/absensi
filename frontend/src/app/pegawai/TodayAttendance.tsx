@@ -120,10 +120,12 @@ export default function TodayAttendance() {
       const q = `?start=${targetDate}&end=${targetDate}`;
 
       try {
+        const nocacheInit: RequestInit = { cache: "no-store", credentials: "include" };
         const requests: Promise<Response>[] = [
-          fetch(`/api/v2/attendance/attendance${q}&page=1&page_size=1`),
-          fetch(`/api/v2/settings/holidays/${q}`),
-          fetch(`/api/v2/overtime/overtime?start_date=${targetDate}&end_date=${targetDate}`),
+          // Primary: current user's attendance today
+          fetch(`/api/v2/attendance/today/?_=${Date.now()}`, nocacheInit),
+          // Holidays for the date
+          fetch(`/api/v2/settings/holidays/${q}&_=${Date.now()}`, nocacheInit),
         ];
 
         // Only fetch settings if not skipping (to prevent loops)
@@ -132,11 +134,27 @@ export default function TodayAttendance() {
         }
 
         const responses = await Promise.all(requests);
-        const [attResp, holResp, overtimeResp, settingsResp] = responses;
+        const [attResp, holResp, settingsResp] = responses as [Response, Response, Response?];
 
-        // --- Attendance
-        const d = await attResp.json().catch(() => ({}));
-        const att = Array.isArray(d) ? d[0] || null : d?.results?.[0] || null;
+        // --- Attendance (current user's today record)
+        let att: any = null;
+        if (attResp.ok) {
+          const d = await attResp.json().catch(() => ({}));
+          // The /today endpoint returns a single object; safeguard if backend changes
+          att = d && !Array.isArray(d) ? d : (d?.results?.[0] || null);
+        } else {
+          // Fallback: use employee-scoped list filtered by date to get current user's record
+          try {
+            // Use main list endpoint which already scopes by role; for employee it returns own records
+            const fallbackResp = await fetch(`/api/v2/attendance/attendance?start=${targetDate}&end=${targetDate}&page=1&page_size=1&_=${Date.now()}`, nocacheInit);
+            if (fallbackResp.ok) {
+              const fd = await fallbackResp.json().catch(() => ({}));
+              att = Array.isArray(fd) ? fd[0] || null : fd?.results?.[0] || null;
+            }
+          } catch {
+            // ignore
+          }
+        }
 
         // Only set data if it's for the current date
         if (att && att.date_local === targetDate) {
@@ -153,19 +171,8 @@ export default function TodayAttendance() {
           holItems.some((h: any) => (h?.date || h?.date_local) === targetDate);
         setIsHoliday(isHolidayToday);
 
-        // --- Overtime
-        try {
-          const overtimeD = await overtimeResp.json().catch(() => ({}));
-          if (overtimeD.overtime_records && overtimeD.overtime_records.length > 0) {
-            const todayOvertime = overtimeD.overtime_records[0];
-            setOvertimeData(todayOvertime);
-          } else {
-            setOvertimeData(null);
-          }
-        } catch (error) {
-          console.error("Error fetching overtime data:", error);
-          setOvertimeData(null);
-        }
+        // --- Overtime (temporarily disabled to avoid noisy errors)
+        setOvertimeData(null);
 
         // --- Settings (optional)
         if (!skipSettings && settingsResp) {

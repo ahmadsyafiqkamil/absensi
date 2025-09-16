@@ -118,7 +118,9 @@ class Attendance(TimeStampedModel):
     
     def calculate_overtime(self):
         """Calculate overtime minutes and amount"""
-        if not self.total_work_minutes or not self.employee or not self.employee.gaji_pokok:
+        # Prefer explicitly linked employee; fallback to user's employee_profile
+        employee = self.employee or getattr(self.user, 'employee_profile', None)
+        if not self.total_work_minutes or not employee or not getattr(employee, 'gaji_pokok', None):
             return 0, 0
         
         try:
@@ -139,7 +141,7 @@ class Attendance(TimeStampedModel):
                 
                 # Calculate overtime amount
                 monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
-                hourly_wage = float(self.employee.gaji_pokok) / monthly_hours
+                hourly_wage = float(employee.gaji_pokok) / monthly_hours
                 
                 # Determine rate
                 if self.is_holiday:

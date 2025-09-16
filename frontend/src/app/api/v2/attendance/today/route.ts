@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     }
 
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/attendance/today/`
+    // Backend today endpoint lives under /attendance/attendance/today/
+    const url = `${backend}/api/v2/attendance/attendance/today/`
 
     const resp = await fetch(url, {
       method: 'GET',

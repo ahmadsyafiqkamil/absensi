@@ -60,6 +60,15 @@ class AttendanceService:
                 attendance.check_in_ip = ip_address
                 attendance.save()
             
+            # Ensure attendance is linked to employee profile for salary-based calculations
+            try:
+                if not attendance.employee and hasattr(user, 'employee_profile') and user.employee_profile:
+                    attendance.employee = user.employee_profile
+                    attendance.save()
+            except Exception:
+                # If employee profile is missing or cannot be set, proceed without failing
+                pass
+
             # Check geofence
             within_geofence = self._check_geofence(lat, lng)
             attendance.within_geofence = within_geofence
@@ -128,6 +137,15 @@ class AttendanceService:
                     'success': False,
                     'error': 'No check-in record found for today'
                 }
+            
+            # Ensure attendance is linked to employee profile for salary-based calculations
+            try:
+                if not attendance.employee and hasattr(user, 'employee_profile') and user.employee_profile:
+                    attendance.employee = user.employee_profile
+                    attendance.save()
+            except Exception:
+                # If employee profile is missing or cannot be set, proceed without failing
+                pass
             
             # Update check-out
             attendance.check_out_at_utc = timezone.now()

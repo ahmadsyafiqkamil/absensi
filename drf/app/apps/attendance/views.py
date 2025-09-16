@@ -128,16 +128,26 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     def today(self, request):
         """Get today's attendance for current user"""
         try:
-            attendance = Attendance.objects.get(
+            # Use queryset to avoid MultipleObjectsReturned and pick the latest record deterministically
+            qs = Attendance.objects.filter(
                 user=request.user,
                 date_local=date.today()
-            )
+            ).order_by('-check_in_at_utc', '-id')
+
+            attendance = qs.first()
+            if not attendance:
+                return Response(
+                    {"message": "No attendance record for today"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
             serializer = self.get_serializer(attendance)
             return Response(serializer.data)
-        except Attendance.DoesNotExist:
+        except Exception:
+            # Avoid leaking internal errors; return a safe message
             return Response(
-                {"message": "No attendance record for today"}, 
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "Failed to fetch today's attendance"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=False, methods=['get'])

@@ -288,12 +288,12 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         lvl1_name = _approver_name(getattr(overtime_request, 'level1_approved_by', None))
         lvl1_nip = _approver_nip(getattr(overtime_request, 'level1_approved_by', None))
         lvl1_at = getattr(overtime_request, 'level1_approved_at', None)
-        lvl1_date = lvl1_at.strftime('%d %B %Y %H:%M') if lvl1_at else '-'
+        lvl1_date = lvl1_at.strftime('%d %B %Y') if lvl1_at else '-'
 
         final_name = _approver_name(getattr(overtime_request, 'final_approved_by', None))
         final_nip = _approver_nip(getattr(overtime_request, 'final_approved_by', None))
         final_at = getattr(overtime_request, 'final_approved_at', None)
-        final_date = final_at.strftime('%d %B %Y %H:%M') if final_at else '-'
+        final_date = final_at.strftime('%d %B %Y') if final_at else '-'
 
         nomor_dok = f"{overtime_request.id}/SPKL/KJRI-DXB/{tahun}"
 
@@ -790,6 +790,45 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
 
         # Build replacements
         bulan_tahun = f"{month:02d}/{year}"
+        
+        # Calculate additional metrics
+        total_days = len(rows)  # Number of days with overtime
+        avg_per_day = total_hours / total_days if total_days > 0 else 0
+        
+        # Get current date for export
+        from django.utils import timezone
+        current_dt = timezone.now()
+        tanggal_export = current_dt.strftime('%d %B %Y')
+        
+        # Get approval info for monthly summary
+        def _approver_name(user):
+            if not user:
+                return '-'
+            try:
+                emp = getattr(user, 'employee_profile', None)
+                if emp and getattr(emp, 'fullname', None):
+                    return emp.fullname
+            except Exception:
+                pass
+            return user.get_full_name() or user.username
+
+        def _approver_nip(user):
+            try:
+                emp = getattr(user, 'employee_profile', None)
+                return getattr(emp, 'nip', '-') if emp else '-'
+            except Exception:
+                return '-'
+
+        lvl1_name = _approver_name(getattr(monthly_summary, 'level1_approved_by', None))
+        lvl1_nip = _approver_nip(getattr(monthly_summary, 'level1_approved_by', None))
+        lvl1_at = getattr(monthly_summary, 'level1_approved_at', None)
+        lvl1_date = lvl1_at.strftime('%d %B %Y') if lvl1_at else '-'
+
+        final_name = _approver_name(getattr(monthly_summary, 'final_approved_by', None))
+        final_nip = _approver_nip(getattr(monthly_summary, 'final_approved_by', None))
+        final_at = getattr(monthly_summary, 'final_approved_at', None)
+        final_date = final_at.strftime('%d %B %Y') if final_at else '-'
+        
         replacements = {
             '{{NAMA_PEGAWAI}}': employee_name,
             '{{NIP_PEGAWAI}}': employee_nip or '-',
@@ -798,6 +837,20 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
             '{{PERIODE}}': bulan_tahun,
             '{{TOTAL_JAM_LEMBUR}}': f"{total_hours:.2f}",
             '{{TOTAL_GAJI_LEMBUR}}': f"{total_amount:.2f}",
+            
+            # New placeholders
+            '{{PERIODE_EXPORT}}': f"{month:02d} {year}",
+            '{{TOTAL_HARI_LEMBUR}}': f"{total_days} hari",
+            '{{RATA_RATA_PER_HARI}}': f"{avg_per_day:.2f} jam",
+            '{{TANGGAL_EXPORT}}': tanggal_export,
+            
+            # Approval placeholders
+            '{{LEVEL1_APPROVER}}': lvl1_name,
+            '{{LEVEL1_APPROVER_NIP}}': lvl1_nip,
+            '{{LEVEL1_APPROVAL_DATE}}': lvl1_date,
+            '{{FINAL_APPROVER}}': final_name,
+            '{{FINAL_APPROVER_NIP}}': final_nip,
+            '{{FINAL_APPROVAL_DATE}}': final_date,
         }
 
         # Replace placeholders in paragraphs
