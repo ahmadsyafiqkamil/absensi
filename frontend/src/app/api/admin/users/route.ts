@@ -11,7 +11,7 @@ export async function GET() {
 
     // Verify admin
     const backendBase = getBackendUrl();
-    const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+    const meResponse = await fetch(`${backendBase}/api/v2/auth/me/`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });
@@ -24,8 +24,8 @@ export async function GET() {
       return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // Fetch users list from backend
-    const resp = await fetch(`${backendBase}/api/users`, {
+    // Fetch users list from backend v2
+    const resp = await fetch(`${backendBase}/api/v2/users/users/`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       cache: 'no-store',
     });

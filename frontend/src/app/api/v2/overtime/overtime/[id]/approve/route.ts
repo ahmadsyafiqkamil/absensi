@@ -1,36 +1,35 @@
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const accessToken = await getAccessToken()
+
+  if (!accessToken) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const backendUrl = `${getBackendBaseUrl()}/api/v2/overtime/overtime/${params.id}/approve/`
+  const body = await request.json()
+
   try {
-    const accessToken = (await cookies()).get('access_token')?.value
-
-    if (!accessToken) {
-      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/overtime/overtime/${(await params).id}/approve/`
-
-    const resp = await fetch(url, {
+    const response = await fetch(backendUrl, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
       },
       body: JSON.stringify(body),
-      cache: 'no-store'
     })
 
-    const data = await resp.json().catch(() => ({}))
+    if (!response.ok) {
+      const errorData = await response.json()
+      return NextResponse.json(errorData, { status: response.status })
+    }
 
-    return NextResponse.json(data, { status: resp.status })
+    const data = await response.json()
+    return NextResponse.json(data)
   } catch (error) {
-    console.error('Error proxying V2 overtime approval API:', error)
-    return NextResponse.json({ detail: 'Internal server error' }, { status: 500 })
+    console.error('Error proxying overtime approval request:', error)
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }

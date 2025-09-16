@@ -37,7 +37,15 @@ class AttendanceCorrection(TimeStampedModel):
         Attendance,
         on_delete=models.CASCADE,
         related_name="corrections",
-        verbose_name="Original Attendance Record"
+        verbose_name="Original Attendance Record",
+        null=True,
+        blank=True
+    )
+    date_local = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date for Manual Correction",
+        help_text="Required for manual corrections when no attendance record exists"
     )
     
     # Correction details
@@ -112,7 +120,8 @@ class AttendanceCorrection(TimeStampedModel):
         verbose_name_plural = "Attendance Corrections"
     
     def __str__(self) -> str:
-        return f"Correction {self.id} - {self.user.username} - {self.attendance.date_local}"
+        date_str = self.attendance.date_local if self.attendance else self.date_local
+        return f"Correction {self.id} - {self.user.username} - {date_str}"
     
     def save(self, *args, **kwargs):
         """Auto-set employee if not provided"""
@@ -159,8 +168,30 @@ class AttendanceCorrection(TimeStampedModel):
         if not self.is_approved:
             return
         
+        # Get or create attendance record
         attendance = self.attendance
+        if not attendance and self.date_local:
+            # Create new attendance record for manual correction
+            from apps.settings.models import WorkSettings
+            from django.utils import timezone as dj_timezone
+            
+            ws = WorkSettings.objects.first()
+            tzname = ws.timezone if ws else dj_timezone.get_current_timezone_name()
+            
+            attendance = Attendance.objects.create(
+                user=self.user,
+                date_local=self.date_local,
+                timezone=tzname,
+                employee=self.employee
+            )
+            # Link the correction to the new attendance record
+            self.attendance = attendance
+            self.save()
         
+        if not attendance:
+            return
+        
+        # Apply correction changes
         if self.correction_type in ['check_in', 'both'] and self.requested_check_in:
             attendance.check_in_at_utc = self.requested_check_in
         

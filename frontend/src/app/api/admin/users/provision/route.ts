@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${getBackendUrl()}/api/auth/me`, {
+    const meResponse = await fetch(`${getBackendUrl()}/api/v2/auth/me/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }

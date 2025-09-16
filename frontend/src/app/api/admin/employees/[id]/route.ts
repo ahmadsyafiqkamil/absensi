@@ -6,7 +6,7 @@ async function ensureAdmin() {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return { ok: false, status: 401 as const }
   const backendBase = getBackendUrl()
-  const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+  const meResponse = await fetch(`${backendBase}/api/v2/auth/me/`, {
     headers: { 'Authorization': `Bearer ${accessToken}` },
     cache: 'no-store',
   })

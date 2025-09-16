@@ -65,7 +65,7 @@ export default function LoginPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Konsulat Jenderal Republik Indonesia Dubai</h1>
             {/* <h2 className="text-xl font-semibold text-blue-600 mb-1">Dubai</h2> */}
-            <p className="text-sm text-gray-600">Sistem Absensi Pegawai</p>
+            <p className="text-sm text-gray-600">Aplikasi (Sistem Informasi) Administrasi Perkantoran</p>
           </div>
         </div>
         
@@ -118,7 +118,7 @@ export default function LoginPage() {
         
         {/* Footer dengan informasi tambahan */}
         <div className="text-center mt-6 text-sm text-gray-500">
-          <p>© 2024 Konsulat Jenderal Republik Indonesia Dubai</p>
+          <p>© {new Date().getFullYear()} Konsulat Jenderal Republik Indonesia Dubai</p>
           <p className="mt-1">Sistem Absensi Pegawai</p>
         </div>
       </div>

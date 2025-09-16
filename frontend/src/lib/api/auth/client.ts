@@ -89,7 +89,7 @@ export const authApi = {
   // Get current user profile
   me: async (): Promise<User> => {
     try {
-      const response = await legacyFetch('/api/auth/me')
+      const response = await legacyFetch('/api/v2/auth/me/')
 
       if (!response.ok) {
         const error = await response.json()

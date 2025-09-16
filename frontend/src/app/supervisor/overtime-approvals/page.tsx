@@ -14,7 +14,7 @@ export default async function SupervisorOvertimeApprovalsPage() {
   }
 
   // Verify supervisor role
-  const resp = await fetch(`${getBackendUrl()}/api/auth/me`, {
+  const resp = await fetch(`${getBackendUrl()}/api/v2/auth/me/`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',

@@ -10,20 +10,8 @@ export const getBackendBaseUrl = () => {
   }
 }
 
-// Runtime URL determination - this will work correctly for both server and client
-export const getBackendUrl = () => {
-  // Use different URLs for server vs client in Docker environment
-  if (typeof window === 'undefined') {
-    // Server-side (API routes): use container-to-container networking
-    return process.env.BACKEND_URL || 'http://backend:8000'
-  } else {
-    // Client-side (browser): use host networking
-    return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
-  }
-}
-
 // For backward compatibility - this will be set at runtime when called
-export const BACKEND_BASE_URL = getBackendUrl()
+export const BACKEND_BASE_URL = getBackendBaseUrl()
 
 // API version configuration
 export const API_VERSIONS = {
@@ -33,7 +21,7 @@ export const API_VERSIONS = {
 
 export type ApiVersion = keyof typeof API_VERSIONS
 
-function joinUrl(path: string, version: ApiVersion = 'LEGACY') {
+function joinUrl(path: string, version: ApiVersion = 'V2') {
   const basePath = API_VERSIONS[version]
   const backendUrl = getBackendBaseUrl()
   return `${backendUrl}${basePath}${path.startsWith('/') ? path : `/${path}`}`
@@ -43,7 +31,7 @@ function joinUrl(path: string, version: ApiVersion = 'LEGACY') {
 export async function backendFetch(
   path: string,
   init?: RequestInit,
-  version: ApiVersion = 'LEGACY'
+  version: ApiVersion = 'V2'
 ): Promise<Response> {
   const url = joinUrl(path, version);
   const maxRetries = 3;
@@ -87,7 +75,7 @@ export async function backendFetch(
 // Legacy API functions (for backward compatibility)
 export async function loginRequest(username: string, password: string) {
   const backendUrl = getBackendBaseUrl()
-  const url = `${backendUrl}/api/auth/login`
+  const url = `${backendUrl}/api/v2/auth/login/`
   
   console.log('Login request to:', url);
   
@@ -111,17 +99,22 @@ export async function loginRequest(username: string, password: string) {
 }
 
 export async function meRequest(accessToken: string) {
-  const resp = await backendFetch('/auth/me', {
+  const resp = await backendFetch('/auth/me/', {
     headers: { Authorization: `Bearer ${accessToken}` },
-  }, 'LEGACY')
+  }, 'V2')
   const data = await resp.json().catch(() => ({}))
   return { resp, data }
 }
 
 // Server-only: reads access_token from cookies
-export async function meFromServerCookies() {
+export async function getAccessToken() {
   const { cookies } = await import('next/headers')
-  const token = (await cookies()).get('access_token')?.value
+  return (await cookies()).get('access_token')?.value
+}
+
+// Server-only: reads access_token from cookies
+export async function meFromServerCookies() {
+  const token = await getAccessToken()
   if (!token) return { resp: new Response(null, { status: 401 }), data: {} }
   return meRequest(token)
 }
@@ -139,8 +132,8 @@ export function getV2Url(path: string) {
 // Health check function to verify backend connectivity
 export async function checkBackendHealth(): Promise<boolean> {
   try {
-    // Use the main API endpoint as health check
-    const response = await fetch(`${getBackendBaseUrl()}/api/`, {
+    // Use the V2 health endpoint
+    const response = await fetch(`${getBackendBaseUrl()}/api/v2/auth/health/`, {
       method: 'GET',
       cache: 'no-store',
       signal: AbortSignal.timeout(5000), // 5 second timeout
@@ -167,7 +160,7 @@ export async function proxyToBackend(
     method = 'GET',
     body,
     queryParams,
-    version = 'LEGACY'
+    version = 'V2'
   } = options;
 
   try {

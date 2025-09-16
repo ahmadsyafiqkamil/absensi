@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend';
+import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
@@ -9,8 +11,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/attendance/attendance/`
+    const backend = getBackendBaseUrl()
+    const search = request.nextUrl.search || ''
+    const url = `${backend}/api/v2/attendance/attendance/${search}`
 
     const resp = await fetch(url, {
       method: 'GET',

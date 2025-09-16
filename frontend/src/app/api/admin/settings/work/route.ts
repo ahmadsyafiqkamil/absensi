@@ -6,7 +6,7 @@ async function ensureAdmin() {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return { ok: false, status: 401 as const }
   const backendBase = getBackendUrl()
-  const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+  const meResponse = await fetch(`${backendBase}/api/v2/auth/me/`, {
     headers: { 'Authorization': `Bearer ${accessToken}` },
     cache: 'no-store',
   })
@@ -19,7 +19,7 @@ async function ensureAdmin() {
 export async function GET() {
   const chk = await ensureAdmin()
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
-  const resp = await fetch(`${chk.backendBase}/api/admin/settings/work/`, {
+  const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/work/`, {
     headers: { Authorization: `Bearer ${chk.accessToken}` },
     cache: 'no-store',
   })
@@ -32,14 +32,26 @@ export async function PUT(req: Request) {
   if (!chk.ok) return NextResponse.json({ detail: 'Forbidden' }, { status: chk.status })
   const body = await req.json().catch(() => ({}))
   const id = body?.id
-  if (!id) return NextResponse.json({ detail: 'id is required' }, { status: 400 })
-  const resp = await fetch(`${chk.backendBase}/api/admin/settings/work/${id}/`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
-    body: JSON.stringify(body),
-  })
-  const data = await resp.json().catch(() => ({}))
-  return NextResponse.json(data, { status: resp.status })
+  
+  if (!id) {
+    // No ID provided, try to create new work settings
+    const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/work/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
+      body: JSON.stringify(body),
+    })
+    const data = await resp.json().catch(() => ({}))
+    return NextResponse.json(data, { status: resp.status })
+  } else {
+    // ID provided, update existing work settings
+    const resp = await fetch(`${chk.backendBase}/api/v2/settings/admin/work/${id}/`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chk.accessToken}` },
+      body: JSON.stringify(body),
+    })
+    const data = await resp.json().catch(() => ({}))
+    return NextResponse.json(data, { status: resp.status })
+  }
 }
 
 

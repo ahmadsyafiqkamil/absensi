@@ -6,7 +6,17 @@ import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { locationService, LocationData, LocationError } from '@/lib/location'
 
-type Precheck = { date_local: string; has_check_in: boolean; has_check_out: boolean }
+type Precheck = { 
+  date_local: string; 
+  has_check_in: boolean; 
+  has_check_out: boolean;
+  time_restrictions?: {
+    earliest_check_in_enabled: boolean;
+    earliest_check_in_time: string;
+    latest_check_out_enabled: boolean;
+    latest_check_out_time: string;
+  };
+}
 
 export default function CheckOutPage() {
   const [loading, setLoading] = useState(true)
@@ -18,16 +28,27 @@ export default function CheckOutPage() {
   const [submitting, setSubmitting] = useState(false)
   const [clientIP, setClientIP] = useState<string>('')
   const [ipDetectionStatus, setIpDetectionStatus] = useState<'detecting' | 'success' | 'failed' | 'unknown'>('detecting')
+  const [currentTime, setCurrentTime] = useState<string>('')
+  const [timeRestrictionError, setTimeRestrictionError] = useState<string>('')
 
   useEffect(() => {
     ;(async () => {
       setLoading(true)
       setError(null)
       try {
-        const r = await fetch('/api/attendance/precheck', { method: 'POST' })
+        const r = await fetch('/api/v2/attendance/precheck', { method: 'GET' })
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d?.detail || 'Gagal precheck')
         setPrecheck(d)
+        
+        // Update current time
+        const now = new Date()
+        const timeString = now.toLocaleTimeString('id-ID', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: 'Asia/Dubai'
+        })
+        setCurrentTime(timeString)
         
         // Get client IP address
         try {
@@ -55,6 +76,32 @@ export default function CheckOutPage() {
       }
     })()
   }, [])
+
+  function isCheckOutAllowed(): { allowed: boolean; message?: string } {
+    if (!precheck?.time_restrictions?.latest_check_out_enabled) {
+      return { allowed: true }
+    }
+    
+    const now = new Date()
+    const currentTime = now.toLocaleTimeString('id-ID', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'Asia/Dubai'
+    })
+    
+    const latestTime = precheck.time_restrictions.latest_check_out_time
+    const currentTimeMinutes = now.getHours() * 60 + now.getMinutes()
+    const latestTimeMinutes = parseInt(latestTime.split(':')[0]) * 60 + parseInt(latestTime.split(':')[1])
+    
+    if (currentTimeMinutes > latestTimeMinutes) {
+      return { 
+        allowed: false, 
+        message: `Check-out tidak diizinkan setelah jam ${latestTime}. Waktu saat ini: ${currentTime}. Silakan hubungi admin untuk bantuan.` 
+      }
+    }
+    
+    return { allowed: true }
+  }
 
   async function getLocation() {
     setError(null)
@@ -85,15 +132,15 @@ export default function CheckOutPage() {
     setSubmitting(true)
     setError(null)
     try {
-      const resp = await fetch('/api/attendance/check-out', {
+      const resp = await fetch('/api/v2/attendance/check-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          lat: loc.lat, 
-          lng: loc.lng, 
-          accuracy_m: loc.acc, 
-          employee_note: note || undefined,
-          client_ip: clientIP || 'unknown'
+          latitude: loc.lat, 
+          longitude: loc.lng, 
+          accuracy: loc.acc, 
+          note: note || undefined,
+          ip_address: clientIP || 'unknown'
         }),
       })
       const data = await resp.json().catch(() => ({}))
@@ -118,6 +165,31 @@ export default function CheckOutPage() {
         </CardHeader>
         <CardContent className="grid gap-3">
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded">{error}</div>}
+          {timeRestrictionError && (
+            <div className="bg-red-100 border-2 border-red-300 text-red-800 px-4 py-3 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 text-lg">🚫</span>
+                <div>
+                  <strong>Check-out Tidak Diizinkan!</strong>
+                  <div className="text-sm mt-1">{timeRestrictionError}</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Time restrictions info */}
+          {precheck?.time_restrictions?.latest_check_out_enabled && (
+            <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-red-600">🚫</span>
+                <div>
+                  <strong>Pembatasan Waktu:</strong> Check-out hanya diizinkan sampai jam {precheck.time_restrictions.latest_check_out_time}
+                  <div className="text-xs mt-1">Waktu saat ini: {currentTime}</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {!precheck?.has_check_in ? (
             <div className="text-sm text-gray-600">Anda belum check-in hari ini.</div>
           ) : precheck?.has_check_out ? (
@@ -141,10 +213,25 @@ export default function CheckOutPage() {
                 <span className="text-xs text-gray-600">Keterangan (opsional)</span>
                 <textarea className="border rounded p-2 text-sm" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan kurang jam kerja (jika kurang)"></textarea>
               </div>
-              <Button disabled={!loc} onClick={() => setConfirming(true)}>Konfirmasi Check Out</Button>
+              <Button 
+                disabled={!loc} 
+                onClick={() => {
+                  const timeCheck = isCheckOutAllowed()
+                  if (!timeCheck.allowed) {
+                    setTimeRestrictionError(timeCheck.message || 'Check-out tidak diizinkan saat ini')
+                    setError('')
+                    return
+                  }
+                  setTimeRestrictionError('')
+                  setConfirming(true)
+                }}
+              >
+                Konfirmasi Check Out
+              </Button>
               {confirming && (
                 <div className="border rounded p-3">
                   <div className="text-sm mb-2">Yakin ingin check-out dengan lokasi saat ini?</div>
+                  <div className="text-xs text-gray-500 mb-2">Waktu saat ini: {currentTime}</div>
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setConfirming(false)} disabled={submitting}>Batal</Button>
                     <Button onClick={onConfirmCheckOut} disabled={submitting}>{submitting ? 'Memproses...' : 'Ya, Check Out'}</Button>

@@ -29,7 +29,7 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
   const token = (await cookies()).get('access_token')?.value
   if (!token) return { count: 0, next: null, previous: null, results: [] }
   const backend = getBackendUrl()
-  const url = new URL(`${backend}/api/employees/`)
+  const url = new URL(`${backend}/api/v2/employees/admin/employees/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
   const res = await fetch(url.toString(), {
@@ -37,7 +37,25 @@ async function getEmployees(page: number, pageSize: number): Promise<PaginatedEm
     cache: 'no-store',
   })
   if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-  return res.json()
+  
+  const data = await res.json()
+  
+  // V2 API returns array directly, not paginated
+  if (Array.isArray(data)) {
+    const startIndex = (page - 1) * pageSize
+    const endIndex = startIndex + pageSize
+    const paginatedResults = data.slice(startIndex, endIndex)
+    
+    return {
+      count: data.length,
+      next: endIndex < data.length ? `?page=${page + 1}` : null,
+      previous: page > 1 ? `?page=${page - 1}` : null,
+      results: paginatedResults
+    }
+  }
+  
+  // Fallback for paginated response
+  return data
 }
 
 export default async function AdminEmployeesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

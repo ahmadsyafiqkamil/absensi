@@ -100,7 +100,7 @@ export async function checkAdminAccess(request: Request): Promise<boolean> {
     const { accessToken } = await getAuthFromRequest(request);
     if (!accessToken) return false;
 
-    const response = await serverFetch('/api/auth/me', {
+    const response = await serverFetch('/api/v2/auth/me/', {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }

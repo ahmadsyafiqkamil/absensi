@@ -8,7 +8,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const backend = getBackendUrl()
   const body = await req.json().catch(() => ({} as any))
   const { id } = await params
-  const resp = await fetch(`${backend}/api/attendance-corrections/${id}/reject`, {
+  const resp = await fetch(`${backend}/api/v2/corrections/corrections/${id}/reject/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(body || {}),

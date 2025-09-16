@@ -21,7 +21,8 @@ export async function GET(request: Request) {
     if (month) queryParams.append('month', month)
     
     const queryString = queryParams.toString()
-    const url = `api/attendance/report/pdf${queryString ? `?${queryString}` : ''}`
+    // Use V2 endpoint for PDF generation
+    const url = `api/v2/attendance/attendance/export_pdf/${queryString ? `?${queryString}` : ''}`
     
     const response = await fetch(`${getBackendUrl()}/${url}`, {
       method: 'GET',
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
       return NextResponse.json(errorData, { status: response.status })
     }
     
-    // Get PDF content
+    // Get PDF content as buffer
     const pdfBuffer = await response.arrayBuffer()
     
     // Return PDF with proper headers
@@ -43,8 +44,8 @@ export async function GET(request: Request) {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="attendance-report-${new Date().toISOString().split('T')[0]}.pdf"`,
-        'Content-Length': pdfBuffer.byteLength.toString(),
+        'Content-Disposition': `attachment; filename="attendance-report-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.pdf"`,
+        'Cache-Control': 'no-cache',
       },
     })
   } catch (error) {

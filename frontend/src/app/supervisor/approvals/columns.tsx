@@ -105,20 +105,25 @@ function getStatusBadge(status: string) {
 // Function to get type badge
 function getTypeBadge(type: string) {
   switch (type) {
-    case 'missing_check_in':
+    case 'check_in':
       return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
         <UserCheck className="w-3 h-3 mr-1" />
-        Missing Check-in
+        Check-in Time
       </Badge>
-    case 'missing_check_out':
+    case 'check_out':
       return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
         <UserX className="w-3 h-3 mr-1" />
-        Missing Check-out
+        Check-out Time
       </Badge>
-    case 'edit':
+    case 'both':
       return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
         <Edit className="w-3 h-3 mr-1" />
-        Edit
+        Both Times
+      </Badge>
+    case 'note':
+      return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+        <FileText className="w-3 h-3 mr-1" />
+        Add Note
       </Badge>
     default:
       return <Badge variant="outline">{type}</Badge>
@@ -147,22 +152,37 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
     accessorKey: "date_local",
     header: "Date",
     cell: ({ row }) => {
-      const date = new Date(row.getValue("date_local"))
-      return (
-        <div className="flex flex-col">
-          <span className="font-medium">
-            {date.toLocaleDateString('id-ID', { 
-              weekday: 'short', 
-              year: 'numeric', 
-              month: 'short', 
-              day: 'numeric' 
-            })}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {date.toLocaleDateString('id-ID')}
-          </span>
-        </div>
-      )
+      const dateValue = row.getValue("date_local") as string
+      
+      if (!dateValue) {
+        return <span className="text-muted-foreground">-</span>
+      }
+      
+      try {
+        const date = new Date(dateValue)
+        if (isNaN(date.getTime())) {
+          return <span className="text-red-500">Invalid Date</span>
+        }
+        
+        return (
+          <div className="flex flex-col">
+            <span className="font-medium">
+              {date.toLocaleDateString('id-ID', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              })}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {date.toLocaleDateString('id-ID')}
+            </span>
+          </div>
+        )
+      } catch (error) {
+        console.error('Date parsing error:', error, 'Value:', dateValue)
+        return <span className="text-red-500">Invalid Date</span>
+      }
     },
   },
   {
@@ -226,12 +246,20 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
       const attachment = row.getValue("attachment") as string
       if (!attachment) return <span className="text-muted-foreground">-</span>
       
+      // Get the full URL for the attachment
+      const attachmentUrl = attachment.startsWith('http') ? attachment : `http://localhost:8000/media/${attachment}`
+      
       return (
         <div className="flex items-center">
           <FileText className="w-4 h-4 mr-2 text-blue-600" />
-          <span className="text-sm text-blue-600 hover:underline cursor-pointer">
+          <a 
+            href={attachmentUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:underline cursor-pointer"
+          >
             View
-          </span>
+          </a>
         </div>
       )
     },

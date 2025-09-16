@@ -19,7 +19,7 @@ export async function POST(
     const body = await request.json()
     const { id } = await params
 
-    const response = await fetch(`${BACKEND_URL}/api/overtime-requests/${id}/reject/`, {
+    const response = await fetch(`${BACKEND_URL}/api/v2/overtime/overtime/${id}/reject/`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,

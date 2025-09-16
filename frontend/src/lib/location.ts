@@ -39,8 +39,16 @@ export class LocationService {
     }
 
     // Check if we're on HTTPS (required for geolocation)
-    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-      throw new Error('HTTPS diperlukan untuk mengakses lokasi. Gunakan https://absensi.localhost')
+    // Allow exceptions for localhost, 127.0.0.1, ::1, and *.localhost during development
+    const hostname = location.hostname
+    const isLocalException =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname.endsWith('.localhost')
+
+    if (location.protocol !== 'https:' && !isLocalException) {
+      throw new Error('HTTPS diperlukan untuk mengakses lokasi. Gunakan HTTPS atau akses via localhost/127.0.0.1')
     }
 
     return new Promise<LocationData>((resolve, reject) => {

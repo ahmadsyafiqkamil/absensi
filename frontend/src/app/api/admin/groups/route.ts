@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
       params.append('search', search);
     }
 
-    // Forward request to Django backend
-    const response = await fetch(`${BACKEND_URL}/api/admin/groups/?${params}`, {
+    // Forward request to Django backend (V2 API)
+    const response = await fetch(`${BACKEND_URL}/api/v2/users/admin/groups/?${params}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Forward request to Django backend
-    const response = await fetch(`${BACKEND_URL}/api/admin/groups/`, {
+    // Forward request to Django backend (V2 API)
+    const response = await fetch(`${BACKEND_URL}/api/v2/users/admin/groups/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -248,7 +248,7 @@ export function useSupervisorApprovalLevel() {
     const fetchApprovalLevel = async () => {
       try {
         // Fetch user profile data with new multi-role structure
-        const response = await fetch('/api/auth/me', {
+        const response = await fetch('/api/v2/auth/me/', {
           headers: {
             'Content-Type': 'application/json',
           },

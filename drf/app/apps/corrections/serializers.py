@@ -3,8 +3,36 @@ from django.contrib.auth import get_user_model
 from .models import AttendanceCorrection
 from apps.attendance.serializers import AttendanceSerializer
 from apps.employees.serializers import EmployeeSerializer
+from datetime import datetime, time
+from django.utils import timezone
 
 User = get_user_model()
+
+
+class TimeToDateTimeField(serializers.Field):
+    """Custom field that converts time strings to datetime objects"""
+    
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            # Parse time string (HH:MM format)
+            try:
+                time_obj = datetime.strptime(data, '%H:%M').time()
+                return time_obj
+            except ValueError:
+                raise serializers.ValidationError(f"Invalid time format: {data}. Expected HH:MM")
+        elif isinstance(data, time):
+            return data
+        elif isinstance(data, datetime):
+            return data.time()
+        else:
+            raise serializers.ValidationError(f"Invalid time value: {data}")
+    
+    def to_representation(self, value):
+        if isinstance(value, datetime):
+            return value.time().strftime('%H:%M')
+        elif isinstance(value, time):
+            return value.strftime('%H:%M')
+        return value
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -20,13 +48,57 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     attendance = AttendanceSerializer(read_only=True)
     
+    # Computed fields for frontend compatibility
+    type = serializers.CharField(source='correction_type', read_only=True)
+    attachment = serializers.CharField(source='supporting_document', read_only=True)
+    
     class Meta:
         model = AttendanceCorrection
         fields = [
-            "id", "correction_type", "requested_check_in", "requested_check_out",
-            "requested_note", "reason", "status", "requested_at"
+            "id", "correction_type", "type", "requested_check_in", "requested_check_out",
+            "requested_note", "reason", "status", "requested_at", "date_local",
+            "supporting_document", "attachment", "created_at", "user", "employee", "attendance"
         ]
-        read_only_fields = ["id", "status", "requested_at"]
+        read_only_fields = ["id", "status", "requested_at", "created_at", "type", "attachment"]
+    
+    def to_representation(self, instance):
+        """Custom representation to include computed fields for frontend"""
+        data = super().to_representation(instance)
+        
+        # Add computed fields for frontend compatibility
+        if instance.date_local:
+            # Return date in ISO format that can be parsed by JavaScript Date
+            data['date_local'] = instance.date_local.isoformat() + 'T00:00:00Z'
+        elif instance.attendance and instance.attendance.date_local:
+            # Fallback to attendance date if correction date is not set
+            data['date_local'] = instance.attendance.date_local.isoformat() + 'T00:00:00Z'
+        
+        # Convert proposed times back to local timezone for display
+        if instance.requested_check_in:
+            from apps.settings.models import WorkSettings
+            import pytz
+            
+            ws = WorkSettings.objects.first()
+            tz_name = ws.timezone if ws else 'Asia/Dubai'
+            tz = pytz.timezone(tz_name)
+            
+            # Convert UTC to local timezone
+            local_check_in = instance.requested_check_in.astimezone(tz)
+            data['proposed_check_in_local'] = local_check_in.isoformat()
+            
+        if instance.requested_check_out:
+            from apps.settings.models import WorkSettings
+            import pytz
+            
+            ws = WorkSettings.objects.first()
+            tz_name = ws.timezone if ws else 'Asia/Dubai'
+            tz = pytz.timezone(tz_name)
+            
+            # Convert UTC to local timezone
+            local_check_out = instance.requested_check_out.astimezone(tz)
+            data['proposed_check_out_local'] = local_check_out.isoformat()
+        
+        return data
 
 
 class AttendanceCorrectionAdminSerializer(AttendanceCorrectionSerializer):
@@ -57,12 +129,21 @@ class AttendanceCorrectionEmployeeSerializer(AttendanceCorrectionSerializer):
 
 class AttendanceCorrectionCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating attendance corrections"""
+    date_local = serializers.DateField(required=False, write_only=True)
+    requested_check_in = TimeToDateTimeField(required=False)
+    requested_check_out = TimeToDateTimeField(required=False)
+    
     class Meta:
         model = AttendanceCorrection
         fields = [
-            "attendance", "correction_type", "requested_check_in", 
+            "attendance", "date_local", "correction_type", "requested_check_in", 
             "requested_check_out", "requested_note", "reason", "supporting_document"
         ]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make attendance field optional for manual corrections
+        self.fields['attendance'].required = False
     
     def validate(self, data):
         """Validate correction data"""
@@ -70,6 +151,14 @@ class AttendanceCorrectionCreateUpdateSerializer(serializers.ModelSerializer):
         requested_check_in = data.get('requested_check_in')
         requested_check_out = data.get('requested_check_out')
         requested_note = data.get('requested_note')
+        attendance = data.get('attendance')
+        date_local = data.get('date_local')
+        
+        # Either attendance or date_local must be provided
+        if not attendance and not date_local:
+            raise serializers.ValidationError(
+                "Either attendance record or date_local is required"
+            )
         
         # Validate based on correction type
         if correction_type == 'check_in':
@@ -94,6 +183,36 @@ class AttendanceCorrectionCreateUpdateSerializer(serializers.ModelSerializer):
                 )
         
         return data
+    
+    def create(self, validated_data):
+        """Create correction with proper datetime conversion"""
+        # Convert time fields to datetime if provided
+        date_local = validated_data.get('date_local')
+        requested_check_in_time = validated_data.get('requested_check_in')
+        requested_check_out_time = validated_data.get('requested_check_out')
+        
+        if date_local:
+            # Get work settings timezone
+            from apps.settings.models import WorkSettings
+            import pytz
+            
+            ws = WorkSettings.objects.first()
+            tz_name = ws.timezone if ws else 'Asia/Dubai'
+            tz = pytz.timezone(tz_name)
+            
+            if requested_check_in_time:
+                # Combine date and time to create datetime in correct timezone
+                check_in_datetime = datetime.combine(date_local, requested_check_in_time)
+                check_in_local = tz.localize(check_in_datetime)
+                validated_data['requested_check_in'] = check_in_local.astimezone(pytz.UTC)
+            
+            if requested_check_out_time:
+                # Combine date and time to create datetime in correct timezone
+                check_out_datetime = datetime.combine(date_local, requested_check_out_time)
+                check_out_local = tz.localize(check_out_datetime)
+                validated_data['requested_check_out'] = check_out_local.astimezone(pytz.UTC)
+        
+        return super().create(validated_data)
 
 
 class AttendanceCorrectionApprovalSerializer(serializers.Serializer):

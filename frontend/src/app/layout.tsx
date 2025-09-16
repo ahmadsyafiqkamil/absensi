@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Sistem Absensi - KJRI Dubai",
-  description: "Sistem Absensi Pegawai Konsulat Jenderal Republik Indonesia Dubai",
+  description: "Aplikasi (Sistem Informasi) Administrasi Perkantoran",
 };
 
 export default function RootLayout({

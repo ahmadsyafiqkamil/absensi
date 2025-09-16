@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import * as Dialog from '@radix-ui/react-dialog';
 import { authFetch } from '@/lib/authFetch';
-import { getBackendUrl } from '@/lib/backend';
+import { getBackendBaseUrl } from '@/lib/backend';
 import {
   useReactTable,
   getCoreRowModel,
@@ -141,11 +141,46 @@ export default function OvertimeSummaryRequestManager() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/`);
+      // Use v2 proxy
+      const response = await authFetch(`/api/v2/overtime/monthly-summary`);
       
       if (response.ok) {
-        const data: OvertimeSummaryRequestsResponse = await response.json();
-        setRequests(data.results);
+        const data = await response.json();
+        // v2 may return an array or a paginated object
+        const rawItems = Array.isArray(data) ? data : (data?.results || []);
+        // adapt v2 shape to UI expectations
+        const adapted: OvertimeSummaryRequest[] = rawItems.map((it: any) => {
+          const year = it.year ?? it.request_year;
+          const month = it.month ?? it.request_month;
+          let period = '';
+          if (year && month) {
+            period = `${year}-${String(month).padStart(2, '0')}`;
+          } else if (it.request_period && typeof it.request_period === 'string') {
+            period = it.request_period;
+          } else {
+            period = 'N/A';
+          }
+          return {
+            id: it.id,
+            request_period: period,
+            request_title: '',
+            request_description: it.purpose || '',
+            include_overtime_details: false,
+            include_overtime_summary: true,
+            include_approver_info: false,
+            status: it.status || 'pending',
+            level1_approved_by: null,
+            level1_approved_at: null,
+            final_approved_by: null,
+            final_approved_at: null,
+            rejection_reason: null,
+            completed_at: null,
+            completion_notes: null,
+            created_at: it.requested_at || it.created_at || new Date().toISOString(),
+            updated_at: it.updated_at || it.requested_at || new Date().toISOString(),
+          } as OvertimeSummaryRequest;
+        });
+        setRequests(adapted);
       } else {
         setError('Gagal memuat data pengajuan rekap lembur bulanan');
       }
@@ -171,15 +206,22 @@ export default function OvertimeSummaryRequestManager() {
 
     try {
       // Prepare data for submission, excluding null/empty fields
-      const submitData = { ...formData };
-      
-      console.log(submitData);
-      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/`, {
+      // Map UI fields to v2 fields
+      const period = formData.request_period || '';
+      const parts = period.split('-');
+      const yStr = parts[0] || '';
+      const mStr = parts[1] || '';
+      const body = {
+        year: yStr ? parseInt(yStr, 10) : undefined,
+        month: mStr ? parseInt(mStr, 10) : undefined,
+        purpose: formData.request_description || formData.request_title || '',
+      };
+      const response = await authFetch(`/api/v2/overtime/monthly-summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(submitData),
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -196,7 +238,9 @@ export default function OvertimeSummaryRequestManager() {
         });
         
         // Auto-fill title for current period
-        const [year, month] = currentPeriod.split('-');
+        const parts = currentPeriod.split('-');
+        const year = parts[0] || '';
+        const month = parts[1] || '';
         const monthNames = [
           'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
           'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -228,7 +272,9 @@ export default function OvertimeSummaryRequestManager() {
     
     // Auto-fill title when period changes
     if (field === 'request_period' && value) {
-      const [year, month] = value.split('-');
+      const parts = value.split('-');
+      const year = parts[0] || '';
+      const month = parts[1] || '';
       const monthNames = [
         'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
         'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -247,12 +293,24 @@ export default function OvertimeSummaryRequestManager() {
     columnHelper.accessor('request_period', {
       header: 'Periode',
       cell: info => {
-        const [year, month] = info.getValue().split('-');
+        const period = info.getValue();
+        if (!period || typeof period !== 'string') {
+          return 'N/A';
+        }
+        const parts = period.split('-');
+        if (parts.length !== 2) {
+          return 'N/A';
+        }
+        const [year, month] = parts;
         const monthNames = [
           'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
           'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'
         ];
-        return `${monthNames[parseInt(month) - 1]} ${year}`;
+        const monthIndex = parseInt(month) - 1;
+        if (monthIndex < 0 || monthIndex >= monthNames.length) {
+          return 'N/A';
+        }
+        return `${monthNames[monthIndex]} ${year}`;
       },
     }),
     columnHelper.accessor('request_title', {
@@ -315,7 +373,10 @@ export default function OvertimeSummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/${request.id}/export_docx/`);
+                      const response = await fetch(`/api/v2/overtime/monthly-summary/${request.id}/export_docx/`, {
+                        method: 'GET',
+                        credentials: 'include',
+                      });
                       
                       if (response.ok) {
                         // Get blob from response
@@ -347,7 +408,10 @@ export default function OvertimeSummaryRequestManager() {
                   variant="outline"
                   onClick={async () => {
                     try {
-                      const response = await authFetch(`${getBackendUrl()}/api/employee/monthly-summary-requests/${request.id}/export_pdf/`);
+                      const response = await fetch(`/api/v2/overtime/monthly-summary/${request.id}/export_pdf/`, {
+                        method: 'GET',
+                        credentials: 'include',
+                      });
                       
                       if (response.ok) {
                         // Get blob from response
@@ -415,7 +479,9 @@ export default function OvertimeSummaryRequestManager() {
     setFormData(prev => ({ ...prev, request_period: currentPeriod }));
 
     // Auto-fill title for current period
-    const [year, month] = currentPeriod.split('-');
+    const parts = currentPeriod.split('-');
+    const year = parts[0] || '';
+    const month = parts[1] || '';
     const monthNames = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'

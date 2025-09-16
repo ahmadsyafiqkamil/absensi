@@ -1,31 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    return NextResponse.json({ error: 'Access token not found' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const queryString = searchParams.toString();
+  
   try {
-    const accessToken = (await cookies()).get('access_token')?.value
-
-    if (!accessToken) {
-      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
-    }
-
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/employees/divisions/`
-
-    const resp = await fetch(url, {
-      method: 'GET',
+    const backendUrl = `${getBackendBaseUrl()}/api/v2/employees/divisions/?${queryString}`;
+    const response = await fetch(backendUrl, {
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${accessToken}`,
       },
-      cache: 'no-store'
-    })
-
-    const data = await resp.json().catch(() => ({}))
-
-    return NextResponse.json(data, { status: resp.status })
+    });
+    
+    if (!response.ok) {
+        const errorData = await response.json();
+        return NextResponse.json(errorData, { status: response.status });
+    }
+    
+    const data = await response.json();
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error proxying V2 employees divisions API:', error)
-    return NextResponse.json({ detail: 'Internal server error' }, { status: 500 })
+    console.error('Error proxying divisions request:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
