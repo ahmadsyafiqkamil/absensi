@@ -73,11 +73,30 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
             # Fallback to attendance date if correction date is not set
             data['date_local'] = instance.attendance.date_local.isoformat() + 'T00:00:00Z'
         
-        # Add proposed times in local format (same as requested times for now)
+        # Convert proposed times back to local timezone for display
         if instance.requested_check_in:
-            data['proposed_check_in_local'] = instance.requested_check_in.isoformat()
+            from apps.settings.models import WorkSettings
+            import pytz
+            
+            ws = WorkSettings.objects.first()
+            tz_name = ws.timezone if ws else 'Asia/Dubai'
+            tz = pytz.timezone(tz_name)
+            
+            # Convert UTC to local timezone
+            local_check_in = instance.requested_check_in.astimezone(tz)
+            data['proposed_check_in_local'] = local_check_in.isoformat()
+            
         if instance.requested_check_out:
-            data['proposed_check_out_local'] = instance.requested_check_out.isoformat()
+            from apps.settings.models import WorkSettings
+            import pytz
+            
+            ws = WorkSettings.objects.first()
+            tz_name = ws.timezone if ws else 'Asia/Dubai'
+            tz = pytz.timezone(tz_name)
+            
+            # Convert UTC to local timezone
+            local_check_out = instance.requested_check_out.astimezone(tz)
+            data['proposed_check_out_local'] = local_check_out.isoformat()
         
         return data
 
@@ -173,15 +192,25 @@ class AttendanceCorrectionCreateUpdateSerializer(serializers.ModelSerializer):
         requested_check_out_time = validated_data.get('requested_check_out')
         
         if date_local:
+            # Get work settings timezone
+            from apps.settings.models import WorkSettings
+            import pytz
+            
+            ws = WorkSettings.objects.first()
+            tz_name = ws.timezone if ws else 'Asia/Dubai'
+            tz = pytz.timezone(tz_name)
+            
             if requested_check_in_time:
-                # Combine date and time to create datetime
+                # Combine date and time to create datetime in correct timezone
                 check_in_datetime = datetime.combine(date_local, requested_check_in_time)
-                validated_data['requested_check_in'] = timezone.make_aware(check_in_datetime)
+                check_in_local = tz.localize(check_in_datetime)
+                validated_data['requested_check_in'] = check_in_local.astimezone(pytz.UTC)
             
             if requested_check_out_time:
-                # Combine date and time to create datetime
+                # Combine date and time to create datetime in correct timezone
                 check_out_datetime = datetime.combine(date_local, requested_check_out_time)
-                validated_data['requested_check_out'] = timezone.make_aware(check_out_datetime)
+                check_out_local = tz.localize(check_out_datetime)
+                validated_data['requested_check_out'] = check_out_local.astimezone(pytz.UTC)
         
         return super().create(validated_data)
 

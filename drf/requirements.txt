@@ -13,4 +13,5 @@ docx2pdf==0.1.8
 pypandoc==1.13
 requests==2.31.0
 gunicorn==21.2.0
+pytz==2024.1
 

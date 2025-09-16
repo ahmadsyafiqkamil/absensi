@@ -33,7 +33,7 @@ export default function ApprovalsPage() {
   // Fetch work settings
   const fetchWorkSettings = async () => {
     try {
-      const response = await fetch('/api/employee/settings/work');
+      const response = await fetch('/api/v2/settings/work');
       if (response.ok) {
         const data = await response.json();
         setWorkSettings(data);

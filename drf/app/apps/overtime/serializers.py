@@ -42,6 +42,42 @@ class OvertimeRequestAdminSerializer(OvertimeRequestSerializer):
 
 class OvertimeRequestSupervisorSerializer(OvertimeRequestSerializer):
     """Supervisor overtime request serializer with limited access"""
+    def to_representation(self, instance):
+        """Ensure financial fields are present for supervisor view.
+        If not approved yet, compute an estimated amount based on settings.
+        """
+        data = super().to_representation(instance)
+        try:
+            hourly_rate = getattr(instance, 'hourly_rate', None)
+            total_amount = getattr(instance, 'total_amount', None)
+            if hourly_rate is None or total_amount is None:
+                from apps.settings.models import WorkSettings
+                ws = WorkSettings.objects.first()
+                employee = getattr(instance, 'employee', None)
+                total_hours = float(getattr(instance, 'total_hours', 0) or 0)
+                if ws and employee and getattr(employee, 'gaji_pokok', None) and total_hours > 0:
+                    monthly_hours = 22 * 8
+                    base_hourly = float(employee.gaji_pokok) / monthly_hours
+                    req_type = getattr(instance, 'request_type', 'regular') or 'regular'
+                    if req_type == 'holiday':
+                        rate_multiplier = float(getattr(ws, 'overtime_rate_holiday', 0.75) or 0.75)
+                    else:
+                        rate_multiplier = float(getattr(ws, 'overtime_rate_workday', 0.50) or 0.50)
+                    est_hourly = base_hourly * rate_multiplier
+                    est_total = est_hourly * total_hours
+                    data['hourly_rate'] = round(est_hourly, 2)
+                    data['total_amount'] = round(est_total, 2)
+                else:
+                    if hourly_rate is not None:
+                        data['hourly_rate'] = float(hourly_rate)
+                    if total_amount is not None:
+                        data['total_amount'] = float(total_amount)
+            else:
+                data['hourly_rate'] = float(hourly_rate)
+                data['total_amount'] = float(total_amount)
+        except Exception:
+            pass
+        return data
     class Meta(OvertimeRequestSerializer.Meta):
         fields = OvertimeRequestSerializer.Meta.fields + [
             "hourly_rate", "total_amount", "approved_by", "approved_at", 
@@ -51,10 +87,50 @@ class OvertimeRequestSupervisorSerializer(OvertimeRequestSerializer):
 
 class OvertimeRequestEmployeeSerializer(OvertimeRequestSerializer):
     """Employee overtime request serializer with minimal access"""
+    def to_representation(self, instance):
+        """Ensure financial fields are present for employee view.
+        If not approved yet, compute an estimated amount based on settings.
+        """
+        data = super().to_representation(instance)
+        try:
+            # Prefer stored values when available
+            hourly_rate = getattr(instance, 'hourly_rate', None)
+            total_amount = getattr(instance, 'total_amount', None)
+            if hourly_rate is None or total_amount is None:
+                from apps.settings.models import WorkSettings
+                from decimal import Decimal
+                ws = WorkSettings.objects.first()
+                employee = getattr(instance, 'employee', None)
+                total_hours = float(getattr(instance, 'total_hours', 0) or 0)
+                if ws and employee and getattr(employee, 'gaji_pokok', None) and total_hours > 0:
+                    monthly_hours = 22 * 8
+                    base_hourly = float(employee.gaji_pokok) / monthly_hours
+                    # Determine rate by request type
+                    req_type = getattr(instance, 'request_type', 'regular') or 'regular'
+                    if req_type == 'holiday':
+                        rate_multiplier = float(getattr(ws, 'overtime_rate_holiday', 0.75) or 0.75)
+                    else:
+                        rate_multiplier = float(getattr(ws, 'overtime_rate_workday', 0.50) or 0.50)
+                    est_hourly = base_hourly * rate_multiplier
+                    est_total = est_hourly * total_hours
+                    data['hourly_rate'] = round(est_hourly, 2)
+                    data['total_amount'] = round(est_total, 2)
+                else:
+                    if hourly_rate is not None:
+                        data['hourly_rate'] = float(hourly_rate)
+                    if total_amount is not None:
+                        data['total_amount'] = float(total_amount)
+            else:
+                data['hourly_rate'] = float(hourly_rate)
+                data['total_amount'] = float(total_amount)
+        except Exception:
+            # Best-effort; leave fields absent on error
+            pass
+        return data
     class Meta(OvertimeRequestSerializer.Meta):
         fields = [
             "id", "user", "employee", "request_type", "date", "start_time", "end_time", "total_hours",
-            "purpose", "work_description", "status", "requested_at"
+            "purpose", "work_description", "status", "requested_at", "hourly_rate", "total_amount"
         ]
 
 
@@ -79,9 +155,11 @@ class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
         date = data.get('date')
         
         if start_time and end_time:
-            if start_time >= end_time:
+            # Allow overnight overtime (end_time can be earlier than start_time)
+            # Only reject when times are exactly equal (zero duration)
+            if start_time == end_time:
                 raise serializers.ValidationError(
-                    "End time must be after start time"
+                    "End time must be different from start time"
                 )
         
         # Check if date is not in the future
