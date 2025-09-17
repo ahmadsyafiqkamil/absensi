@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import CalendarClient from '@/app/admin/calendar/CalendarClient'
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { locationService } from '@/lib/location'
 
 type WorkSettings = {
   id: number
@@ -64,13 +65,43 @@ export default function SettingsClient() {
           fetch('/api/admin/settings/work').then(r => r.json()),
           fetch(`/api/admin/settings/holidays?page=${1}&page_size=${10}`).then(r => r.json()),
         ])
+        
+        // Check if work settings exist, if not create default settings
+        let settingsData = s
+        if (s.error || !s.id) {
+          // No work settings exist, create default settings
+          settingsData = {
+            id: null,
+            timezone: 'Asia/Dubai',
+            start_time: '09:00:00',
+            end_time: '17:00:00',
+            required_minutes: 480,
+            grace_minutes: 0,
+            workdays: [0, 1, 2, 3, 4],
+            friday_start_time: '09:00:00',
+            friday_end_time: '13:00:00',
+            friday_required_minutes: 240,
+            friday_grace_minutes: 0,
+            office_latitude: null,
+            office_longitude: null,
+            office_radius_meters: 100,
+            overtime_rate_workday: '0.50',
+            overtime_rate_holiday: '0.75',
+            overtime_threshold_minutes: 60,
+            earliest_check_in_enabled: false,
+            earliest_check_in_time: '06:00:00',
+            latest_check_out_enabled: false,
+            latest_check_out_time: '22:00:00'
+          }
+        }
+        
         // Set default values for new fields if they don't exist
         const settingsWithDefaults = {
-          ...s,
-          earliest_check_in_enabled: s.earliest_check_in_enabled ?? false,
-          earliest_check_in_time: s.earliest_check_in_time ?? '06:00',
-          latest_check_out_enabled: s.latest_check_out_enabled ?? false,
-          latest_check_out_time: s.latest_check_out_time ?? '22:00'
+          ...settingsData,
+          earliest_check_in_enabled: settingsData.earliest_check_in_enabled ?? false,
+          earliest_check_in_time: settingsData.earliest_check_in_time ?? '06:00:00',
+          latest_check_out_enabled: settingsData.latest_check_out_enabled ?? false,
+          latest_check_out_time: settingsData.latest_check_out_time ?? '22:00:00'
         }
         setSettings(settingsWithDefaults)
         setHolidays(h?.results ?? [])
@@ -109,10 +140,21 @@ export default function SettingsClient() {
     setSaving(true)
     setError(null)
     try {
+      // Ensure time fields have seconds format for backend
+      const settingsToSave = {
+        ...settings,
+        earliest_check_in_time: settings.earliest_check_in_time?.includes(':') && !settings.earliest_check_in_time?.includes(':00:') 
+          ? settings.earliest_check_in_time + ':00' 
+          : settings.earliest_check_in_time,
+        latest_check_out_time: settings.latest_check_out_time?.includes(':') && !settings.latest_check_out_time?.includes(':00:') 
+          ? settings.latest_check_out_time + ':00' 
+          : settings.latest_check_out_time,
+      }
+      
       const resp = await fetch('/api/admin/settings/work', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(settingsToSave),
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error((data as { detail?: string })?.detail || 'Gagal menyimpan settings')
@@ -129,28 +171,54 @@ export default function SettingsClient() {
     setError(null)
     setLocating(true)
     try {
-      await new Promise<void>((resolve, reject) => {
-        if (!('geolocation' in navigator)) {
-          reject(new Error('Geolocation tidak didukung browser'))
-          return
-        }
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const { latitude, longitude } = pos.coords
-            setSettings({
-              ...settings,
-              office_latitude: Number(latitude.toFixed(7)),
-              office_longitude: Number(longitude.toFixed(7)),
-              office_radius_meters: settings.office_radius_meters ?? 100,
-            })
-            resolve()
-          },
-          (err) => reject(err),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        )
+      const loc = await locationService.getCurrentLocation({
+        enableHighAccuracy: false,
+        timeout: 60000,
+        maximumAge: 30000,
       })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal mengambil lokasi')
+      setSettings({
+        ...settings,
+        office_latitude: Number(loc.lat.toFixed(7)),
+        office_longitude: Number(loc.lng.toFixed(7)),
+        office_radius_meters: settings.office_radius_meters ?? 100,
+      })
+    } catch (e: any) {
+      // Fallback: try watchPosition briefly if position is unavailable (code 2)
+      const code = typeof e?.code === 'number' ? e.code : undefined
+      if (code === 2 && 'geolocation' in navigator) {
+        try {
+          const loc = await new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+            const watchId = navigator.geolocation.watchPosition(
+              (pos) => {
+                navigator.geolocation.clearWatch(watchId)
+                resolve({
+                  lat: Number(pos.coords.latitude.toFixed(6)),
+                  lng: Number(pos.coords.longitude.toFixed(6)),
+                })
+              },
+              (err) => {
+                navigator.geolocation.clearWatch(watchId)
+                reject(err)
+              },
+              { enableHighAccuracy: true, maximumAge: 0 }
+            )
+            setTimeout(() => {
+              navigator.geolocation.clearWatch(watchId)
+              reject(new Error('Gagal mengambil lokasi (timeout)'))
+            }, 20000)
+          })
+          setSettings({
+            ...settings,
+            office_latitude: Number(loc.lat.toFixed(7)),
+            office_longitude: Number(loc.lng.toFixed(7)),
+            office_radius_meters: settings.office_radius_meters ?? 100,
+          })
+          return
+        } catch (_) {
+          // fall through to show original error
+        }
+      }
+      setError(e?.message || 'Gagal mengambil lokasi')
     } finally {
       setLocating(false)
     }
@@ -343,7 +411,7 @@ export default function SettingsClient() {
                 <Label>Jam paling awal untuk absen</Label>
                 <Input
                   type="time"
-                  value={settings.earliest_check_in_time || '06:00'}
+                  value={settings.earliest_check_in_time?.substring(0, 5) || '06:00'}
                   onChange={(e) => setSettings({ ...settings, earliest_check_in_time: e.target.value })}
                   disabled={!settings.earliest_check_in_enabled}
                 />
@@ -355,7 +423,7 @@ export default function SettingsClient() {
             {settings.earliest_check_in_enabled && (
               <div className="mt-4 p-3 bg-orange-50 rounded-lg">
                 <div className="text-sm text-orange-800">
-                  <strong>Info:</strong> Pembatasan jam absensi aktif. Employee hanya bisa absen mulai jam {settings.earliest_check_in_time || '06:00'}
+                  <strong>Info:</strong> Pembatasan jam absensi aktif. Employee hanya bisa absen mulai jam {settings.earliest_check_in_time || '06:00:00'}
                 </div>
               </div>
             )}
@@ -381,7 +449,7 @@ export default function SettingsClient() {
                 <Label>Jam paling akhir untuk check-out</Label>
                 <Input
                   type="time"
-                  value={settings.latest_check_out_time || '22:00'}
+                  value={settings.latest_check_out_time?.substring(0, 5) || '22:00'}
                   onChange={(e) => setSettings({ ...settings, latest_check_out_time: e.target.value })}
                   disabled={!settings.latest_check_out_enabled}
                 />
@@ -393,7 +461,7 @@ export default function SettingsClient() {
             {settings.latest_check_out_enabled && (
               <div className="mt-4 p-3 bg-red-50 rounded-lg">
                 <div className="text-sm text-red-800">
-                  <strong>Info:</strong> Pembatasan jam check-out aktif. Employee hanya bisa check-out sampai jam {settings.latest_check_out_time || '22:00'}
+                  <strong>Info:</strong> Pembatasan jam check-out aktif. Employee hanya bisa check-out sampai jam {settings.latest_check_out_time || '22:00:00'}
                 </div>
               </div>
             )}

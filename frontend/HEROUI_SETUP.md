@@ -137,7 +137,7 @@ kill -9 <PID>
 ### Health Check
 ```bash
 # Check frontend health
-curl http://localhost:3000/api/health
+curl http://localhost:8000/api/v2/auth/health/
 
 # Check container logs
 docker-compose -f docker-compose.dev.yml logs -f frontend

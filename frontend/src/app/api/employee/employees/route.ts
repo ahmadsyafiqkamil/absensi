@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     }
 
     const backend = getBackendUrl()
-    const url = `${backend}/api/employee/employees/`
+    const url = `${backend}/api/v2/employees/employees/`
 
     const resp = await fetch(url, {
       method: 'GET',

@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { id } = await params;
     const url = new URL(request.url);
-    const backendUrl = `${BACKEND_URL}/api/employee/overtime-summary-requests/${id}/${url.search}`;
+    const backendUrl = `${BACKEND_URL}/api/v2/overtime/employee/monthly-summary/${id}/${url.search}`;
     
     const response = await fetch(backendUrl, {
       method: 'GET',
@@ -39,7 +39,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const backendUrl = `${BACKEND_URL}/api/employee/overtime-summary-requests/${id}/`;
+    const backendUrl = `${BACKEND_URL}/api/v2/overtime/employee/monthly-summary/${id}/`;
     
     const response = await fetch(backendUrl, {
       method: 'PUT',
@@ -68,7 +68,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const backendUrl = `${BACKEND_URL}/api/employee/overtime-summary-requests/${id}/`;
+    const backendUrl = `${BACKEND_URL}/api/v2/overtime/employee/monthly-summary/${id}/`;
     
     const response = await fetch(backendUrl, {
       method: 'DELETE',

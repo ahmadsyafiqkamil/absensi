@@ -19,35 +19,17 @@ export async function GET(request: Request) {
   if (endDate) params.append('end_date', endDate)
   if (employeeId) params.append('employee_id', employeeId)
   
-  // Try main endpoint first
-  let url = `${backend}/api/supervisor/team-attendance/pdf?${params.toString()}`
+  // Use V2 endpoint for PDF generation
+  const url = `${backend}/api/v2/attendance/supervisor/attendance/team_attendance_pdf/?${params.toString()}`
   
   try {
-    let response = await fetch(url, {
+    const response = await fetch(url, {
       headers: { 
         'Authorization': `Bearer ${accessToken}`,
-        // Remove Accept header to let backend decide content type
-        'User-Agent': 'Mozilla/5.0 (compatible; AbsensiApp/1.0)'
+        'Content-Type': 'application/json'
       },
       cache: 'no-store',
     })
-    
-    // If main endpoint fails with Accept header error, try alternative
-    if (response.status === 406 || response.status === 400) {
-      const errorText = await response.text()
-      if (errorText.includes('Accept header') || errorText.includes('Could not satisfy')) {
-        console.log('Main PDF endpoint failed, trying alternative...')
-        url = `${backend}/api/supervisor/team-attendance/pdf-alt?${params.toString()}`
-        
-        response = await fetch(url, {
-          headers: { 
-            'Authorization': `Bearer ${accessToken}`,
-            'User-Agent': 'Mozilla/5.0 (compatible; AbsensiApp/1.0)'
-          },
-          cache: 'no-store',
-        })
-      }
-    }
     
     if (!response.ok) {
       // Try to get error details

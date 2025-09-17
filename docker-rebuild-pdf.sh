@@ -29,7 +29,7 @@ docker-compose -f docker-compose.dev.yml ps
 # Test backend health
 echo "🏥 Testing backend health..."
 sleep 5
-curl -f http://localhost:8000/api/health/ || echo "Backend not ready yet"
+curl -f http://localhost:8000/api/v2/auth/health/ || echo "Backend not ready yet"
 
 echo "✅ Rebuild completed! PDF export feature should now be available."
 echo ""

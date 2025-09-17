@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { id } = await params;
     const url = new URL(request.url);
-    const backendUrl = `${BACKEND_URL}/api/employee/overtime-summary-requests/${id}/export_docx/${url.search}`;
+    const backendUrl = `${BACKEND_URL}/api/v2/overtime/employee/monthly-summary/${id}/export_docx/${url.search}`;
     
     const response = await fetch(backendUrl, {
       method: 'GET',

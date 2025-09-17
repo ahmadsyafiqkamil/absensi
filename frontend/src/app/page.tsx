@@ -5,6 +5,7 @@ import ApiStatusCheck from '@/components/ApiStatusCheck';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
+  console.log('getMe response:', { status: resp.status, data })
   if (!resp.ok) return null
   return data
 }
@@ -17,10 +18,11 @@ export default async function Home() {
     return <RoleBasedRedirect user={me} />
   }
   
-  const groups: string[] = me?.groups || []
-  const isAdmin = groups.includes('admin')
-  const isSupervisor = groups.includes('supervisor')
-  const isPegawai = groups.includes('pegawai')
+  // If no user, show login page or welcome page
+  const groups: string[] = []
+  const isAdmin = false
+  const isSupervisor = false
+  const isPegawai = false
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 bg-gradient-to-br from-blue-50 to-white">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">

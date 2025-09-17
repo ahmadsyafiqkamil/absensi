@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { getBackendBaseUrl } from '@/lib/backend'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const accessToken = (await cookies()).get('access_token')?.value
@@ -13,8 +14,9 @@ export async function POST(
     }
 
     const body = await request.json()
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/overtime/monthly-summary/${params.id}/approve/`
+    // Use container network URL on server side
+    const backend = getBackendBaseUrl()
+    const url = `${backend}/api/v2/overtime/monthly-summary/${(await params).id}/approve/`
 
     const resp = await fetch(url, {
       method: 'POST',

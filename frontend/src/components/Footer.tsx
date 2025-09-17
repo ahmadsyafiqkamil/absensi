@@ -8,7 +8,7 @@ export default function Footer() {
         {/* Copyright */}
         <div className="text-center">
           <div className="text-sm text-gray-600">
-            <p>© 2024 Konsulat Jenderal Republik Indonesia Dubai</p>
+          <p>© {new Date().getFullYear()} Konsulat Jenderal Republik Indonesia Dubai</p>
             <p className="mt-1">Semua hak dilindungi undang-undang</p>
           </div>
         </div>

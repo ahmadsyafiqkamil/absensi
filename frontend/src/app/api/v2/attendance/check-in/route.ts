@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,8 +11,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/attendance/check-in/`
+    const backend = getBackendBaseUrl()
+    const url = `${backend}/api/v2/attendance/attendance/check_in/`
 
     const resp = await fetch(url, {
       method: 'POST',

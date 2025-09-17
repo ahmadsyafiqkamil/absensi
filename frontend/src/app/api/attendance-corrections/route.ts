@@ -6,7 +6,7 @@ async function ensureAuthenticated() {
   const accessToken = (await cookies()).get('access_token')?.value
   if (!accessToken) return { ok: false, status: 401 as const }
   const backendBase = getBackendUrl()
-  const meResponse = await fetch(`${backendBase}/api/auth/me`, {
+  const meResponse = await fetch(`${backendBase}/api/v2/auth/me/`, {
     headers: { 'Authorization': `Bearer ${accessToken}` },
     cache: 'no-store',
   })
@@ -19,7 +19,7 @@ export async function GET() {
   if (!chk.ok) return NextResponse.json({ detail: 'Unauthorized' }, { status: chk.status })
   
   try {
-    const resp = await fetch(`${chk.backendBase}/api/attendance-corrections/`, {
+    const resp = await fetch(`${chk.backendBase}/api/v2/corrections/corrections/`, {
       headers: { Authorization: `Bearer ${chk.accessToken}` },
       cache: 'no-store',
     })
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     // Forward the request body (FormData) directly to the backend
     const body = await request.formData()
     
-    const resp = await fetch(`${chk.backendBase}/api/attendance-corrections/`, {
+    const resp = await fetch(`${chk.backendBase}/api/v2/corrections/corrections/`, {
       method: 'POST',
       headers: { 
         Authorization: `Bearer ${chk.accessToken}`,

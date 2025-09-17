@@ -268,7 +268,7 @@ export default function SupervisorAttendancePage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="p-4">
-                  <div className="text-2xl font-bold text-blue-600">{teamData.team_attendance.length}</div>
+                  <div className="text-2xl font-bold text-blue-600">{teamData?.team_attendance?.length || 0}</div>
                   <div className="text-sm text-gray-600">Team Members</div>
                 </CardContent>
               </Card>
@@ -291,7 +291,7 @@ export default function SupervisorAttendancePage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="text-2xl font-bold text-purple-600">
-                    {Math.round(teamData.team_attendance.reduce((sum, member) => sum + member.summary.attendance_rate, 0) / teamData.team_attendance.length)}
+                    {teamData?.team_attendance?.length ? Math.round(teamData.team_attendance.reduce((sum, member) => sum + member.summary.attendance_rate, 0) / teamData.team_attendance.length) : 0}
                   </div>
                   <div className="text-sm text-gray-600">Avg Attendance Rate (%)</div>
                 </CardContent>
@@ -301,7 +301,7 @@ export default function SupervisorAttendancePage() {
         )}
 
         {/* Download PDF Button */}
-        {teamData && teamData.team_attendance.length > 0 && (
+        {teamData && teamData.team_attendance && teamData.team_attendance.length > 0 && (
           <div className="mb-6 flex justify-end">
             <Button 
               onClick={() => {
@@ -324,7 +324,7 @@ export default function SupervisorAttendancePage() {
         )}
 
         {/* Team Members */}
-        {teamData && teamData.team_attendance.length > 0 ? (
+        {teamData && teamData.team_attendance && teamData.team_attendance.length > 0 ? (
           <div className="space-y-6">
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader>

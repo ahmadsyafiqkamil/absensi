@@ -58,11 +58,24 @@ interface CorrectionsResponse {
   };
 }
 
+interface WorkSettings {
+  id: number;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  lateness_threshold_minutes: number;
+  workdays: number[];
+  office_latitude: string;
+  office_longitude: string;
+  geofence_radius_meters: number;
+}
+
 export default function PegawaiCorrectionsPage() {
   const [correctionsData, setCorrectionsData] = useState<CorrectionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [workSettings, setWorkSettings] = useState<WorkSettings | null>(null);
   const [filters, setFilters] = useState({
     start_date: '',
     end_date: '',
@@ -100,8 +113,22 @@ export default function PegawaiCorrectionsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // Fetch work settings
+  const fetchWorkSettings = async () => {
+    try {
+      const response = await fetch('/api/v2/settings/work');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkSettings(data);
+      }
+    } catch (error) {
+      console.error('Error fetching work settings:', error);
+    }
+  };
+
   useEffect(() => {
     fetchCorrectionsData();
+    fetchWorkSettings();
     // Reset pagination when filters change
     setPagination(prev => ({ ...prev, pageIndex: 0 }));
   }, [filters]);
@@ -140,7 +167,7 @@ export default function PegawaiCorrectionsPage() {
         params.append('status', filters.status);
       }
       
-      const response = await authFetch(`/api/attendance/corrections?${params.toString()}`);
+      const response = await authFetch(`/api/v2/corrections/correction-records?${params.toString()}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -284,7 +311,7 @@ export default function PegawaiCorrectionsPage() {
         formData.append('proposed_check_out_time', correctionForm.proposed_check_out_time);
       }
 
-      const response = await authFetch('/api/attendance/corrections/request', {
+      const response = await authFetch('/api/v2/corrections/request', {
         method: 'POST',
         body: formData
       });
@@ -328,7 +355,7 @@ export default function PegawaiCorrectionsPage() {
         formData.append('proposed_check_out_time', manualCorrectionForm.proposed_check_out_time);
       }
 
-      const response = await authFetch('/api/attendance/corrections/request', {
+      const response = await authFetch('/api/v2/corrections/request', {
         method: 'POST',
         body: formData
       });
@@ -355,10 +382,11 @@ export default function PegawaiCorrectionsPage() {
     if (!timeString) return '-';
     try {
       const date = new Date(timeString);
+      const timezone = workSettings?.timezone || 'Asia/Dubai';
       return date.toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit',
-        timeZone: 'Asia/Dubai'
+        timeZone: timezone
       });
     } catch {
       return '-';
@@ -368,11 +396,13 @@ export default function PegawaiCorrectionsPage() {
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
+      const timezone = workSettings?.timezone || 'Asia/Dubai';
       return date.toLocaleDateString('id-ID', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: timezone
       });
     } catch {
       return dateString;
@@ -680,9 +710,12 @@ export default function PegawaiCorrectionsPage() {
               <h2 className="text-xl font-semibold text-gray-900">Summary Perbaikan Absensi</h2>
               {correctionsData && (
                 <p className="text-sm text-gray-500 mt-1">
-                  Last updated: {new Date().toLocaleTimeString('id-ID')} | 
+                  Last updated: {new Date().toLocaleTimeString('id-ID', { timeZone: workSettings?.timezone || 'Asia/Dubai' })} | 
                   Data count: {correctionsData.correction_records.length} records |
                   Page: {pagination.pageIndex + 1} of {Math.ceil(correctionsData.correction_records.length / pagination.pageSize)}
+                  {workSettings?.timezone && (
+                    <span className="ml-2 text-blue-600">| Timezone: {workSettings.timezone}</span>
+                  )}
                 </p>
               )}
             </div>

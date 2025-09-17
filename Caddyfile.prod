@@ -24,7 +24,7 @@
     # Reverse proxy to frontend
     reverse_proxy frontend:3000 {
         # Health check
-        health_uri /api/health
+        health_uri /login
         health_interval 30s
         health_timeout 10s
 
@@ -38,14 +38,14 @@
         header_up X-Forwarded-Proto {scheme}
     }
 
-    # Rate limiting
-    rate_limit {
-        zone static {
-            key {remote}
-            window 1m
-            events 100
-        }
-    }
+    # Rate limiting removed - requires plugin
+    # rate_limit {
+    #     zone static {
+    #         key {remote}
+    #         window 1m
+    #         events 100
+    #     }
+    # }
 
     # Logging
     log {
@@ -87,7 +87,7 @@
     # Reverse proxy to backend
     reverse_proxy backend:8000 {
         # Health check
-        health_uri /health/
+        health_uri /api/v2/auth/health/
         health_interval 30s
         health_timeout 10s
 
@@ -99,14 +99,14 @@
         header_up X-Forwarded-Host {host}
     }
 
-    # Rate limiting for API
-    rate_limit {
-        zone api {
-            key {remote}
-            window 1m
-            events 200
-        }
-    }
+    # Rate limiting for API removed - requires plugin
+    # rate_limit {
+    #     zone api {
+    #         key {remote}
+    #         window 1m
+    #         events 200
+    #     }
+    # }
 
     # Logging
     log {

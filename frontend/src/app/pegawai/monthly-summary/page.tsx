@@ -76,7 +76,7 @@ export default function MonthlySummaryPage() {
   useEffect(() => {
     ;(async () => {
       try {
-        const r = await fetch('/api/auth/me')
+        const r = await fetch('/api/v2/auth/me/')
         if (r.ok) {
           const d = await r.json()
           setMe({ username: d.username, groups: d.groups || [], is_superuser: !!d.is_superuser })

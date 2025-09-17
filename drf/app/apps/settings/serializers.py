@@ -28,7 +28,8 @@ class WorkSettingsSerializer(serializers.ModelSerializer):
         fields = [
             "id", "timezone", "start_time", "end_time", "required_minutes", "grace_minutes",
             "workdays", "friday_start_time", "friday_end_time", "friday_required_minutes",
-            "friday_grace_minutes", "office_latitude", "office_longitude", "office_radius_meters"
+            "friday_grace_minutes", "office_latitude", "office_longitude", "office_radius_meters",
+            "earliest_check_in_enabled", "earliest_check_in_time", "latest_check_out_enabled", "latest_check_out_time"
         ]
         read_only_fields = ["id"]
 
@@ -56,7 +57,8 @@ class WorkSettingsEmployeeSerializer(WorkSettingsSerializer):
         fields = [
             "id", "timezone", "start_time", "end_time", "required_minutes", "grace_minutes",
             "workdays", "friday_start_time", "friday_end_time", "friday_required_minutes",
-            "friday_grace_minutes", "office_latitude", "office_longitude", "office_radius_meters"
+            "friday_grace_minutes", "office_latitude", "office_longitude", "office_radius_meters",
+            "earliest_check_in_enabled", "earliest_check_in_time", "latest_check_out_enabled", "latest_check_out_time"
         ]
         read_only_fields = fields
 
@@ -69,7 +71,8 @@ class WorkSettingsCreateUpdateSerializer(serializers.ModelSerializer):
             "timezone", "start_time", "end_time", "required_minutes", "grace_minutes",
             "workdays", "friday_start_time", "friday_end_time", "friday_required_minutes",
             "friday_grace_minutes", "office_latitude", "office_longitude", "office_radius_meters",
-            "overtime_rate_workday", "overtime_rate_holiday", "overtime_threshold_minutes"
+            "overtime_rate_workday", "overtime_rate_holiday", "overtime_threshold_minutes",
+            "earliest_check_in_enabled", "earliest_check_in_time", "latest_check_out_enabled", "latest_check_out_time"
         ]
     
     def validate_workdays(self, value):

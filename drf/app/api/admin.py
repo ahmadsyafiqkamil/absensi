@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import Group
-from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection, OvertimeRequest, OvertimeSummaryRequest, GroupPermission, GroupPermissionTemplate
+from .models import Division, Position, Employee, WorkSettings, Holiday, Attendance, AttendanceCorrection
+from apps.core.models import GroupPermission, GroupPermissionTemplate
 
 # Unregister the default Group admin and register our custom one
 admin.site.unregister(Group)
@@ -131,113 +132,6 @@ class AttendanceAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
-
-
-@admin.register(OvertimeRequest)
-class OvertimeRequestAdmin(admin.ModelAdmin):
-    list_display = ("id", "employee", "date_requested", "overtime_hours", "status", "level1_approved_by", "final_approved_by", "level1_rejected_by", "final_rejected_by", "overtime_amount", "created_at")
-    list_filter = ("status", "date_requested", "created_at", "level1_approved_by", "final_approved_by", "level1_rejected_by", "final_rejected_by")
-    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "work_description", "level1_approved_by__username", "final_approved_by__username", "level1_rejected_by__username", "final_rejected_by__username")
-    readonly_fields = ("overtime_amount", "created_at", "updated_at", "level1_approved_at", "level1_rejected_at", "final_approved_at", "final_rejected_at")
-    
-    fieldsets = (
-        ('Request Information', {
-            'fields': ('employee', 'user', 'date_requested', 'overtime_hours', 'work_description')
-        }),
-        ('Status', {
-            'fields': ('status', 'rejection_reason')
-        }),
-        ('Level 1 Approval (Division)', {
-            'fields': ('level1_approved_by', 'level1_approved_at', 'level1_rejected_by', 'level1_rejected_at')
-        }),
-        ('Final Approval (Organization)', {
-            'fields': ('final_approved_by', 'final_approved_at', 'final_rejected_by', 'final_rejected_at')
-        }),
-        ('Legacy Fields', {
-            'fields': ('approved_by', 'approved_at'),
-            'classes': ('collapse',)
-        }),
-        ('Amount', {
-            'fields': ('overtime_amount',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at')
-        }),
-    )
-    
-    def save_model(self, request, obj, form, change):
-        # Auto-set approval/rejection fields when status changes
-        from django.utils import timezone
-        now = timezone.now()
-        
-        # Handle approval
-        if obj.status == 'level1_approved' and not obj.level1_approved_by:
-            obj.level1_approved_by = request.user
-            obj.level1_approved_at = now
-        elif obj.status == 'approved' and not obj.final_approved_by:
-            obj.final_approved_by = request.user
-            obj.final_approved_at = now
-            # Also set legacy fields for backward compatibility
-            if not obj.approved_by:
-                obj.approved_by = request.user
-                obj.approved_at = now
-        
-        # Handle rejection
-        elif obj.status == 'rejected':
-            # Check if it's level 1 rejection (pending -> rejected)
-            if obj.level1_rejected_by is None and obj.final_rejected_by is None:
-                # Determine if it's level 1 or final rejection based on current approval state
-                if obj.level1_approved_by is None:
-                    # Level 1 rejection
-                    obj.level1_rejected_by = request.user
-                    obj.level1_rejected_at = now
-                else:
-                    # Final rejection
-                    obj.final_rejected_by = request.user
-                    obj.final_rejected_at = now
-        
-        super().save_model(request, obj, form, change)
-
-
-@admin.register(OvertimeSummaryRequest)
-class OvertimeSummaryRequestAdmin(admin.ModelAdmin):
-    list_display = ("id", "employee", "request_period", "status", "created_at")
-    list_filter = ("status", "request_period", "created_at")
-    search_fields = ("employee__user__username", "employee__user__first_name", "employee__user__last_name", "request_title")
-    readonly_fields = ("created_at", "updated_at")
-
-    fieldsets = (
-        ('Request Information', {
-            'fields': ('employee', 'user', 'request_period', 'request_title', 'request_description')
-        }),
-        ('Data Scope', {
-            'fields': ('include_overtime_details', 'include_overtime_summary', 'include_approver_info')
-        }),
-        ('Status and Approval', {
-            'fields': ('status', 'level1_approved_by', 'level1_approved_at', 'final_approved_by', 'final_approved_at', 'rejection_reason')
-        }),
-        ('Completion', {
-            'fields': ('completed_at', 'completion_notes')
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at')
-        }),
-    )
-
-    def save_model(self, request, obj, form, change):
-        # Auto-set approvers when status changes
-        if obj.status == 'level1_approved' and not obj.level1_approved_by:
-            obj.level1_approved_by = request.user
-            from django.utils import timezone
-            obj.level1_approved_at = timezone.now()
-        elif obj.status == 'approved' and not obj.final_approved_by:
-            obj.final_approved_by = request.user
-            from django.utils import timezone
-            obj.final_approved_at = timezone.now()
-        elif obj.status == 'completed' and not obj.completed_at:
-            from django.utils import timezone
-            obj.completed_at = timezone.now()
-        super().save_model(request, obj, form, change)
 
 
 @admin.register(GroupPermission)

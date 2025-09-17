@@ -22,7 +22,7 @@ type PaginatedPositions = {
 async function getPositions(page: number, pageSize: number): Promise<PaginatedPositions> {
   const token = (await cookies()).get('access_token')?.value
   const backend = getBackendUrl()
-  const url = new URL(`${backend}/api/admin/positions/`)
+  const url = new URL(`${backend}/api/v2/employees/admin/positions/`)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(pageSize))
   const res = await fetch(url.toString(), {
@@ -30,7 +30,25 @@ async function getPositions(page: number, pageSize: number): Promise<PaginatedPo
     cache: 'no-store',
   })
   if (!res.ok) return { count: 0, next: null, previous: null, results: [] }
-  return res.json()
+  
+  const data = await res.json()
+  
+  // V2 API returns array directly, not paginated
+  if (Array.isArray(data)) {
+    const startIndex = (page - 1) * pageSize
+    const endIndex = startIndex + pageSize
+    const paginatedResults = data.slice(startIndex, endIndex)
+    
+    return {
+      count: data.length,
+      next: endIndex < data.length ? `?page=${page + 1}` : null,
+      previous: page > 1 ? `?page=${page - 1}` : null,
+      results: paginatedResults
+    }
+  }
+  
+  // Fallback for paginated response
+  return data
 }
 
 export default async function AdminPositionsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

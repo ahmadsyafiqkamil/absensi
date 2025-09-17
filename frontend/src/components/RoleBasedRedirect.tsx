@@ -18,8 +18,13 @@ export default function RoleBasedRedirect({ user }: RoleBasedRedirectProps) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      console.log('RoleBasedRedirect: No user provided');
+      return;
+    }
 
+    console.log('RoleBasedRedirect: User data:', user);
+    
     const groups = user.groups || [];
     const isAdmin = groups.includes('admin') || user.is_superuser;
     
@@ -28,12 +33,23 @@ export default function RoleBasedRedirect({ user }: RoleBasedRedirectProps) {
     const approvalCapabilities = getApprovalCapabilities(position);
     const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level;
 
+    console.log('RoleBasedRedirect: Role check:', {
+      groups,
+      isAdmin,
+      position,
+      approvalCapabilities,
+      hasApprovalPermission
+    });
+
     // Redirect based on role
     if (isAdmin) {
+      console.log('RoleBasedRedirect: Redirecting to admin');
       router.push('/admin');
     } else if (hasApprovalPermission) {
+      console.log('RoleBasedRedirect: Redirecting to supervisor');
       router.push('/supervisor');
     } else {
+      console.log('RoleBasedRedirect: Redirecting to pegawai');
       router.push('/pegawai');
     }
   }, [user, router]);

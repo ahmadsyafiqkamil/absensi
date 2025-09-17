@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is admin
-    const meResponse = await fetch(`${getBackendUrl()}/api/auth/me`, {
+    const meResponse = await fetch(`${getBackendUrl()}/api/v2/auth/me/`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
@@ -48,8 +48,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call backend provision API
-    const response = await fetch(`${getBackendUrl()}/api/users/provision`, {
+    // Call backend provision API (V2)
+    const response = await fetch(`${getBackendUrl()}/api/v2/users/users/provision`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

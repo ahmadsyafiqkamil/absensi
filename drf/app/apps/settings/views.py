@@ -1,7 +1,10 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
+from datetime import date
 from .models import WorkSettings, Holiday
 from .serializers import (
     WorkSettingsSerializer, WorkSettingsAdminSerializer, WorkSettingsSupervisorSerializer,
@@ -11,7 +14,7 @@ from .serializers import (
 from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee, IsAdminOrReadOnly
 
 
-class WorkSettingsViewSet(viewsets.ViewSet):
+class WorkSettingsViewSet(viewsets.GenericViewSet):
     """Work settings ViewSet (singleton pattern)"""
     permission_classes = [permissions.IsAuthenticated]
     
@@ -109,6 +112,11 @@ class HolidayViewSet(viewsets.ModelViewSet):
     queryset = Holiday.objects.all()
     serializer_class = HolidaySerializer
     permission_classes = [IsAdminOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['date', 'note']
+    search_fields = ['note']
+    ordering_fields = ['date', 'note']
+    ordering = ['date']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on user role"""
@@ -118,12 +126,35 @@ class HolidayViewSet(viewsets.ModelViewSet):
             return HolidayPublicSerializer
     
     def get_queryset(self):
-        """Filter holidays based on user role"""
+        """Filter holidays based on user role and date range"""
+        queryset = Holiday.objects.all()
+        
+        # Apply role-based filtering
         if self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
-            return Holiday.objects.all()
+            queryset = queryset
         else:
             # Other users can see all holidays (read-only)
-            return Holiday.objects.all()
+            queryset = queryset
+        
+        # Apply date range filtering if start and end parameters are provided
+        start_date = self.request.query_params.get('start')
+        end_date = self.request.query_params.get('end')
+        
+        if start_date:
+            try:
+                start_date_obj = date.fromisoformat(start_date)
+                queryset = queryset.filter(date__gte=start_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        if end_date:
+            try:
+                end_date_obj = date.fromisoformat(end_date)
+                queryset = queryset.filter(date__lte=end_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        return queryset
     
     @action(detail=False, methods=['get'])
     def check_date(self, request):

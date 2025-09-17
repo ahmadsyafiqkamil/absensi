@@ -33,7 +33,7 @@ jobs:
     - name: Create production.env if not exists
       run: |
         ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd /opt/absensi
+          cd /home/kava/absensi
           if [ ! -f production.env ]; then
             echo "Creating production.env from template..."
             if [ -f env.production.example ]; then
@@ -74,11 +74,11 @@ ENVEOF
         # Copy files to server
         rsync -avz --exclude='.git' --exclude='node_modules' --exclude='.env*' \
           -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
-          . ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/opt/absensi/
+          . ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/home/kava/absensi/
 
         # Run deployment commands on server
         ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd /opt/absensi
+          cd /home/kava/absensi
 
           # Create necessary directories
           mkdir -p logs/backend logs/frontend logs/caddy backups mysql/conf.d

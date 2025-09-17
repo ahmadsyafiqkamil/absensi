@@ -93,12 +93,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def me(self, request):
         """Get current user's employee profile"""
         try:
-            employee = request.user.employee_profile
+            # Use the filtered queryset to respect permissions, then filter for current user
+            queryset = self.get_queryset()
+            employee = queryset.select_related('user', 'division', 'position').get(user=request.user)
+
             serializer = self.get_serializer(employee)
             return Response(serializer.data)
         except Employee.DoesNotExist:
             return Response(
-                {"error": "Employee profile not found"}, 
+                {"error": "Employee profile not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
     

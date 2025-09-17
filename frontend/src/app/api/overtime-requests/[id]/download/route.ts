@@ -15,7 +15,7 @@ export async function GET(
 
     const backend = getBackendUrl()
     const { id } = await params
-    const url = `${backend}/api/overtime-requests/${id}/download/`
+    const url = `${backend}/api/v2/overtime/overtime/${id}/download/`
     
     const resp = await fetch(url, {
       method: 'GET',

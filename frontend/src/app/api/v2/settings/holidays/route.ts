@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 
 export async function GET(request: NextRequest) {
   try {
-    const accessToken = (await cookies()).get('access_token')?.value
+    const accessToken = await getAccessToken()
 
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
-    const url = `${backend}/api/v2/settings/holidays/`
+    const backend = getBackendBaseUrl()
+    const search = request.nextUrl.search || ''
+    const url = `${backend}/api/v2/settings/holidays/${search}`
 
     const resp = await fetch(url, {
       method: 'GET',
@@ -32,14 +33,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const accessToken = (await cookies()).get('access_token')?.value
+    const accessToken = await getAccessToken()
 
     if (!accessToken) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+    const backend = getBackendBaseUrl()
     const url = `${backend}/api/v2/settings/holidays/`
 
     const resp = await fetch(url, {

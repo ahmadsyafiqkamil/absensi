@@ -19,7 +19,7 @@ import { ArrowLeft } from 'lucide-react';
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await authFetch(`/api/employee/overtime-summary-requests/${requestId}/generate_report/`);
+        const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/generate_report/`);
         
         if (!response.ok) {
           if (response.status === 401) {
@@ -100,7 +100,7 @@ import { ArrowLeft } from 'lucide-react';
           <Button 
             onClick={async () => {
               try {
-                const response = await authFetch(`/api/employee/overtime-summary-requests/${requestId}/export_docx/`);
+                const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/export_docx/`);
                 
                 if (response.ok) {
                   // Get blob from response
@@ -130,7 +130,7 @@ import { ArrowLeft } from 'lucide-react';
           <Button 
             onClick={async () => {
               try {
-                const response = await authFetch(`/api/employee/overtime-summary-requests/${requestId}/export_pdf/`);
+                const response = await authFetch(`/api/employee/monthly-summary-requests/${requestId}/export_pdf/`);
                 
                 if (response.ok) {
                   // Get blob from response

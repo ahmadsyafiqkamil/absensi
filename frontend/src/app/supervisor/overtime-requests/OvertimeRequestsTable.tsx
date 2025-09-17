@@ -158,15 +158,16 @@ function getStatusText(status: string): string {
   }
 }
 
-function getEmployeeName(employee: Employee): string {
+function getEmployeeName(employee?: Employee | null): string {
+  if (!employee) return '-';
   if (employee.fullname) {
     return employee.fullname;
   }
   const user = employee.user;
-  if (user.first_name || user.last_name) {
-    return `${user.first_name} ${user.last_name}`.trim();
+  if (user?.first_name || user?.last_name) {
+    return `${user.first_name || ''} ${user.last_name || ''}`.trim() || user?.username || '-';
   }
-  return user.username;
+  return user?.username || '-';
 }
 
 const columnHelper = createColumnHelper<OvertimeRequest>();
@@ -178,7 +179,7 @@ interface OvertimeRequestsTableProps {
 export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTableProps) {
   const [data, setData] = useState<OvertimeRequest[]>([]);
   const [divisions, setDivisions] = useState<{id: number, name: string}[]>([]);
-  const [supervisorInfo, setSupervisorInfo] = useState<{isOrgWide: boolean, isAdmin: boolean} | null>(null);
+  const [supervisorInfo, setSupervisorInfo] = useState<{isOrgWide: boolean, isAdmin: boolean, approvalLevel: number} | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<OvertimeRequest | null>(null);
@@ -200,14 +201,14 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor(row => getEmployeeName(row.employee), {
+      columnHelper.accessor('employee', {
         id: 'employee',
         header: 'Karyawan',
         cell: ({ row }) => (
           <div>
             <div className="font-medium">{getEmployeeName(row.original.employee)}</div>
             <div className="text-xs text-gray-500">
-              {row.original.employee.division?.name || 'No Division'} • {row.original.employee.nip}
+              {(row.original.employee?.division?.name) || 'No Division'} • {row.original.employee?.nip || '-'}
             </div>
           </div>
         ),
@@ -432,7 +433,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
     // Division filter
     if (divisionFilter) {
       filtered = filtered.filter(item => 
-        item.employee.division?.id.toString() === divisionFilter
+        (item.employee?.division?.id?.toString?.() || '') === divisionFilter
       );
     }
     
@@ -485,8 +486,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       
       // Fetch data individually to avoid Promise.all issues
       const overtimeResponse = await authFetch('/api/overtime-requests/');
-      const divisionsResponse = await authFetch('/api/supervisor/divisions/');
-      const supervisorResponse = await authFetch('/api/supervisor/approvals/summary');
+      const divisionsResponse = await authFetch('/api/v2/employees/divisions/');
+      const supervisorResponse = await authFetch('/api/v2/auth/me');
 
       if (!overtimeResponse.ok) {
         throw new Error('Failed to fetch overtime requests');
@@ -498,16 +499,18 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
       // Fetch supervisor info (optional, for determining role)
       if (supervisorResponse.ok) {
-        const supervisorData = await supervisorResponse.json();
+        const meData = await supervisorResponse.json();
         setSupervisorInfo({
-          isOrgWide: supervisorData.can_approve_overtime_org_wide || false,
-          isAdmin: supervisorData.is_admin || false
+          isOrgWide: meData?.position?.can_approve_overtime_org_wide || false,
+          isAdmin: (meData?.groups || []).includes('admin') || !!meData?.is_superuser,
+          approvalLevel: meData?.position?.approval_level || 1
         });
       } else {
         // Fallback: assume division supervisor
         setSupervisorInfo({
           isOrgWide: false,
-          isAdmin: false
+          isAdmin: false,
+          approvalLevel: 1
         });
       }
 
@@ -518,8 +521,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         const uniqueDivisions = Array.from(
           new Map([
             ...overtimeData.results
-              .filter(req => req.employee.division)
-              .map(req => [req.employee.division!.id, req.employee.division!]),
+              .filter(req => req?.employee?.division)
+              .map(req => [req.employee!.division!.id, req.employee!.division!]),
             ...(divisionsData.results || divisionsData || []).map((div: any) => [div.id, div])
           ].filter(([_, division]) => division)).values()
         );
@@ -529,8 +532,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         const uniqueDivisions = Array.from(
           new Map(
             overtimeData.results
-              .filter(req => req.employee.division)
-              .map(req => [req.employee.division!.id, req.employee.division!])
+              .filter(req => req?.employee?.division)
+              .map(req => [req.employee!.division!.id, req.employee!.division!])
           ).values()
         );
         setDivisions(uniqueDivisions as {id: number, name: string}[]);
@@ -547,8 +550,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
     setProcessing(true);
     try {
-      const endpoint = `/api/overtime-requests/${selectedRequest.id}/${actionType}/`;
-      const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : {};
+      const endpoint = `/api/v2/overtime/overtime/${selectedRequest.id}/${actionType}/`;
+      const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : actionType === 'approve' ? { approval_level: supervisorInfo?.approvalLevel || 1 } : {};
 
       const response = await authFetch(endpoint, {
         method: 'POST',
