@@ -210,6 +210,13 @@ export async function proxyToBackend(
     const authHeader = request.headers.get('authorization');
     if (authHeader) {
       headers['Authorization'] = authHeader;
+    } else if (cookie) {
+      // Extract JWT token from cookies and add as Authorization header
+      const accessTokenMatch = cookie.match(/access_token=([^;]+)/);
+      if (accessTokenMatch) {
+        headers['Authorization'] = `Bearer ${accessTokenMatch[1]}`;
+        console.log('[API Proxy] Added JWT token from cookie to Authorization header');
+      }
     }
 
     // Prepare request options

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import PositionSwitcherSimpleFixed from "./PositionSwitcherSimpleFixed";
+import PositionSwitcherFromAuthMe from "./PositionSwitcherFromAuthMe";
 
 interface HeaderProps {
   title: string;
@@ -144,9 +144,9 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
 
           {/* Right side - Position switcher, User info and logout */}
           <div className="flex items-center space-x-4">
-            {/* Position Switcher - only show for non-admin roles (Fixed version) */}
+            {/* Position Switcher - Dynamic from /auth/me */}
             {role !== 'admin' && (
-              <PositionSwitcherSimpleFixed size="sm" showLabel={false} />
+              <PositionSwitcherFromAuthMe />
             )}
             
             {/* User info */}

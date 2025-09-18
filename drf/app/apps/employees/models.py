@@ -400,11 +400,11 @@ class Employee(TimeStampedModel):
         # Fallback to first active position
         return self.get_active_position_assignments().first()
     
-    def switch_to_position(self, position_id):
-        """Switch to a specific position"""
-        # Validate that user has this position
+    def switch_to_position(self, assignment_id):
+        """Switch to a specific position assignment"""
+        # Validate that user has this assignment
         assignment = self.employee_positions.filter(
-            position_id=position_id,
+            id=assignment_id,
             is_active=True
         ).select_related('position').first()
         
@@ -450,10 +450,48 @@ class Employee(TimeStampedModel):
                 'context': 'active_position'
             }
         
-        # Fallback to combined capabilities
+        # Fallback to primary position if no active position set
+        primary_assignment = self.employee_positions.filter(
+            is_primary=True, 
+            is_active=True
+        ).select_related('position').first()
+        
+        if primary_assignment:
+            pos = primary_assignment.position
+            return {
+                'approval_level': pos.approval_level,
+                'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide,
+                'active_position': {
+                    'id': pos.id,
+                    'name': pos.name,
+                    'approval_level': pos.approval_level,
+                    'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide
+                },
+                'context': 'primary_position'
+            }
+        
+        # Final fallback to first active position
+        first_assignment = self.get_active_position_assignments().first()
+        if first_assignment:
+            pos = first_assignment.position
+            return {
+                'approval_level': pos.approval_level,
+                'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide,
+                'active_position': {
+                    'id': pos.id,
+                    'name': pos.name,
+                    'approval_level': pos.approval_level,
+                    'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide
+                },
+                'context': 'first_active_position'
+            }
+        
+        # No positions available
         return {
-            **self.get_approval_capabilities(),
-            'context': 'combined_positions'
+            'approval_level': 0,
+            'can_approve_overtime_org_wide': False,
+            'active_position': None,
+            'context': 'no_positions'
         }
     
     def get_available_position_contexts(self):
@@ -475,28 +513,22 @@ class Employee(TimeStampedModel):
                 'effective_until': assignment.effective_until.isoformat() if assignment.effective_until else None
             })
         
-        # Add combined context option
-        combined_caps = self.get_approval_capabilities()
-        contexts.append({
-            'assignment_id': None,
-            'position_id': None,
-            'position_name': 'Combined (All Positions)',
-            'approval_level': combined_caps['approval_level'],
-            'can_approve_overtime_org_wide': combined_caps['can_approve_overtime_org_wide'],
-            'is_primary': False,
-            'is_current': self.active_position is None,
-            'effective_from': None,
-            'effective_until': None
-        })
         
         return contexts
     
-    def reset_to_combined_context(self):
-        """Reset to combined context (use all positions)"""
-        self.active_position = None
-        self.save()
-        return {
-            'success': True,
-            'context': 'combined_positions',
-            'capabilities': self.get_approval_capabilities()
-        }
+    def reset_to_primary_context(self):
+        """Reset to primary position context"""
+        primary_assignment = self.employee_positions.filter(
+            is_primary=True, 
+            is_active=True
+        ).first()
+        
+        if primary_assignment:
+            self.active_position = primary_assignment
+            self.save()
+        else:
+            # If no primary, use first active position
+            first_assignment = self.get_active_position_assignments().first()
+            if first_assignment:
+                self.active_position = first_assignment
+                self.save()

@@ -223,20 +223,26 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def switch_position(self, request):
         """Switch to a specific position context"""
         try:
+            
             employee = request.user.employee_profile
-            position_id = request.data.get('position_id')
+            assignment_id = request.data.get('assignment_id')
             
-            if position_id is None:
-                # Reset to combined context
-                result = employee.reset_to_combined_context()
+            if assignment_id is None:
+                # Reset to primary context
+                employee.reset_to_primary_context()
+                return Response({
+                    "success": True,
+                    "message": "Switched to primary position context",
+                    "context": employee.get_current_context_capabilities()
+                }, status=status.HTTP_200_OK)
             else:
-                # Switch to specific position
-                result = employee.switch_to_position(position_id)
-            
-            if result['success']:
-                return Response(result, status=status.HTTP_200_OK)
-            else:
-                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                # Switch to specific assignment
+                result = employee.switch_to_position(assignment_id)
+                
+                if result['success']:
+                    return Response(result, status=status.HTTP_200_OK)
+                else:
+                    return Response(result, status=status.HTTP_400_BAD_REQUEST)
                 
         except Employee.DoesNotExist:
             return Response(

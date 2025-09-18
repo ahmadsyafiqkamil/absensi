@@ -225,8 +225,27 @@ export default function TestAuthPage() {
                   </div>
                   
                   {test.data && (
-                    <div className="text-xs font-mono bg-gray-50 p-3 rounded max-h-32 overflow-y-auto">
+                    <div className="text-xs font-mono bg-gray-50 p-3 rounded max-h-48 overflow-y-auto">
                       <pre>{JSON.stringify(test.data, null, 2)}</pre>
+                    </div>
+                  )}
+                  
+                  {/* Special highlight for available_contexts */}
+                  {test.name === '/api/v2/auth/me' && test.data?.available_contexts && (
+                    <div className="mt-2 p-2 bg-blue-50 rounded border">
+                      <div className="text-xs font-semibold text-blue-800 mb-1">
+                        🎯 Available Position Contexts ({test.data.available_contexts.length}):
+                      </div>
+                      {test.data.available_contexts.map((ctx: any, idx: number) => (
+                        <div key={idx} className="text-xs bg-white p-1 rounded mb-1 flex justify-between">
+                          <span className="font-medium">{ctx.position_name}</span>
+                          <div className="flex gap-1">
+                            {ctx.is_current && <span className="bg-green-100 text-green-700 px-1 rounded">Current</span>}
+                            {ctx.is_primary && <span className="bg-blue-100 text-blue-700 px-1 rounded">Primary</span>}
+                            <span className="bg-gray-100 text-gray-700 px-1 rounded">L{ctx.approval_level}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -266,4 +285,5 @@ export default function TestAuthPage() {
     </div>
   );
 }
+
 

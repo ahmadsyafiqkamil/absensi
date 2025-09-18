@@ -73,6 +73,9 @@ def me(request):
                 'is_primary': current_assignment.is_primary
             } if current_assignment else None
         }
+        
+        # Add available contexts for position switching
+        user_data['available_contexts'] = employee.get_available_position_contexts()
     
     return Response(user_data)
 
