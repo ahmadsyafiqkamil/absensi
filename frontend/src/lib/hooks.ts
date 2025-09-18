@@ -243,6 +243,7 @@ export function useSupervisorApprovalLevel() {
   const [loading, setLoading] = useState(true)
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [approvalSource, setApprovalSource] = useState<string>('')
+  const [multiPositionInfo, setMultiPositionInfo] = useState<any>(null)
 
   useEffect(() => {
     const fetchApprovalLevel = async () => {
@@ -266,32 +267,68 @@ export function useSupervisorApprovalLevel() {
         const userGroups = result.groups || []
         setUserRoles(userGroups)
 
-        // Determine approval level based on position data
+        // Enhanced approval level calculation with multi-position support
         let level = 0
         let source = 'No position'
+        let positionInfo = null
 
-        if (result.position) {
+        // Priority 1: Use backend-computed approval_capabilities
+        if (result.approval_capabilities) {
+          level = result.approval_capabilities.approval_level || 0
+          const activePositions = result.approval_capabilities.active_positions || []
+          source = `Multi-position: ${activePositions.length} positions (max level ${level})`
+          positionInfo = {
+            total_positions: activePositions.length,
+            active_positions: activePositions,
+            primary_position: result.primary_position,
+            highest_level: level
+          }
+        }
+        // Priority 2: Use primary_position
+        else if (result.primary_position) {
+          level = result.primary_position.approval_level || 0
+          source = `Primary Position: ${result.primary_position.name}`
+          positionInfo = {
+            total_positions: result.positions?.length || 1,
+            primary_position: result.primary_position,
+            highest_level: level
+          }
+        }
+        // Priority 3: Use legacy position field
+        else if (result.position) {
           level = result.position.approval_level || 0
-          source = `Position: ${result.position.name}`
-        } else if (userGroups.includes('admin') || result.is_superuser) {
+          source = `Legacy Position: ${result.position.name}`
+          positionInfo = {
+            total_positions: 1,
+            primary_position: result.position,
+            highest_level: level
+          }
+        }
+        // Priority 4: Use group-based fallback
+        else if (userGroups.includes('admin') || result.is_superuser) {
           level = 2
-          source = 'Admin/Superuser'
+          source = 'Admin/Superuser group'
         } else if (userGroups.includes('supervisor')) {
           level = 1
           source = 'Supervisor group'
         }
 
-        console.log('Approval level calculation:', {
+        console.log('Enhanced approval level calculation:', {
           userGroups,
-          position: result.position,
-          level,
-          source
+          approval_capabilities: result.approval_capabilities,
+          primary_position: result.primary_position,
+          legacy_position: result.position,
+          positions_count: result.positions?.length || 0,
+          computed_level: level,
+          source,
+          position_info: positionInfo
         })
 
         setApprovalLevel(level)
         setCanApprove(level > 0)
         setIsLevel0(level === 0)
         setApprovalSource(source)
+        setMultiPositionInfo(positionInfo)
 
       } catch (error) {
         console.error('Error fetching approval level:', error)
@@ -317,5 +354,107 @@ export function useSupervisorApprovalLevel() {
     userGroups: userRoles, // Return userRoles as userGroups for compatibility
     userRoles, // Also return userRoles for new code
     approvalSource,
+    multiPositionInfo, // New multi-position information
   }
+}
+
+// ==================== MULTI-POSITION HOOKS ====================
+
+/**
+ * Hook for fetching employee positions
+ */
+export function useEmployeePositions(employeeId: number) {
+  return useApi(() => 
+    fetch(`/api/v2/employees/employee-positions/?employee=${employeeId}`, {
+      credentials: 'include'
+    }).then(res => res.json()), 
+    [employeeId]
+  )
+}
+
+/**
+ * Hook for assigning position to employee
+ */
+export function useAssignPosition() {
+  return useApiMutation(async (data: any) => {
+    const response = await fetch('/api/v2/employees/employee-positions/assign_position/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to assign position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+/**
+ * Hook for bulk position assignment
+ */
+export function useBulkAssignPosition() {
+  return useApiMutation(async (data: any) => {
+    const response = await fetch('/api/v2/employees/employee-positions/bulk_assign/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to bulk assign position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+/**
+ * Hook for setting primary position
+ */
+export function useSetPrimaryPosition() {
+  return useApiMutation(async (data: { employee_id: number; position_id: number }) => {
+    const response = await fetch('/api/v2/employees/employee-positions/set_primary/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to set primary position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+/**
+ * Hook for deactivating position assignment
+ */
+export function useDeactivatePosition() {
+  return useApiMutation(async (assignmentId: number) => {
+    const response = await fetch(`/api/v2/employees/employee-positions/${assignmentId}/deactivate/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to deactivate position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
 }

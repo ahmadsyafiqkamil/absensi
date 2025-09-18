@@ -43,9 +43,17 @@ def me(request):
         employee_data = EmployeeSerializer(user.employee_profile).data
         user_data['employee'] = employee_data
         
-        # Also add position data at top level for compatibility with frontend
-        if employee_data.get('position'):
+        # Add position data at top level for compatibility with frontend
+        # Use primary_position if available, fallback to legacy position
+        if employee_data.get('primary_position'):
+            user_data['position'] = employee_data['primary_position']
+        elif employee_data.get('position'):
             user_data['position'] = employee_data['position']
+        
+        # Add new multi-position fields
+        user_data['positions'] = employee_data.get('employee_positions', [])
+        user_data['approval_capabilities'] = employee_data.get('approval_capabilities', {})
+        user_data['primary_position'] = employee_data.get('primary_position')
     
     return Response(user_data)
 

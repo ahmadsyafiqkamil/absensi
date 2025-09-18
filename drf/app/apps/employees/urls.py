@@ -7,6 +7,7 @@ router = DefaultRouter()
 router.register(r'divisions', views.DivisionViewSet, basename='division')
 router.register(r'positions', views.PositionViewSet, basename='position')
 router.register(r'employees', views.EmployeeViewSet, basename='employee')
+router.register(r'employee-positions', views.EmployeePositionViewSet, basename='employee-position')
 
 # Admin-specific router
 admin_router = DefaultRouter()
@@ -23,7 +24,7 @@ supervisor_router.register(r'employees', views.SupervisorEmployeeViewSet, basena
 # Employee-specific router
 employee_router = DefaultRouter()
 employee_router.register(r'divisions', views.EmployeeDivisionViewSet, basename='employee-division')
-employee_router.register(r'positions', views.EmployeePositionViewSet, basename='employee-position')
+employee_router.register(r'positions', views.EmployeePositionViewSet, basename='employee-position-readonly')
 employee_router.register(r'employees', views.EmployeeEmployeeViewSet, basename='employee-employee')
 
 urlpatterns = [

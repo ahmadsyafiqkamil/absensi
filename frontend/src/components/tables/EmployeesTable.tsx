@@ -23,11 +23,25 @@ export type EmployeeRow = {
   fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
-  position?: { id: number; name: string } | null;
+  position?: { id: number; name: string } | null; // Legacy field
   gaji_pokok?: number | null;
   tmt_kerja?: string | null;
   tempat_lahir?: string | null;
   tanggal_lahir?: string | null;
+  
+  // Multi-position support
+  employee_positions?: Array<{
+    id: number;
+    position: { id: number; name: string; approval_level: number };
+    is_primary: boolean;
+    is_active: boolean;
+  }>;
+  primary_position?: { id: number; name: string } | null;
+  approval_capabilities?: {
+    approval_level: number;
+    can_approve_overtime_org_wide: boolean;
+    active_positions: Array<{ id: number; name: string; approval_level: number }>;
+  };
 };
 
 const columns: ColumnDef<EmployeeRow>[] = [
@@ -65,10 +79,43 @@ const columns: ColumnDef<EmployeeRow>[] = [
     cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>())}</span>,
   },
   {
-    header: "Position",
-    accessorFn: (row) => row.position?.name ?? "-",
-    id: "position",
+    header: "Primary Position",
+    accessorFn: (row) => row.primary_position?.name ?? row.position?.name ?? "-",
+    id: "primary_position",
     cell: ({ getValue }) => <span className="text-gray-900 text-sm">{String(getValue<string>())}</span>,
+  },
+  {
+    header: "Total Positions",
+    accessorFn: (row) => row.employee_positions?.length ?? (row.position ? 1 : 0),
+    id: "total_positions",
+    cell: ({ getValue }) => {
+      const count = getValue<number>();
+      return (
+        <span className={`text-sm px-2 py-1 rounded-full ${
+          count > 1 ? 'bg-blue-100 text-blue-800' : 
+          count === 1 ? 'bg-gray-100 text-gray-800' : 
+          'bg-red-100 text-red-800'
+        }`}>
+          {count}
+        </span>
+      );
+    },
+  },
+  {
+    header: "Approval Level",
+    accessorFn: (row) => row.approval_capabilities?.approval_level ?? row.position?.approval_level ?? 0,
+    id: "approval_level",
+    cell: ({ getValue }) => {
+      const level = getValue<number>();
+      const colorClass = level >= 2 ? 'text-green-600 bg-green-50' : 
+                        level >= 1 ? 'text-blue-600 bg-blue-50' : 
+                        'text-red-600 bg-red-50';
+      return (
+        <span className={`text-sm px-2 py-1 rounded-full ${colorClass}`}>
+          Level {level}
+        </span>
+      );
+    },
   },
   {
     header: "Gaji Pokok",
@@ -100,11 +147,19 @@ const columns: ColumnDef<EmployeeRow>[] = [
     cell: ({ row, table }) => {
       const id = row.original.id
       return (
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <Button data-id={id} variant="outline" size="sm" className="px-2 py-1 h-auto text-xs"
             onClick={() => (table.options.meta as any)?.onOpenEdit?.(id)}
           >
             Edit
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="px-2 py-1 h-auto text-xs text-blue-600 border-blue-300 hover:bg-blue-50"
+            onClick={() => window.open(`/admin/employees/${id}/positions`, '_blank')}
+          >
+            Positions
           </Button>
           <Button data-id={id} variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50 px-2 py-1 h-auto text-xs"
             onClick={() => (table.options.meta as any)?.onDelete?.(id)}
@@ -170,7 +225,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
       nip: data.nip || '',
       fullname: data.fullname || '',
       division_id: data.division?.id?.toString?.() ?? '',
-      position_id: data.position?.id?.toString?.() ?? '',
+      position_id: data.primary_position?.id?.toString?.() ?? data.position?.id?.toString?.() ?? '',
       gaji_pokok: data.gaji_pokok?.toString?.() ?? '',
       tmt_kerja: data.tmt_kerja || '',
       tempat_lahir: data.tempat_lahir || '',
@@ -248,9 +303,9 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
           onChange={(e) => table.getColumn('division')?.setFilterValue(e.target.value)}
         />
         <Input
-          placeholder="Filter Position"
-          value={(table.getColumn('position')?.getFilterValue() as string) ?? ''}
-          onChange={(e) => table.getColumn('position')?.setFilterValue(e.target.value)}
+          placeholder="Filter Primary Position"
+          value={(table.getColumn('primary_position')?.getFilterValue() as string) ?? ''}
+          onChange={(e) => table.getColumn('primary_position')?.setFilterValue(e.target.value)}
         />
         <Input
           placeholder="Filter Gaji Pokok"

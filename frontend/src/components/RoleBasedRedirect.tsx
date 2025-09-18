@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getApprovalCapabilities } from '@/lib/approval-utils';
-import type { Position } from '@/lib/types';
+import { getApprovalCapabilitiesEnhanced, getMultiPositionApprovalInfo } from '@/lib/approval-utils';
+import type { Position, User, ApprovalCapabilities } from '@/lib/types';
 
 interface RoleBasedRedirectProps {
   user: {
@@ -11,6 +11,10 @@ interface RoleBasedRedirectProps {
     groups: string[];
     is_superuser: boolean;
     position?: Position | null;
+    // Multi-position support
+    positions?: any[];
+    primary_position?: Position | null;
+    approval_capabilities?: ApprovalCapabilities;
   } | null;
 }
 
@@ -28,16 +32,21 @@ export default function RoleBasedRedirect({ user }: RoleBasedRedirectProps) {
     const groups = user.groups || [];
     const isAdmin = groups.includes('admin') || user.is_superuser;
     
-    // Check position-based approval level instead of group membership
-    const position = user.position || null;
-    const approvalCapabilities = getApprovalCapabilities(position);
+    // Use enhanced multi-position approval capabilities
+    const approvalCapabilities = getApprovalCapabilitiesEnhanced(user as User);
     const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level;
+    
+    // Get detailed multi-position info for logging
+    const multiPositionInfo = getMultiPositionApprovalInfo(user as User);
 
-    console.log('RoleBasedRedirect: Role check:', {
+    console.log('RoleBasedRedirect: Enhanced role check:', {
       groups,
       isAdmin,
-      position,
-      approvalCapabilities,
+      legacy_position: user.position,
+      primary_position: user.primary_position,
+      approval_capabilities: user.approval_capabilities,
+      computed_capabilities: approvalCapabilities,
+      multi_position_info: multiPositionInfo,
       hasApprovalPermission
     });
 
