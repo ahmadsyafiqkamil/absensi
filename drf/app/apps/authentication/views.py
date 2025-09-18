@@ -54,6 +54,25 @@ def me(request):
         user_data['positions'] = employee_data.get('employee_positions', [])
         user_data['approval_capabilities'] = employee_data.get('approval_capabilities', {})
         user_data['primary_position'] = employee_data.get('primary_position')
+        
+        # Add current position context for position switching
+        employee = user.employee_profile
+        current_context = employee.get_current_context_capabilities()
+        current_assignment = employee.get_current_active_position()
+        
+        user_data['current_context'] = {
+            **current_context,
+            'current_assignment': {
+                'id': current_assignment.id,
+                'position': {
+                    'id': current_assignment.position.id,
+                    'name': current_assignment.position.name,
+                    'approval_level': current_assignment.position.approval_level,
+                    'can_approve_overtime_org_wide': current_assignment.position.can_approve_overtime_org_wide
+                },
+                'is_primary': current_assignment.is_primary
+            } if current_assignment else None
+        }
     
     return Response(user_data)
 

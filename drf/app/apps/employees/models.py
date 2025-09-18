@@ -164,6 +164,17 @@ class Employee(TimeStampedModel):
         verbose_name="Positions"
     )
     
+    # Active position tracking for position switching
+    active_position = models.ForeignKey(
+        'EmployeePosition',
+        null=True, 
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='active_for_employees',
+        verbose_name="Active Position",
+        help_text="Currently active position context for this employee"
+    )
+    
     # Personal information
     gaji_pokok = models.DecimalField(
         max_digits=12,
@@ -365,3 +376,127 @@ class Employee(TimeStampedModel):
             assignment.save()
             return assignment
         return None
+    
+    # ==================== POSITION SWITCHING METHODS ====================
+    
+    def get_switchable_positions(self):
+        """Get all positions that user can switch to"""
+        return self.get_active_position_assignments()
+    
+    def get_current_active_position(self):
+        """Get currently active position for this employee"""
+        if self.active_position and self.active_position.is_currently_effective():
+            return self.active_position
+        
+        # Fallback to primary position
+        primary_assignment = self.employee_positions.filter(
+            is_primary=True, 
+            is_active=True
+        ).select_related('position').first()
+        
+        if primary_assignment:
+            return primary_assignment
+        
+        # Fallback to first active position
+        return self.get_active_position_assignments().first()
+    
+    def switch_to_position(self, position_id):
+        """Switch to a specific position"""
+        # Validate that user has this position
+        assignment = self.employee_positions.filter(
+            position_id=position_id,
+            is_active=True
+        ).select_related('position').first()
+        
+        if not assignment or not assignment.is_currently_effective():
+            return {
+                'success': False,
+                'error': 'Position not available or not effective'
+            }
+        
+        # Set as active position
+        self.active_position = assignment
+        self.save()
+        
+        return {
+            'success': True,
+            'active_position': {
+                'id': assignment.id,
+                'position': {
+                    'id': assignment.position.id,
+                    'name': assignment.position.name,
+                    'approval_level': assignment.position.approval_level,
+                    'can_approve_overtime_org_wide': assignment.position.can_approve_overtime_org_wide
+                },
+                'is_primary': assignment.is_primary
+            }
+        }
+    
+    def get_current_context_capabilities(self):
+        """Get approval capabilities based on currently active position"""
+        current_assignment = self.get_current_active_position()
+        
+        if current_assignment:
+            pos = current_assignment.position
+            return {
+                'approval_level': pos.approval_level,
+                'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide,
+                'active_position': {
+                    'id': pos.id,
+                    'name': pos.name,
+                    'approval_level': pos.approval_level,
+                    'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide
+                },
+                'context': 'active_position'
+            }
+        
+        # Fallback to combined capabilities
+        return {
+            **self.get_approval_capabilities(),
+            'context': 'combined_positions'
+        }
+    
+    def get_available_position_contexts(self):
+        """Get all available position contexts for switching"""
+        active_assignments = self.get_active_position_assignments()
+        contexts = []
+        
+        for assignment in active_assignments:
+            pos = assignment.position
+            contexts.append({
+                'assignment_id': assignment.id,
+                'position_id': pos.id,
+                'position_name': pos.name,
+                'approval_level': pos.approval_level,
+                'can_approve_overtime_org_wide': pos.can_approve_overtime_org_wide,
+                'is_primary': assignment.is_primary,
+                'is_current': self.active_position == assignment,
+                'effective_from': assignment.effective_from.isoformat(),
+                'effective_until': assignment.effective_until.isoformat() if assignment.effective_until else None
+            })
+        
+        # Add combined context option
+        combined_caps = self.get_approval_capabilities()
+        contexts.append({
+            'assignment_id': None,
+            'position_id': None,
+            'position_name': 'Combined (All Positions)',
+            'approval_level': combined_caps['approval_level'],
+            'can_approve_overtime_org_wide': combined_caps['can_approve_overtime_org_wide'],
+            'is_primary': False,
+            'is_current': self.active_position is None,
+            'effective_from': None,
+            'effective_until': None
+        })
+        
+        return contexts
+    
+    def reset_to_combined_context(self):
+        """Reset to combined context (use all positions)"""
+        self.active_position = None
+        self.save()
+        return {
+            'success': True,
+            'context': 'combined_positions',
+            'capabilities': self.get_approval_capabilities()
+        }

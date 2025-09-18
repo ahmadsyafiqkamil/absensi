@@ -3,6 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth.models import Group
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from datetime import date
 from .models import Division, Position, Employee, EmployeePosition
 from .serializers import (
@@ -169,6 +171,73 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             employee = request.user.employee_profile
             capabilities = employee.get_approval_capabilities()
             return Response(capabilities)
+        except Employee.DoesNotExist:
+            return Response(
+                {"error": "Employee profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=False, methods=['get'])
+    def available_contexts(self, request):
+        """Get available position contexts for switching"""
+        try:
+            employee = request.user.employee_profile
+            contexts = employee.get_available_position_contexts()
+            return Response(contexts)
+        except Employee.DoesNotExist:
+            return Response(
+                {"error": "Employee profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=False, methods=['get'])
+    def current_context(self, request):
+        """Get current position context and capabilities"""
+        try:
+            employee = request.user.employee_profile
+            context_capabilities = employee.get_current_context_capabilities()
+            current_assignment = employee.get_current_active_position()
+            
+            response_data = {
+                **context_capabilities,
+                'current_assignment': {
+                    'id': current_assignment.id,
+                    'position': {
+                        'id': current_assignment.position.id,
+                        'name': current_assignment.position.name,
+                        'approval_level': current_assignment.position.approval_level,
+                        'can_approve_overtime_org_wide': current_assignment.position.can_approve_overtime_org_wide
+                    },
+                    'is_primary': current_assignment.is_primary
+                } if current_assignment else None
+            }
+            
+            return Response(response_data)
+        except Employee.DoesNotExist:
+            return Response(
+                {"error": "Employee profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=False, methods=['post'])
+    def switch_position(self, request):
+        """Switch to a specific position context"""
+        try:
+            employee = request.user.employee_profile
+            position_id = request.data.get('position_id')
+            
+            if position_id is None:
+                # Reset to combined context
+                result = employee.reset_to_combined_context()
+            else:
+                # Switch to specific position
+                result = employee.switch_to_position(position_id)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
         except Employee.DoesNotExist:
             return Response(
                 {"error": "Employee profile not found"}, 

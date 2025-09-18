@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import PositionSwitcherSimpleFixed from "./PositionSwitcherSimpleFixed";
 
 interface HeaderProps {
   title: string;
@@ -141,8 +142,13 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
             </div> */}
           </div>
 
-          {/* Right side - User info and logout */}
+          {/* Right side - Position switcher, User info and logout */}
           <div className="flex items-center space-x-4">
+            {/* Position Switcher - only show for non-admin roles (Fixed version) */}
+            {role !== 'admin' && (
+              <PositionSwitcherSimpleFixed size="sm" showLabel={false} />
+            )}
+            
             {/* User info */}
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{displayName}</p>

@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useRouter } from "next/navigation";
+import { Plus, X, Crown, Shield, Calendar } from "lucide-react";
 import Header from '@/components/Header';
 
 interface Division {
@@ -17,6 +20,18 @@ interface Division {
 interface Position {
   id: number;
   name: string;
+  approval_level: number;
+  can_approve_overtime_org_wide: boolean;
+}
+
+interface PositionAssignment {
+  position_id: number;
+  position: Position;
+  is_primary: boolean;
+  is_active: boolean;
+  effective_from: string;
+  effective_until: string;
+  assignment_notes: string;
 }
 
 export default function AddUserPage() {
@@ -32,7 +47,7 @@ export default function AddUserPage() {
     group: "pegawai", // default to pegawai
     nip: "",
     division_id: "none",
-    position_id: "none",
+    position_id: "none", // kept for legacy compatibility
     gaji_pokok: "",
     tmt_kerja: "",
     tempat_lahir: "",
@@ -40,8 +55,13 @@ export default function AddUserPage() {
     fullname: "",
   });
 
+  // Multi-position state
+  const [selectedPositions, setSelectedPositions] = useState<PositionAssignment[]>([]);
+  const [showMultiPosition, setShowMultiPosition] = useState(false);
+
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [availablePositions, setAvailablePositions] = useState<Position[]>([]);
   function extractErrorMessage(data: any): string {
     try {
       if (!data) return 'Unknown error';
@@ -94,6 +114,7 @@ export default function AddUserPage() {
         const data = await response.json();
         const items = Array.isArray(data) ? data : (data?.results ?? []);
         setPositions(items);
+        setAvailablePositions(items);
       }
     } catch (error) {
       console.error('Error fetching positions:', error);
@@ -115,15 +136,148 @@ export default function AddUserPage() {
     }));
   };
 
+  // Multi-position management functions
+  const addPositionAssignment = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const newAssignment: PositionAssignment = {
+      position_id: 0,
+      position: { id: 0, name: '', approval_level: 0, can_approve_overtime_org_wide: false },
+      is_primary: selectedPositions.length === 0, // First position is primary by default
+      is_active: true,
+      effective_from: today,
+      effective_until: '',
+      assignment_notes: ''
+    };
+    setSelectedPositions([...selectedPositions, newAssignment]);
+  };
+
+  const removePositionAssignment = (index: number) => {
+    const updatedPositions = selectedPositions.filter((_, i) => i !== index);
+    // If we removed the primary position, make the first remaining position primary
+    if (selectedPositions[index].is_primary && updatedPositions.length > 0) {
+      updatedPositions[0].is_primary = true;
+    }
+    setSelectedPositions(updatedPositions);
+  };
+
+  const updatePositionAssignment = (index: number, field: keyof PositionAssignment, value: any) => {
+    const updatedPositions = [...selectedPositions];
+    
+    if (field === 'position_id') {
+      const selectedPosition = availablePositions.find(p => p.id === parseInt(value));
+      if (selectedPosition) {
+        updatedPositions[index].position_id = selectedPosition.id;
+        updatedPositions[index].position = selectedPosition;
+      }
+    } else if (field === 'is_primary' && value) {
+      // Only one position can be primary
+      updatedPositions.forEach((pos, i) => {
+        pos.is_primary = i === index;
+      });
+    } else {
+      (updatedPositions[index] as any)[field] = value;
+    }
+    
+    setSelectedPositions(updatedPositions);
+  };
+
+  const getApprovalLevelBadge = (level: number) => {
+    const variant = level >= 2 ? 'default' : level >= 1 ? 'secondary' : 'destructive';
+    return (
+      <Badge variant={variant} className="text-xs">
+        Level {level}
+      </Badge>
+    );
+  };
+
+  const getUsedPositionIds = () => {
+    return selectedPositions.map(p => p.position_id).filter(id => id > 0);
+  };
+
+  const validateForm = () => {
+    const errors: string[] = [];
+    
+    // Basic validation
+    if (!formData.username.trim()) {
+      errors.push('Username is required');
+    }
+    if (!formData.password.trim()) {
+      errors.push('Password is required');
+    }
+    
+    // Multi-position validation
+    if (showMultiPosition) {
+      if (selectedPositions.length === 0) {
+        errors.push('At least one position must be assigned when multi-position is enabled');
+      }
+      
+      const primaryPositions = selectedPositions.filter(p => p.is_primary);
+      if (primaryPositions.length === 0 && selectedPositions.length > 0) {
+        errors.push('At least one position must be marked as primary');
+      }
+      if (primaryPositions.length > 1) {
+        errors.push('Only one position can be marked as primary');
+      }
+      
+      // Check for invalid position selections
+      const invalidPositions = selectedPositions.filter(p => p.position_id === 0);
+      if (invalidPositions.length > 0) {
+        errors.push('All position assignments must have a position selected');
+      }
+      
+      // Check for duplicate positions
+      const positionIds = selectedPositions.map(p => p.position_id).filter(id => id > 0);
+      const uniquePositionIds = new Set(positionIds);
+      if (positionIds.length !== uniquePositionIds.size) {
+        errors.push('Duplicate positions are not allowed');
+      }
+      
+      // Check effective dates
+      for (let i = 0; i < selectedPositions.length; i++) {
+        const assignment = selectedPositions[i];
+        if (assignment.effective_until && assignment.effective_from) {
+          if (new Date(assignment.effective_until) <= new Date(assignment.effective_from)) {
+            errors.push(`Position ${i + 1}: Effective until date must be after effective from date`);
+          }
+        }
+      }
+    }
+    
+    return errors;
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
     setSuccess("");
 
+    // Validate form
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join('; '));
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      // Debug: Check cookies and backend connectivity
+      console.log('[DEBUG] Testing backend connectivity...');
+      const debugResponse = await fetch('/api/debug/backend');
+      if (debugResponse.ok) {
+        const debugData = await debugResponse.json();
+        console.log('[DEBUG] Backend connectivity:', debugData);
+      }
+      
       // Ensure CSRF token is available
       await fetch('/api/csrf-token');
+      
+      console.log('[DEBUG] Calling provision endpoint with data:', {
+        username: formData.username,
+        email: formData.email,
+        group: formData.group
+      });
+      
       // First, provision the user
       const userResponse = await fetch('/api/admin/users/provision', {
         method: 'POST',
@@ -136,38 +290,90 @@ export default function AddUserPage() {
         })
       });
 
+      console.log('[DEBUG] User provision response status:', userResponse.status);
+      console.log('[DEBUG] User provision response headers:', Object.fromEntries(userResponse.headers.entries()));
+      
       if (!userResponse.ok) {
-        const errorData = await userResponse.json().catch(() => null);
-        throw new Error(extractErrorMessage(errorData) || 'Failed to create user');
+        const errorText = await userResponse.text();
+        console.error('[DEBUG] User provision error response:', errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { detail: errorText };
+        }
+        
+        throw new Error(extractErrorMessage(errorData) || `Failed to create user (${userResponse.status})`);
       }
 
       const userData = await userResponse.json();
 
       // Then, create employee record if NIP is provided
       if (formData.nip) {
+        const employeeData = {
+          user_id: userData.id,
+          nip: formData.nip,
+          division_id: formData.division_id === 'none' ? null : formData.division_id,
+          gaji_pokok: formData.gaji_pokok ? formData.gaji_pokok : null,
+          tmt_kerja: formData.tmt_kerja || null,
+          tempat_lahir: formData.tempat_lahir || null,
+          tanggal_lahir: formData.tanggal_lahir || null,
+          fullname: formData.fullname || null,
+        };
+
+        // Add legacy position for backward compatibility if not using multi-position
+        if (!showMultiPosition && formData.position_id !== 'none') {
+          (employeeData as any).position_id = formData.position_id;
+        }
+
         const employeeResponse = await fetch('/api/admin/employees', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: userData.id,
-            nip: formData.nip,
-            division_id: formData.division_id === 'none' ? null : formData.division_id,
-            position_id: formData.position_id === 'none' ? null : formData.position_id,
-            gaji_pokok: formData.gaji_pokok ? formData.gaji_pokok : null,
-            tmt_kerja: formData.tmt_kerja || null,
-            tempat_lahir: formData.tempat_lahir || null,
-            tanggal_lahir: formData.tanggal_lahir || null,
-            fullname: formData.fullname || null,
-          })
+          body: JSON.stringify(employeeData)
         });
 
         if (!employeeResponse.ok) {
           const errorData = await employeeResponse.json().catch(() => null);
           throw new Error(extractErrorMessage(errorData) || 'Failed to create employee record');
         }
+
+        const employeeResult = await employeeResponse.json();
+
+        // Assign multiple positions if multi-position is enabled
+        if (showMultiPosition && selectedPositions.length > 0) {
+          for (const positionAssignment of selectedPositions) {
+            if (positionAssignment.position_id > 0) {
+              const assignmentResponse = await fetch('/api/v2/employees/employee-positions/assign_position/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  employee_id: employeeResult.id,
+                  position_id: positionAssignment.position_id,
+                  is_primary: positionAssignment.is_primary,
+                  is_active: positionAssignment.is_active,
+                  effective_from: positionAssignment.effective_from,
+                  effective_until: positionAssignment.effective_until || null,
+                  assignment_notes: positionAssignment.assignment_notes || `Assigned during user creation - ${new Date().toISOString()}`
+                })
+              });
+
+              if (!assignmentResponse.ok) {
+                const errorData = await assignmentResponse.json().catch(() => null);
+                console.warn(`Failed to assign position ${positionAssignment.position.name}:`, errorData);
+                // Don't throw error here, continue with other assignments
+              }
+            }
+          }
+        }
       }
 
-      setSuccess("User created successfully!");
+      let successMessage = "User created successfully!";
+      if (showMultiPosition && selectedPositions.length > 0) {
+        const assignedCount = selectedPositions.filter(p => p.position_id > 0).length;
+        successMessage += ` ${assignedCount} position(s) assigned.`;
+      }
+      setSuccess(successMessage);
       setFormData({
         username: "",
         email: "",
@@ -182,6 +388,8 @@ export default function AddUserPage() {
         tanggal_lahir: "",
         fullname: "",
       });
+      setSelectedPositions([]);
+      setShowMultiPosition(false);
 
       // Redirect to admin dashboard after 2 seconds
       setTimeout(() => {
@@ -204,7 +412,7 @@ export default function AddUserPage() {
         role="admin"
       />
       
-      <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-8">
 
         <Card>
           <CardHeader>
@@ -320,20 +528,221 @@ export default function AddUserPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="position_id">Position</Label>
-                    <Select value={formData.position_id} onValueChange={(value) => handleSelectChange('position_id', value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Position" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Select Position</SelectItem>
-                        {positions.map((position) => (
-                          <SelectItem key={position.id} value={String(position.id)}>
-                            {position.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="position_id">Position</Label>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="multi-position"
+                          checked={showMultiPosition}
+                          onCheckedChange={(checked) => {
+                            setShowMultiPosition(!!checked);
+                            if (!checked) {
+                              setSelectedPositions([]);
+                            }
+                          }}
+                        />
+                        <Label htmlFor="multi-position" className="text-sm font-normal">
+                          Enable Multi-Position
+                        </Label>
+                      </div>
+                    </div>
+                    
+                    {!showMultiPosition ? (
+                      <Select value={formData.position_id} onValueChange={(value) => handleSelectChange('position_id', value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Position" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Select Position</SelectItem>
+                          {positions.map((position) => (
+                            <SelectItem key={position.id} value={String(position.id)}>
+                              <div className="flex items-center justify-between w-full">
+                                <span>{position.name}</span>
+                                {getApprovalLevelBadge(position.approval_level)}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                        <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium flex items-center gap-2">
+                              <Shield className="h-4 w-4" />
+                              Multi-Position Assignment
+                            </h4>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={addPositionAssignment}
+                              className="flex items-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Position
+                            </Button>
+                          </div>
+                          <p className="text-xs text-gray-600">
+                            Assign multiple positions to this employee. One position must be marked as primary.
+                          </p>
+                        </div>
+                        
+                        {selectedPositions.length === 0 ? (
+                          <p className="text-sm text-gray-500 text-center py-4">
+                            No positions assigned. Click "Add Position" to start.
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {selectedPositions.map((assignment, index) => (
+                              <div key={index} className="p-3 border rounded bg-white space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">Position {index + 1}</span>
+                                    {assignment.is_primary && (
+                                      <Badge variant="outline" className="text-xs flex items-center gap-1">
+                                        <Crown className="h-3 w-3" />
+                                        Primary
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removePositionAssignment(index)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="space-y-2">
+                                    <Label className="text-xs">Position</Label>
+                                    <Select 
+                                      value={String(assignment.position_id || '')} 
+                                      onValueChange={(value) => updatePositionAssignment(index, 'position_id', value)}
+                                    >
+                                      <SelectTrigger className="h-8">
+                                        <SelectValue placeholder="Select Position" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="0">Select Position</SelectItem>
+                                        {availablePositions
+                                          .filter(pos => 
+                                            pos.id === assignment.position_id || 
+                                            !getUsedPositionIds().includes(pos.id)
+                                          )
+                                          .map((position) => (
+                                            <SelectItem key={position.id} value={String(position.id)}>
+                                              <div className="flex items-center justify-between w-full">
+                                                <span>{position.name}</span>
+                                                <div className="flex items-center gap-1">
+                                                  {getApprovalLevelBadge(position.approval_level)}
+                                                  {position.can_approve_overtime_org_wide && (
+                                                    <Badge variant="outline" className="text-xs">Org</Badge>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </SelectItem>
+                                          ))
+                                        }
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  
+                                  <div className="space-y-2">
+                                    <Label className="text-xs">Effective From</Label>
+                                    <Input
+                                      type="date"
+                                      value={assignment.effective_from}
+                                      onChange={(e) => updatePositionAssignment(index, 'effective_from', e.target.value)}
+                                      className="h-8"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="space-y-2">
+                                    <Label className="text-xs flex items-center gap-2">
+                                      <Calendar className="h-3 w-3" />
+                                      Effective Until (Optional)
+                                    </Label>
+                                    <Input
+                                      type="date"
+                                      value={assignment.effective_until}
+                                      onChange={(e) => updatePositionAssignment(index, 'effective_until', e.target.value)}
+                                      className="h-8"
+                                    />
+                                  </div>
+                                  
+                                  <div className="space-y-2">
+                                    <div className="flex items-center space-x-4">
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox 
+                                          checked={assignment.is_primary}
+                                          onCheckedChange={(checked) => updatePositionAssignment(index, 'is_primary', !!checked)}
+                                        />
+                                        <Label className="text-xs">Primary Position</Label>
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox 
+                                          checked={assignment.is_active}
+                                          onCheckedChange={(checked) => updatePositionAssignment(index, 'is_active', !!checked)}
+                                        />
+                                        <Label className="text-xs">Active</Label>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  <Label className="text-xs">Assignment Notes</Label>
+                                  <Input
+                                    placeholder="Optional notes for this position assignment..."
+                                    value={assignment.assignment_notes}
+                                    onChange={(e) => updatePositionAssignment(index, 'assignment_notes', e.target.value)}
+                                    className="h-8"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Position Summary */}
+                        {selectedPositions.length > 0 && (
+                          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                            <h5 className="text-sm font-medium text-blue-900 mb-2">Position Summary</h5>
+                            <div className="space-y-1">
+                              {selectedPositions.map((assignment, index) => {
+                                if (assignment.position_id === 0) return null;
+                                return (
+                                  <div key={index} className="text-xs text-blue-800 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span>{assignment.position.name}</span>
+                                      {assignment.is_primary && (
+                                        <Badge variant="outline" className="text-xs">
+                                          <Crown className="h-2 w-2 mr-1" />
+                                          Primary
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      {getApprovalLevelBadge(assignment.position.approval_level)}
+                                      {assignment.position.can_approve_overtime_org_wide && (
+                                        <Badge variant="outline" className="text-xs">Org</Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
