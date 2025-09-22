@@ -120,7 +120,7 @@ export function getApprovalCapabilitiesEnhanced(
   }
 
   // Fallback to legacy single position
-  const position = user.position || user.primary_position
+  const position = user.position || user.primary_position || null
   return getApprovalCapabilities(position)
 }
 

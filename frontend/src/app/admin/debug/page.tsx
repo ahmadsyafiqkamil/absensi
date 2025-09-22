@@ -13,7 +13,7 @@ export default function AdminDebugPage() {
     try {
       const response = await fetch('/api/debug/cookies');
       const data = await response.json();
-      setDebugInfo(prev => ({ ...prev, cookies: data }));
+      setDebugInfo((prev: any) => ({ ...prev, cookies: data }));
     } catch (error) {
       console.error('Error testing cookies:', error);
     }
@@ -25,7 +25,7 @@ export default function AdminDebugPage() {
     try {
       const response = await fetch('/api/debug/backend');
       const data = await response.json();
-      setDebugInfo(prev => ({ ...prev, backend: data }));
+      setDebugInfo((prev: any) => ({ ...prev, backend: data }));
     } catch (error) {
       console.error('Error testing backend:', error);
     }
@@ -56,7 +56,7 @@ export default function AdminDebugPage() {
         data = { rawResponse: text };
       }
       
-      setDebugInfo(prev => ({ 
+      setDebugInfo((prev: any) => ({ 
         ...prev, 
         provision: { 
           status: response.status, 
@@ -66,7 +66,7 @@ export default function AdminDebugPage() {
       }));
     } catch (error) {
       console.error('Error testing provision:', error);
-      setDebugInfo(prev => ({ 
+      setDebugInfo((prev: any) => ({ 
         ...prev, 
         provision: { 
           error: error instanceof Error ? error.message : 'Unknown error' 

@@ -179,7 +179,7 @@ const columns: ColumnDef<EmployeeRow>[] = [
   },
   {
     header: "Approval Level",
-    accessorFn: (row) => row.approval_capabilities?.approval_level ?? row.position?.approval_level ?? 0,
+    accessorFn: (row) => row.approval_capabilities?.approval_level ?? 0,
     id: "approval_level",
     cell: ({ getValue }) => {
       const level = getValue<number>();

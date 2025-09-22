@@ -3,10 +3,10 @@ import { getBackendBaseUrl } from '@/lib/backend'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id
+    const id = (await params).id
     const token = request.cookies.get('access_token')?.value
     
     if (!token) {

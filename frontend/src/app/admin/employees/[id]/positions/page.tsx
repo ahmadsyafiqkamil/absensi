@@ -17,31 +17,7 @@ import {
   useDeactivatePosition,
   usePositions 
 } from '@/lib/hooks';
-
-interface Employee {
-  id: number;
-  nip: string;
-  fullname: string;
-  user: {
-    id: number;
-    username: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-  };
-  division?: {
-    id: number;
-    name: string;
-  };
-  position?: {
-    id: number;
-    name: string;
-    approval_level: number;
-  };
-  employee_positions?: any[];
-  primary_position?: any;
-  approval_capabilities?: any;
-}
+import type { Employee } from '@/lib/types';
 
 export default function EmployeePositionsPage() {
   const params = useParams();
@@ -52,7 +28,8 @@ export default function EmployeePositionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: positions } = usePositions();
+  const { data: positionsResponse } = usePositions();
+  const positions = positionsResponse?.results || [];
   const { data: employeePositions, refetch: refetchPositions } = useEmployeePositions(employeeId);
   const { mutate: assignPosition, loading: assigning } = useAssignPosition();
   const { mutate: setPrimary } = useSetPrimaryPosition();
@@ -156,7 +133,7 @@ export default function EmployeePositionsPage() {
               Position Management - {employee.fullname}
             </h1>
             <p className="text-gray-600">
-              NIP: {employee.nip} • Username: {employee.user.username}
+              Employee ID: {employee.employee_id} • Username: {employee.user.username}
             </p>
           </div>
         </div>

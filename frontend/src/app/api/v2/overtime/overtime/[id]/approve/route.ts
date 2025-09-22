@@ -1,14 +1,14 @@
 import { getBackendBaseUrl, getAccessToken } from '@/lib/backend'
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const accessToken = await getAccessToken()
 
   if (!accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const backendUrl = `${getBackendBaseUrl()}/api/v2/overtime/overtime/${params.id}/approve/`
+  const backendUrl = `${getBackendBaseUrl()}/api/v2/overtime/overtime/${(await params).id}/approve/`
   const body = await request.json()
 
   try {

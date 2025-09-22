@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const allCookies = {};
+    const allCookies: Record<string, string> = {};
     
     // Get all cookies
     cookieStore.getAll().forEach(cookie => {

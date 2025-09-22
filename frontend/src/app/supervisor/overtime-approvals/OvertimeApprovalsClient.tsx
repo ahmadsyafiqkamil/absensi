@@ -430,8 +430,6 @@ export default function OvertimeApprovalsClient() {
                             disabled={approving === record.id}
                             loading={approving === record.id}
                             className="w-full"
-                            approvalLevel={approvalLevel}
-                            recordStatus={record.status}
                           />
                         ) : (
                           <div className="text-sm text-gray-500">

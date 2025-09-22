@@ -144,7 +144,7 @@ export default function PositionAssignmentForm({
                           }}
                         />
                         <label htmlFor={`emp-${emp.id}`} className="text-sm">
-                          {emp.fullname} ({emp.nip})
+                          {emp.fullname} ({emp.employee_id})
                         </label>
                       </div>
                     ))}
