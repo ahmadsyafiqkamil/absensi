@@ -497,7 +497,7 @@ class EmployeeDivisionViewSet(viewsets.ReadOnlyModelViewSet):
         return Division.objects.none()
 
 
-class EmployeePositionViewSet(viewsets.ReadOnlyModelViewSet):
+class EmployeePositionReadOnlyViewSet(viewsets.ReadOnlyModelViewSet):
     """Employee-specific position ViewSet (read-only)"""
     serializer_class = PositionSerializer
     permission_classes = [IsEmployee]

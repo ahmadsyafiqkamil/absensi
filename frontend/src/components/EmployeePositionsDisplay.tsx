@@ -114,7 +114,7 @@ export default function EmployeePositionsDisplay({
         <CardContent>
           <div className="space-y-3">
             {displayPositions.map((assignment, index) => (
-              <div key={assignment.id || index} className="border rounded-lg p-3">
+              <div key={assignment.id || index} className={`border rounded-lg p-3 ${!assignment.is_active ? 'bg-red-50 border-red-200' : 'bg-white'}`}>
                 <div className="flex items-start justify-between">
                   <div className="space-y-2">
                     {/* Position Name with Primary Badge */}
@@ -126,11 +126,9 @@ export default function EmployeePositionsDisplay({
                           Primary
                         </Badge>
                       )}
-                      {!assignment.is_active && (
-                        <Badge variant="destructive" className="text-xs">
-                          Inactive
-                        </Badge>
-                      )}
+                      <Badge variant={assignment.is_active ? "secondary" : "destructive"} className="text-xs">
+                        {assignment.is_active ? "Active" : "Inactive"}
+                      </Badge>
                     </div>
 
                     {/* Position Details */}

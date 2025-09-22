@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useRouter } from "next/navigation";
-import { Plus, X, Crown, Shield, Calendar } from "lucide-react";
+import { Plus, X, Crown, Shield, Calendar, ArrowLeft } from "lucide-react";
 import Header from '@/components/Header';
 
 interface Division {
@@ -413,6 +413,17 @@ export default function AddUserPage() {
       />
       
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Button
+            variant="ghost"
+            onClick={() => router.back()}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Previous Page
+          </Button>
+        </div>
 
         <Card>
           <CardHeader>
@@ -440,7 +451,7 @@ export default function AddUserPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email">Email *</Label>
                     <Input
                       id="email"
                       name="email"
@@ -448,6 +459,7 @@ export default function AddUserPage() {
                       value={formData.email}
                       onChange={handleInputChange}
                       placeholder="Enter email address"
+                      required={true}
                     />
                   </div>
                 </div>

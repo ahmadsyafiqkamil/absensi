@@ -104,6 +104,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     division = DivisionSerializer(read_only=True)
     position = PositionSerializer(read_only=True)  # Legacy field for backward compatibility
     employee_positions = EmployeePositionSerializer(many=True, read_only=True)
+    active_employee_positions = serializers.SerializerMethodField()
     primary_position = serializers.SerializerMethodField()
     approval_capabilities = serializers.SerializerMethodField()
     
@@ -111,13 +112,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             "id", "nip", "fullname", "user", "division", "position",
-            "employee_positions", "primary_position", "approval_capabilities"
+            "employee_positions", "active_employee_positions", "primary_position", "approval_capabilities"
         ]
 
     def get_primary_position(self, obj):
         """Get the primary position for this employee"""
         primary_pos = obj.get_primary_position()
         return PositionSerializer(primary_pos).data if primary_pos else None
+
+    def get_active_employee_positions(self, obj):
+        """Get only active employee positions"""
+        active_assignments = obj.get_active_position_assignments()
+        return EmployeePositionSerializer(active_assignments, many=True).data
 
     def get_approval_capabilities(self, obj):
         """Get approval capabilities from all active positions"""

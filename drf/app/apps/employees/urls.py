@@ -24,7 +24,7 @@ supervisor_router.register(r'employees', views.SupervisorEmployeeViewSet, basena
 # Employee-specific router
 employee_router = DefaultRouter()
 employee_router.register(r'divisions', views.EmployeeDivisionViewSet, basename='employee-division')
-employee_router.register(r'positions', views.EmployeePositionViewSet, basename='employee-position-readonly')
+employee_router.register(r'positions', views.EmployeePositionReadOnlyViewSet, basename='employee-position-readonly')
 employee_router.register(r'employees', views.EmployeeEmployeeViewSet, basename='employee-employee')
 
 urlpatterns = [
