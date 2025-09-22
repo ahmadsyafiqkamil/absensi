@@ -35,7 +35,7 @@ services:
       retries: 5
       start_period: 30s
 
-  # phpMyAdmin (Optional for production)
+  # phpMyAdmin (Production access via Caddy)
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
     container_name: absensi_phpmyadmin_prod
@@ -46,14 +46,12 @@ services:
       PMA_USER: root
       PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    ports:
-      - "8080:80"
+      PMA_ABSOLUTE_URI: https://phpmyadmin.${FRONTEND_DOMAIN}
+    # Remove public port exposure for security (will be accessed via Caddy)
     depends_on:
       - mysql
     networks:
       - absensi_network_prod
-    profiles:
-      - admin
 
   # Backend DRF (Production)
   backend:
@@ -72,6 +70,8 @@ services:
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - CORS_ALLOWED_ORIGINS=${BACKEND_CORS_ORIGINS}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+      - CSRF_COOKIE_SECURE=True
       - DJANGO_SETTINGS_MODULE=core.settings
     # Remove public port exposure for security (will be accessed via Caddy)
     depends_on:

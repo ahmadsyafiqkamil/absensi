@@ -84,7 +84,40 @@
     # Gzip compression
     encode gzip
 
-    # Reverse proxy to backend
+    # Django Admin route
+    handle_path /admin* {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # Static files for Django admin
+    handle_path /static* {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # Media files
+    handle_path /media* {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # Reverse proxy to backend for API
     reverse_proxy backend:8000 {
         # Health check
         health_uri /api/v2/auth/health/
@@ -111,6 +144,48 @@
     # Logging
     log {
         output file /var/log/caddy/api.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# phpMyAdmin configuration
+phpmyadmin.{$FRONTEND_DOMAIN} {
+    # Enable automatic HTTPS
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    # Security headers
+    header {
+        # Security
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"  # Allow iframe for phpMyAdmin
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # Remove server information
+        -Server
+    }
+
+    # Gzip compression
+    encode gzip
+
+    # Reverse proxy to phpMyAdmin
+    reverse_proxy phpmyadmin:80 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/phpmyadmin.log {
             roll_size 10mb
             roll_keep 5
         }
