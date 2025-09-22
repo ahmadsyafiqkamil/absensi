@@ -10,6 +10,12 @@ export interface User {
   groups: string[]
   date_joined: string
   last_login: string
+  
+  // Multi-position support (from auth response)
+  position?: Position | null // Legacy field for backward compatibility
+  positions?: EmployeePosition[] // New multi-position data
+  primary_position?: Position | null // Primary position
+  approval_capabilities?: ApprovalCapabilities // Combined approval capabilities
 }
 
 // Employee Management Types
@@ -31,11 +37,36 @@ export interface Position {
   updated_at: string
 }
 
+// Multi-Position Support Types
+export interface EmployeePosition {
+  id: number
+  position: Position
+  is_primary: boolean
+  is_active: boolean
+  effective_from: string
+  effective_until?: string | null
+  assignment_notes?: string
+  assigned_by?: User | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ApprovalCapabilities {
+  approval_level: number
+  can_approve_overtime_org_wide: boolean
+  active_positions: {
+    id: number
+    name: string
+    approval_level: number
+    can_approve_overtime_org_wide: boolean
+  }[]
+}
+
 export interface Employee {
   id: number
   user: User
   division: Division
-  position: Position
+  position: Position // Legacy field for backward compatibility
   employee_id: string
   fullname: string
   phone?: string
@@ -47,7 +78,12 @@ export interface Employee {
   created_at: string
   updated_at: string
 
-  // Multi-role support
+  // Multi-position support
+  employee_positions?: EmployeePosition[] // All position assignments
+  primary_position?: Position | null // Primary position
+  approval_capabilities?: ApprovalCapabilities // Combined approval capabilities
+
+  // Multi-role support (existing)
   roles?: EmployeeRole[]
   primary_role?: EmployeeRole
 }
@@ -452,6 +488,32 @@ export interface BulkRoleAssignment {
   is_active: boolean
   notes?: string
   expires_at?: string
+}
+
+// Multi-Position Form Types
+export interface PositionAssignmentFormData {
+  employee_id: number
+  position_id: number
+  is_primary: boolean
+  is_active: boolean
+  effective_from: string
+  effective_until?: string
+  assignment_notes?: string
+}
+
+export interface BulkPositionAssignmentFormData {
+  employee_ids: number[]
+  position_id: number
+  is_primary: boolean
+  is_active: boolean
+  effective_from: string
+  effective_until?: string
+  assignment_notes?: string
+}
+
+export interface SetPrimaryPositionFormData {
+  employee_id: number
+  position_id: number
 }
 
 // Permission Management Types

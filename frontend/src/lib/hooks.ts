@@ -243,6 +243,10 @@ export function useSupervisorApprovalLevel() {
   const [loading, setLoading] = useState(true)
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [approvalSource, setApprovalSource] = useState<string>('')
+  const [multiPositionInfo, setMultiPositionInfo] = useState<any>(null)
+  
+  // Use current context hook for real-time position switching
+  const { data: currentContext } = useCurrentContext()
 
   useEffect(() => {
     const fetchApprovalLevel = async () => {
@@ -266,32 +270,80 @@ export function useSupervisorApprovalLevel() {
         const userGroups = result.groups || []
         setUserRoles(userGroups)
 
-        // Determine approval level based on position data
+        // Enhanced approval level calculation with multi-position support
         let level = 0
         let source = 'No position'
+        let positionInfo = null
 
-        if (result.position) {
+        // Priority 1: Use backend-computed approval_capabilities
+        if (result.approval_capabilities) {
+          level = result.approval_capabilities.approval_level || 0
+          const activePositions = result.approval_capabilities.active_positions || []
+          source = `Multi-position: ${activePositions.length} positions (max level ${level})`
+          positionInfo = {
+            total_positions: activePositions.length,
+            active_positions: activePositions,
+            primary_position: result.primary_position,
+            highest_level: level
+          }
+        }
+        // Priority 2: Use primary_position
+        else if (result.primary_position) {
+          level = result.primary_position.approval_level || 0
+          source = `Primary Position: ${result.primary_position.name}`
+          positionInfo = {
+            total_positions: result.positions?.length || 1,
+            primary_position: result.primary_position,
+            highest_level: level
+          }
+        }
+        // Priority 3: Use legacy position field
+        else if (result.position) {
           level = result.position.approval_level || 0
-          source = `Position: ${result.position.name}`
-        } else if (userGroups.includes('admin') || result.is_superuser) {
+          source = `Legacy Position: ${result.position.name}`
+          positionInfo = {
+            total_positions: 1,
+            primary_position: result.position,
+            highest_level: level
+          }
+        }
+        // Priority 4: Use group-based fallback
+        else if (userGroups.includes('admin') || result.is_superuser) {
           level = 2
-          source = 'Admin/Superuser'
+          source = 'Admin/Superuser group'
         } else if (userGroups.includes('supervisor')) {
           level = 1
           source = 'Supervisor group'
         }
 
-        console.log('Approval level calculation:', {
+        // Override with current context if available (for real-time position switching)
+        if (currentContext) {
+          level = currentContext.approval_level || 0
+          source = `Current Context: ${currentContext.active_position?.name || currentContext.context}`
+          console.log('Using current context for approval level:', {
+            context: currentContext.context,
+            approval_level: currentContext.approval_level,
+            active_position: currentContext.active_position?.name
+          })
+        }
+
+        console.log('Enhanced approval level calculation:', {
           userGroups,
-          position: result.position,
-          level,
-          source
+          approval_capabilities: result.approval_capabilities,
+          primary_position: result.primary_position,
+          legacy_position: result.position,
+          positions_count: result.positions?.length || 0,
+          current_context: currentContext,
+          final_level: level,
+          source,
+          position_info: positionInfo
         })
 
         setApprovalLevel(level)
         setCanApprove(level > 0)
         setIsLevel0(level === 0)
         setApprovalSource(source)
+        setMultiPositionInfo(positionInfo)
 
       } catch (error) {
         console.error('Error fetching approval level:', error)
@@ -307,7 +359,7 @@ export function useSupervisorApprovalLevel() {
     }
 
     fetchApprovalLevel()
-  }, [])
+  }, [currentContext]) // Re-run when current context changes
 
   return {
     approvalLevel,
@@ -317,5 +369,186 @@ export function useSupervisorApprovalLevel() {
     userGroups: userRoles, // Return userRoles as userGroups for compatibility
     userRoles, // Also return userRoles for new code
     approvalSource,
+    multiPositionInfo, // New multi-position information
   }
+}
+
+// ==================== MULTI-POSITION HOOKS ====================
+
+/**
+ * Hook for fetching employee positions
+ */
+export function useEmployeePositions(employeeId: number) {
+  return useApi(() => 
+    fetch(`/api/v2/employees/employee-positions/?employee=${employeeId}`, {
+      credentials: 'include'
+    }).then(res => res.json()), 
+    [employeeId]
+  )
+}
+
+/**
+ * Hook for assigning position to employee
+ */
+export function useAssignPosition() {
+  return useApiMutation(async (data: any) => {
+    const response = await fetch('/api/v2/employees/employee-positions/assign_position/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to assign position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+/**
+ * Hook for bulk position assignment
+ */
+export function useBulkAssignPosition() {
+  return useApiMutation(async (data: any) => {
+    const response = await fetch('/api/v2/employees/employee-positions/bulk_assign/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to bulk assign position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+/**
+ * Hook for setting primary position
+ */
+export function useSetPrimaryPosition() {
+  return useApiMutation(async (data: { employee_id: number; position_id: number }) => {
+    const response = await fetch('/api/v2/employees/employee-positions/set_primary/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to set primary position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+/**
+ * Hook for deactivating position assignment
+ */
+export function useDeactivatePosition() {
+  return useApiMutation(async (assignmentId: number) => {
+    const response = await fetch(`/api/v2/employees/employee-positions/${assignmentId}/deactivate/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to deactivate position: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+}
+
+// ==================== POSITION SWITCHING HOOKS ====================
+
+/**
+ * Hook for fetching available position contexts
+ */
+export function useAvailableContexts() {
+  return useApi(() => 
+    fetch('/api/v2/employees/employees/available_contexts/', {
+      credentials: 'include',
+      cache: 'no-store'
+    }).then(res => res.json()), 
+    []
+  )
+}
+
+/**
+ * Hook for fetching current position context
+ */
+export function useCurrentContext() {
+  return useApi(async () => {
+    // Get token from localStorage (temporary solution for development)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('dev_access_token') : null;
+    
+    if (!token) {
+      // Return empty data if no token available
+      return null;
+    }
+    
+    const response = await fetch('http://localhost:8000/api/v2/employees/employees/current_context/', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      // Token might be expired, remove it
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('dev_access_token');
+      }
+      throw new Error('Failed to fetch current context');
+    }
+    
+    return response.json();
+  }, [])
+}
+
+/**
+ * Hook for switching position context
+ */
+export function useSwitchPosition() {
+  return useApiMutation(async (positionId: number | null) => {
+    const response = await fetch('/api/v2/employees/employees/switch_position/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      cache: 'no-store',
+      body: JSON.stringify({ position_id: positionId })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to switch position: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Auto-refresh page after successful position switch
+    if (result.success) {
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    }
+    
+    return result;
+  });
 }

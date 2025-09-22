@@ -48,11 +48,25 @@ export type EmployeeRow = {
   fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
-  position?: { id: number; name: string } | null;
+  position?: { id: number; name: string } | null; // Legacy field
   gaji_pokok?: number | null;
   tmt_kerja?: string | null;
   tempat_lahir?: string | null;
   tanggal_lahir?: string | null;
+  
+  // Multi-position support
+  employee_positions?: Array<{
+    id: number;
+    position: { id: number; name: string; approval_level: number };
+    is_primary: boolean;
+    is_active: boolean;
+  }>;
+  primary_position?: { id: number; name: string } | null;
+  approval_capabilities?: {
+    approval_level: number;
+    can_approve_overtime_org_wide: boolean;
+    active_positions: Array<{ id: number; name: string; approval_level: number }>;
+  };
 };
 
 const columns: ColumnDef<EmployeeRow>[] = [
@@ -117,14 +131,65 @@ const columns: ColumnDef<EmployeeRow>[] = [
     ),
   },
   {
-    header: "Position",
-    accessorFn: (row) => row.position?.name ?? "-",
-    id: "position",
+    header: "Primary Position",
+    accessorFn: (row) => row.primary_position?.name ?? row.position?.name ?? "-",
+    id: "primary_position",
     cell: ({ getValue }) => (
       <Badge variant="outline" className="text-xs">
         {String(getValue<string>())}
       </Badge>
     ),
+  },
+  {
+    header: "Positions",
+    accessorKey: "employee_positions",
+    cell: ({ row }) => {
+      const positions = row.original.employee_positions || [];
+      const legacyPosition = row.original.position;
+      const totalCount = positions.length || (legacyPosition ? 1 : 0);
+      
+      if (totalCount === 0) {
+        return <Badge variant="destructive" className="text-xs">No Position</Badge>;
+      }
+      
+      if (totalCount === 1) {
+        const singlePos = positions[0]?.position || legacyPosition;
+        return (
+          <Badge variant="secondary" className="text-xs">
+            {singlePos?.name}
+          </Badge>
+        );
+      }
+      
+      // Multiple positions - show count and primary
+      const primaryPos = positions.find(p => p.is_primary)?.position;
+      return (
+        <div className="flex flex-col gap-1">
+          <Badge variant="default" className="text-xs">
+            {totalCount} positions
+          </Badge>
+          {primaryPos && (
+            <Badge variant="outline" className="text-xs">
+              Primary: {primaryPos.name}
+            </Badge>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    header: "Approval Level",
+    accessorFn: (row) => row.approval_capabilities?.approval_level ?? row.position?.approval_level ?? 0,
+    id: "approval_level",
+    cell: ({ getValue }) => {
+      const level = getValue<number>();
+      const variant = level >= 2 ? 'default' : level >= 1 ? 'secondary' : 'destructive';
+      return (
+        <Badge variant={variant} className="text-xs">
+          Level {level}
+        </Badge>
+      );
+    },
   },
   {
     header: "Salary",
