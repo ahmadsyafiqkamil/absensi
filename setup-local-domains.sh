@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🔧 Setting up local domains for absensi.local..."
+echo "🔧 Setting up local domains for siaki.kjri-dubai.local..."
 
 # Check if running as root or with sudo
 if [ "$EUID" -ne 0 ]; then
@@ -19,10 +19,10 @@ echo "📋 Creating backup of /etc/hosts..."
 cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S)
 
 # Check if domains already exist
-if grep -q "absensi.local" /etc/hosts; then
-    echo "⚠️  absensi.local domains already exist in /etc/hosts"
+if grep -q "kjri-dubai.local" /etc/hosts; then
+    echo "⚠️  kjri-dubai.local domains already exist in /etc/hosts"
     echo "Current entries:"
-    grep "absensi.local" /etc/hosts
+    grep "kjri-dubai.local" /etc/hosts
     echo ""
     read -p "Do you want to update them? (y/N): " -n 1 -r
     echo
@@ -32,30 +32,30 @@ if grep -q "absensi.local" /etc/hosts; then
     fi
     
     # Remove existing entries
-    echo "🗑️  Removing existing absensi.local entries..."
-    sed -i '' '/absensi\.local/d' /etc/hosts
+    echo "🗑️  Removing existing kjri-dubai.local entries..."
+    sed -i '' '/kjri-dubai\.local/d' /etc/hosts
 fi
 
 # Add new domain entries
 echo "➕ Adding new domain entries to /etc/hosts..."
 cat >> /etc/hosts << EOF
 
-# Absensi Application Local Domains
-127.0.0.1 absensi.local
-127.0.0.1 api.absensi.local
-127.0.0.1 phpmyadmin.absensi.local
+# SIAKI KJRI Dubai Application Local Domains
+127.0.0.1 siaki.kjri-dubai.local
+127.0.0.1 api-siaki.kjri-dubai.local
+127.0.0.1 phpmyadmin-siaki.kjri-dubai.local
 EOF
 
 echo "✅ Successfully added domains to /etc/hosts:"
-echo "   - absensi.local (Frontend)"
-echo "   - api.absensi.local (Backend API)"
-echo "   - phpmyadmin.absensi.local (Database Admin)"
+echo "   - siaki.kjri-dubai.local (Frontend)"
+echo "   - api-siaki.kjri-dubai.local (Backend API)"
+echo "   - phpmyadmin-siaki.kjri-dubai.local (Database Admin)"
 echo ""
 echo "🌐 You can now access the application at:"
-echo "   Frontend: https://absensi.local"
-echo "   API: https://api.absensi.local"
-echo "   Django Admin: https://api.absensi.local/admin/"
-echo "   phpMyAdmin: https://phpmyadmin.absensi.local"
+echo "   Frontend: https://siaki.kjri-dubai.local"
+echo "   API: https://api-siaki.kjri-dubai.local"
+echo "   Django Admin: https://api-siaki.kjri-dubai.local/admin/"
+echo "   phpMyAdmin: https://phpmyadmin-siaki.kjri-dubai.local"
 echo ""
 echo "📝 Note: You may need to restart your browser or clear DNS cache"
 echo "   On macOS: sudo dscacheutil -flushcache"

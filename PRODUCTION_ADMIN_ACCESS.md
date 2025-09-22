@@ -6,12 +6,12 @@ This guide explains how to access Django Admin and phpMyAdmin in the production 
 ## Access URLs
 
 ### Django Admin
-- **URL**: `https://api.absensi.local/admin/`
+- **URL**: `https://api-siaki.kjri-dubai.local/admin/`
 - **Credentials**: Use your Django superuser credentials
 - **Features**: Full Django admin interface for managing users, data, and system settings
 
 ### phpMyAdmin
-- **URL**: `https://phpmyadmin.absensi.local`
+- **URL**: `https://phpmyadmin-siaki.kjri-dubai.local`
 - **Credentials**: Use MySQL root credentials from your `production.env` file
 - **Features**: Database management interface for MySQL
 
@@ -39,16 +39,16 @@ Make sure your `production.env` file includes:
 
 ```bash
 # Domain Configuration
-FRONTEND_DOMAIN=absensi.local
-API_DOMAIN=api.absensi.local
+FRONTEND_DOMAIN=siaki.kjri-dubai.local
+API_DOMAIN=api-siaki.kjri-dubai.local
 
 # Django Configuration
 SECRET_KEY=rbcFSgLOZjSbpRe9j41V42rphfWQpVQ3HEfoi7dJv-91mpOU4D0xW48FHQUnWxPA5Ks
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,absensi.local,api.absensi.local,phpmyadmin.absensi.local,backend
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,siaki.kjri-dubai.local,api-siaki.kjri-dubai.local,phpmyadmin-siaki.kjri-dubai.local,backend
 
 # CORS and CSRF
-CORS_ALLOWED_ORIGINS=https://absensi.local,https://api.absensi.local,http://localhost:3000
-CSRF_TRUSTED_ORIGINS=https://absensi.local,https://api.absensi.local,https://phpmyadmin.absensi.local
+CORS_ALLOWED_ORIGINS=https://siaki.kjri-dubai.local,https://api-siaki.kjri-dubai.local,http://localhost:3000
+CSRF_TRUSTED_ORIGINS=https://siaki.kjri-dubai.local,https://api-siaki.kjri-dubai.local,https://phpmyadmin-siaki.kjri-dubai.local
 CSRF_COOKIE_SECURE=True
 
 # Database

@@ -216,6 +216,73 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
             "user_id", "nip", "fullname", "division_id", "position_id",
             "gaji_pokok", "tmt_kerja", "tempat_lahir", "tanggal_lahir"
         ]
+    
+    def create(self, validated_data):
+        """Create employee and handle position assignment"""
+        # Extract position_id before creating employee
+        position_id = validated_data.pop('position', None)
+        
+        # Create employee
+        employee = super().create(validated_data)
+        
+        # Handle position assignment
+        if position_id:
+            # Set legacy position field for backward compatibility
+            employee.position = position_id
+            employee.save()
+            
+            # Also create EmployeePosition record for multi-position system
+            from datetime import date
+            EmployeePosition.objects.get_or_create(
+                employee=employee,
+                position=position_id,
+                defaults={
+                    'is_primary': True,
+                    'is_active': True,
+                    'effective_from': date.today(),
+                    'assigned_by': self.context.get('request').user if self.context.get('request') else None,
+                    'assignment_notes': 'Assigned during employee creation'
+                }
+            )
+        
+        return employee
+    
+    def update(self, instance, validated_data):
+        """Update employee and handle position assignment"""
+        # Extract position_id before updating employee
+        position_id = validated_data.pop('position', None)
+        
+        # Update employee
+        employee = super().update(instance, validated_data)
+        
+        # Handle position assignment
+        if position_id is not None:
+            # Update legacy position field
+            employee.position = position_id
+            employee.save()
+            
+            # Update or create EmployeePosition record
+            from datetime import date
+            assignment, created = EmployeePosition.objects.get_or_create(
+                employee=employee,
+                position=position_id,
+                defaults={
+                    'is_primary': True,
+                    'is_active': True,
+                    'effective_from': date.today(),
+                    'assigned_by': self.context.get('request').user if self.context.get('request') else None,
+                    'assignment_notes': 'Updated during employee update'
+                }
+            )
+            
+            if not created:
+                # Update existing assignment
+                assignment.is_primary = True
+                assignment.is_active = True
+                assignment.assigned_by = self.context.get('request').user if self.context.get('request') else assignment.assigned_by
+                assignment.save()
+        
+        return employee
 
 
 class PositionAssignmentSerializer(serializers.Serializer):

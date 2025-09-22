@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Docker and Docker Compose installed
-- Domain `absensi.local` configured in `/etc/hosts`
+- Domain `siaki.kjri-dubai.local` configured in `/etc/hosts`
 
 ## Quick Deployment
 
@@ -17,10 +17,10 @@ sudo ./setup-local-domains.sh
 ```
 
 ## Access URLs
-- **Frontend**: https://absensi.local
-- **API**: https://api.absensi.local
-- **Django Admin**: https://api.absensi.local/admin/
-- **phpMyAdmin**: https://phpmyadmin.absensi.local
+- **Frontend**: https://siaki.kjri-dubai.local
+- **API**: https://api-siaki.kjri-dubai.local
+- **Django Admin**: https://api-siaki.kjri-dubai.local/admin/
+- **phpMyAdmin**: https://phpmyadmin-siaki.kjri-dubai.local
 
 ## Admin Credentials
 - **Django Admin**: Use your Django superuser credentials

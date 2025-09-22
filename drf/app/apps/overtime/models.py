@@ -30,7 +30,7 @@ class OvertimeRequest(TimeStampedModel):
     )
     employee = models.ForeignKey(
         Employee,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="overtime_requests"
@@ -275,7 +275,7 @@ class MonthlySummaryRequest(TimeStampedModel):
     )
     employee = models.ForeignKey(
         Employee,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="monthly_summary_requests"

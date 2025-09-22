@@ -445,6 +445,12 @@ class AdminEmployeeViewSet(EmployeeViewSet):
     
     def get_queryset(self):
         return Employee.objects.all()
+    
+    def get_serializer_context(self):
+        """Add request context to serializer"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
 
 
 class SupervisorDivisionViewSet(viewsets.ReadOnlyModelViewSet):

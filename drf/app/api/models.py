@@ -178,7 +178,7 @@ class Holiday(models.Model):
 
 class Attendance(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attendances")
-    employee = models.ForeignKey('api.Employee', on_delete=models.SET_NULL, null=True, blank=True, related_name="attendances")
+    employee = models.ForeignKey('api.Employee', on_delete=models.CASCADE, null=True, blank=True, related_name="attendances")
     date_local = models.DateField()
     timezone = models.CharField(max_length=64)
 
