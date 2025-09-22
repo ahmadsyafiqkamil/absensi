@@ -188,11 +188,35 @@ export async function proxyToBackend(
     if (csrfToken) {
       headers['X-CSRFToken'] = csrfToken;
     }
+    
+    // For POST requests, try to get CSRF token if not present
+    if (method === 'POST' && !csrfToken && cookie) {
+      try {
+        const csrfResponse = await fetch(`${getBackendBaseUrl()}/api/v2/auth/csrf/`, {
+          headers: { 'Cookie': cookie }
+        });
+        if (csrfResponse.ok) {
+          const csrfData = await csrfResponse.json();
+          if (csrfData.csrfToken) {
+            headers['X-CSRFToken'] = csrfData.csrfToken;
+          }
+        }
+      } catch (error) {
+        console.warn('[API Proxy] Failed to get CSRF token:', error);
+      }
+    }
 
     // Forward Authorization header if present
     const authHeader = request.headers.get('authorization');
     if (authHeader) {
       headers['Authorization'] = authHeader;
+    } else if (cookie) {
+      // Extract JWT token from cookies and add as Authorization header
+      const accessTokenMatch = cookie.match(/access_token=([^;]+)/);
+      if (accessTokenMatch) {
+        headers['Authorization'] = `Bearer ${accessTokenMatch[1]}`;
+        console.log('[API Proxy] Added JWT token from cookie to Authorization header');
+      }
     }
 
     // Prepare request options

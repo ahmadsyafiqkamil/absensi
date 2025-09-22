@@ -27,6 +27,15 @@ export async function POST(request: NextRequest) {
           maxAge: 60 * 60 * 24, // 24 hours
           path: '/',
         })
+        
+        // Also set a non-HttpOnly cookie for client-side access (less secure but needed for position switching)
+        nextResponse.cookies.set('client_access_token', data.access, {
+          httpOnly: false, // Allow JavaScript access
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24, // 24 hours
+          path: '/',
+        })
       }
       
       // Set refresh token cookie

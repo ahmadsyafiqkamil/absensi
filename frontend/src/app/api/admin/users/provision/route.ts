@@ -1,35 +1,29 @@
-import { NextResponse } from 'next/server';
-import { getBackendUrl } from '@/lib/api-utils'
+import { NextRequest, NextResponse } from 'next/server';
+import { proxyToBackend } from '@/lib/backend';
 import { cookies } from 'next/headers';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const accessToken = (await cookies()).get('access_token')?.value;
+    console.log('[API Route] User provision request started');
+    
+    // Get cookies for authentication
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get('access_token')?.value;
+    
+    console.log('[API Route] Access token present:', !!accessToken);
     
     if (!accessToken) {
-      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { detail: 'Authentication required' },
+        { status: 401 }
+      );
     }
-
-    // Check if user is admin
-    const meResponse = await fetch(`${getBackendUrl()}/api/v2/auth/me/`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-
-    if (!meResponse.ok) {
-      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userData = await meResponse.json();
-    const isAdmin = userData.groups?.includes('admin') || userData.is_superuser;
-
-    if (!isAdmin) {
-      return NextResponse.json({ detail: 'Forbidden: Admin access required' }, { status: 403 });
-    }
-
+    
+    // Get request body
     const body = await request.json();
     const { username, password, email, group } = body;
+    
+    console.log('[API Route] Provision request data:', { username, email, group });
 
     // Validate required fields
     if (!username || !group) {
@@ -48,40 +42,49 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call backend provision API (V2)
-    const response = await fetch(`${getBackendUrl()}/api/v2/users/users/provision`, {
+    // Call backend directly with proper authentication
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
+    const response = await fetch(`${backendUrl}/api/v2/users/users/provision/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'X-CSRFToken': (await cookies()).get('csrftoken')?.value || ''
+        'Authorization': `Bearer ${accessToken}`
       },
       body: JSON.stringify({
         username,
-        password: password || '1', // Default password if not provided
+        password: password || '1',
         email: email || '',
         group
       })
     });
 
+    console.log('[API Route] Backend response status:', response.status);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[API Route] Backend error:', errorText);
+      
       let errorData;
       try {
-        errorData = await response.json();
+        errorData = JSON.parse(errorText);
       } catch (e) {
-        // If response is not JSON (e.g., HTML error page), create a generic error
-        errorData = { detail: `Server error: ${response.status} ${response.statusText}` };
+        errorData = { detail: `Backend error: ${response.status} ${response.statusText}` };
       }
+      
       return NextResponse.json(errorData, { status: response.status });
     }
 
     const result = await response.json();
+    console.log('[API Route] Success:', result);
     return NextResponse.json(result);
 
   } catch (error) {
-    console.error('Error provisioning user:', error);
+    console.error('[API Route] Error provisioning user:', error);
     return NextResponse.json(
-      { detail: 'Internal server error' },
+      { 
+        detail: 'Internal server error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import EmployeesTable from '@/components/tables/EmployeesTable';
 import { getBackendUrl } from '@/lib/api-utils';
+import BackButton from '@/components/BackButton';
 
 type EmployeeRow = {
   id: number;
@@ -11,11 +12,31 @@ type EmployeeRow = {
   fullname?: string | null;
   user: { id: number; username: string; email: string };
   division?: { id: number; name: string } | null;
-  position?: { id: number; name: string } | null;
+  position?: { id: number; name: string } | null; // Legacy field
   gaji_pokok?: number | null;
   tmt_kerja?: string | null;
   tempat_lahir?: string | null;
   tanggal_lahir?: string | null;
+  
+  // Multi-position support
+  employee_positions?: Array<{
+    id: number;
+    position: { id: number; name: string; approval_level: number };
+    is_primary: boolean;
+    is_active: boolean;
+  }>;
+  active_employee_positions?: Array<{
+    id: number;
+    position: { id: number; name: string; approval_level: number };
+    is_primary: boolean;
+    is_active: boolean;
+  }>;
+  primary_position?: { id: number; name: string } | null;
+  approval_capabilities?: {
+    approval_level: number;
+    can_approve_overtime_org_wide: boolean;
+    active_positions: Array<{ id: number; name: string; approval_level: number }>;
+  };
 }
 
 type PaginatedEmployees = {
@@ -105,6 +126,11 @@ export default async function AdminEmployeesPage({ searchParams }: { searchParam
         role={role}
       />
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <BackButton />
+        </div>
+        
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-gray-600">Total: {data.count} • Page {page} of {totalPages}</p>
           <div className="flex gap-2">

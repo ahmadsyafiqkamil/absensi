@@ -5,7 +5,8 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import TodayAttendance from '../pegawai/TodayAttendance';
 import AttendanceWidget from '../pegawai/AttendanceWidget';
-import { getApprovalCapabilities } from '@/lib/approval-utils';
+import MultiPositionSummary from '@/components/MultiPositionSummary';
+import { getApprovalCapabilitiesEnhanced, getMultiPositionApprovalInfo } from '@/lib/approval-utils';
 
 async function getMe() {
   const { resp, data } = await meFromServerCookies()
@@ -30,9 +31,9 @@ export default async function SupervisorPage() {
     )
   }
 
-  // Check position-based approval level instead of group membership
-  const position = me?.position || null
-  const approvalCapabilities = getApprovalCapabilities(position)
+  // Use enhanced multi-position approval capabilities
+  const approvalCapabilities = getApprovalCapabilitiesEnhanced(me)
+  const multiPositionInfo = getMultiPositionApprovalInfo(me)
   const hasApprovalPermission = approvalCapabilities.division_level || approvalCapabilities.organization_level
 
   if (!hasApprovalPermission) {
@@ -41,9 +42,13 @@ export default async function SupervisorPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">Supervisor privileges required (approval level 1 or higher).</p>
-          <p className="text-sm text-gray-500 mt-1">
-            Current approval level: {position?.approval_level || 0}
-          </p>
+          <div className="text-sm text-gray-500 mt-2 space-y-1">
+            <p>Current approval level: {multiPositionInfo.highest_approval_level}</p>
+            <p>Positions: {multiPositionInfo.total_positions}</p>
+            {multiPositionInfo.position_summary.map((summary, index) => (
+              <p key={index}>• {summary}</p>
+            ))}
+          </div>
           <Link href="/" className="text-blue-600 hover:underline mt-4 inline-block">
             Return to Home
           </Link>
@@ -62,6 +67,12 @@ export default async function SupervisorPage() {
       />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
+
+        {/* Position Information
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Position Information</h2>
+          <MultiPositionSummary user={me} />
+        </div> */}
 
         {/* Your Attendance (Supervisor can also check-in/out) */}
         <div className="grid gap-4 mb-8">
