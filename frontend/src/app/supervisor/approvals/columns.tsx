@@ -20,6 +20,7 @@ export type AttendanceCorrection = {
   id: number
   date_local: string
   type: string
+  correction_type?: string
   reason: string
   status: string
   created_at: string
@@ -30,6 +31,10 @@ export type AttendanceCorrection = {
     username: string
     first_name: string
     last_name: string
+  }
+  employee?: {
+    fullname: string
+    nip: string
   }
   actions?: React.ReactNode
 }
@@ -136,10 +141,18 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
     header: "Employee",
     cell: ({ row }) => {
       const user = row.getValue("user") as any
+      const employee = row.original.employee as any
+      
+      
+      // Use employee fullname if user first_name and last_name are empty
+      const displayName = (user?.first_name && user?.last_name) 
+        ? `${user.first_name} ${user.last_name}`.trim()
+        : employee?.fullname || user?.username || 'Unknown'
+      
       return (
         <div className="flex flex-col">
           <span className="font-medium">
-            {user?.first_name} {user?.last_name}
+            {displayName}
           </span>
           <span className="text-sm text-muted-foreground">
             @{user?.username}
@@ -190,7 +203,13 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
     header: "Type",
     cell: ({ row }) => {
       const type = row.getValue("type") as string
-      return getTypeBadge(type)
+      const correctionType = row.original.correction_type as string
+      
+      
+      // Use correction_type as fallback if type is empty
+      const finalType = type || correctionType || 'unknown'
+      
+      return getTypeBadge(finalType)
     },
   },
   {

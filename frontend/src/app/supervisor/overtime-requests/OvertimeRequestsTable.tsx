@@ -214,19 +214,19 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         ),
         filterFn: 'includesString',
       }),
-      columnHelper.accessor('date_requested', {
+      columnHelper.accessor('date', {
         header: 'Tanggal',
         cell: ({ row }) => (
           <div>
-            <div className="font-medium">{formatDate(row.original.date_requested)}</div>
+            <div className="font-medium">{formatDate(row.original.date)}</div>
             <div className="text-xs text-gray-500">
-              Diajukan: {formatDateTime(row.original.created_at)}
+              Diajukan: {formatDateTime(row.original.requested_at)}
             </div>
           </div>
         ),
         sortingFn: 'datetime',
       }),
-      columnHelper.accessor('overtime_hours', {
+      columnHelper.accessor('total_hours', {
         header: 'Jam Lembur',
         cell: ({ getValue }) => (
           <div className="font-medium text-blue-600">
@@ -322,7 +322,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           return value === '' || row.getValue(id) === value;
         },
       }),
-      columnHelper.accessor('overtime_amount', {
+      columnHelper.accessor('total_amount', {
         header: 'Gaji Lembur',
         cell: ({ getValue }) => (
           <div className="font-medium text-green-600">
@@ -440,13 +440,13 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
     // Date range filter
     if (dateFromFilter) {
       filtered = filtered.filter(item => 
-        new Date(item.date_requested) >= new Date(dateFromFilter)
+        new Date(item.date) >= new Date(dateFromFilter)
       );
     }
     
     if (dateToFilter) {
       filtered = filtered.filter(item => 
-        new Date(item.date_requested) <= new Date(dateToFilter)
+        new Date(item.date) <= new Date(dateToFilter)
       );
     }
     
@@ -476,6 +476,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
   });
 
   useEffect(() => {
+    console.log('🎯 OvertimeRequestsTable: Component mounted, starting fetchData...');
     fetchData();
   }, []);
 
@@ -484,8 +485,10 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       setLoading(true);
       setError(null);
       
+      console.log('🚀 OvertimeRequestsTable: Starting to fetch data...');
+      
       // Fetch data individually to avoid Promise.all issues
-      const overtimeResponse = await authFetch('/api/overtime-requests/');
+      const overtimeResponse = await authFetch('/api/v2/overtime/supervisor/overtime');
       const divisionsResponse = await authFetch('/api/v2/employees/divisions/');
       const supervisorResponse = await authFetch('/api/v2/auth/me');
 
@@ -493,18 +496,29 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         throw new Error('Failed to fetch overtime requests');
       }
 
-      const overtimeData: OvertimeRequestsResponse = await overtimeResponse.json();
-      setData(overtimeData.results);
+      const overtimeData = await overtimeResponse.json();
+      console.log('📊 OvertimeRequestsTable: Overtime data received:', overtimeData);
+      
+      // Handle both array response and paginated response
+      const results = Array.isArray(overtimeData) ? overtimeData : overtimeData.results || [];
+      console.log('📊 OvertimeRequestsTable: Results to display:', results);
+      setData(results);
 
 
       // Fetch supervisor info (optional, for determining role)
       if (supervisorResponse.ok) {
         const meData = await supervisorResponse.json();
-        setSupervisorInfo({
-          isOrgWide: meData?.position?.can_approve_overtime_org_wide || false,
+        const supervisorInfo = {
+          isOrgWide: meData?.current_context?.can_approve_overtime_org_wide || false,
           isAdmin: (meData?.groups || []).includes('admin') || !!meData?.is_superuser,
-          approvalLevel: meData?.position?.approval_level || 1
+          approvalLevel: meData?.current_context?.approval_level || 1
+        };
+        console.log('🔍 Supervisor Info Debug:', {
+          current_context: meData?.current_context,
+          supervisorInfo,
+          raw_meData: meData
         });
+        setSupervisorInfo(supervisorInfo);
       } else {
         // Fallback: assume division supervisor
         setSupervisorInfo({
@@ -520,7 +534,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         // Extract unique divisions from the overtime data and merge with API data
         const uniqueDivisions = Array.from(
           new Map([
-            ...overtimeData.results
+            ...results
               .filter(req => req?.employee?.division)
               .map(req => [req.employee!.division!.id, req.employee!.division!]),
             ...(divisionsData.results || divisionsData || []).map((div: any) => [div.id, div])
@@ -531,7 +545,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         // Fallback: extract divisions from overtime data
         const uniqueDivisions = Array.from(
           new Map(
-            overtimeData.results
+            results
               .filter(req => req?.employee?.division)
               .map(req => [req.employee!.division!.id, req.employee!.division!])
           ).values()
@@ -550,7 +564,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
     setProcessing(true);
     try {
-      const endpoint = `/api/v2/overtime/overtime/${selectedRequest.id}/${actionType}/`;
+      const endpoint = `/api/v2/overtime/supervisor/overtime/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : actionType === 'approve' ? { approval_level: supervisorInfo?.approvalLevel || 1 } : {};
 
       const response = await authFetch(endpoint, {
@@ -894,15 +908,15 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                     </div>
                     <div>
                       <span className="font-medium">Tanggal:</span>
-                      <div>{formatDate(selectedRequest.date_requested)}</div>
+                      <div>{formatDate(selectedRequest.date)}</div>
                     </div>
                     <div>
                       <span className="font-medium">Jam Lembur:</span>
-                      <div>{parseFloat(selectedRequest.overtime_hours).toFixed(1)} jam</div>
+                      <div>{parseFloat(selectedRequest.total_hours).toFixed(1)} jam</div>
                     </div>
                     <div>
                       <span className="font-medium">Gaji Lembur:</span>
-                      <div>{formatCurrency(selectedRequest.overtime_amount)}</div>
+                      <div>{formatCurrency(selectedRequest.total_amount)}</div>
                     </div>
                     <div className="col-span-2">
                       <span className="font-medium">Status Saat Ini:</span>

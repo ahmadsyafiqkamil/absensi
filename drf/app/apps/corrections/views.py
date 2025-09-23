@@ -9,7 +9,7 @@ from .serializers import (
     AttendanceCorrectionCreateUpdateSerializer, AttendanceCorrectionApprovalSerializer,
     AttendanceCorrectionListSerializer
 )
-from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee
+from apps.core.permissions import IsAdmin, IsSupervisor, IsEmployee, IsAdminOrSupervisor
 
 
 class AttendanceCorrectionViewSet(viewsets.ModelViewSet):
@@ -384,14 +384,24 @@ class AdminAttendanceCorrectionViewSet(AttendanceCorrectionViewSet):
 
 class SupervisorAttendanceCorrectionViewSet(AttendanceCorrectionViewSet):
     """Supervisor-specific attendance correction ViewSet"""
-    permission_classes = [IsSupervisor]
+    permission_classes = [IsAdminOrSupervisor]
     
     def get_queryset(self):
+        # Admin can see all corrections
+        if self.request.user.is_superuser or self.request.user.groups.filter(name='admin').exists():
+            return AttendanceCorrection.objects.all().select_related('user', 'employee', 'attendance')
+        
         # Supervisors can see corrections of employees in their division
-        if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.division:
-            return AttendanceCorrection.objects.filter(
-                employee__division=self.request.user.employee_profile.division
-            )
+        if hasattr(self.request.user, 'employee_profile'):
+            employee = self.request.user.employee_profile
+            
+            # Use employee's division (positions don't have division field)
+            if employee.division:
+                return AttendanceCorrection.objects.filter(
+                    employee__division=employee.division
+                ).select_related('user', 'employee', 'attendance')
+        
+        # If no division available, show no corrections (security)
         return AttendanceCorrection.objects.none()
 
 

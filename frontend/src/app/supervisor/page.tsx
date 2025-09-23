@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import TodayAttendance from '../pegawai/TodayAttendance';
 import AttendanceWidget from '../pegawai/AttendanceWidget';
 import MultiPositionSummary from '@/components/MultiPositionSummary';
+import { PositionSwitcher } from '@/components/PositionSwitcher';
 import { getApprovalCapabilitiesEnhanced, getMultiPositionApprovalInfo } from '@/lib/approval-utils';
 
 async function getMe() {
@@ -68,7 +69,13 @@ export default async function SupervisorPage() {
       
       <div className="max-w-6xl mx-auto px-4 py-8">
 
-        {/* Position Information
+        {/* Position Switcher */}
+        {/* <div className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Position Management</h2>
+          <PositionSwitcher />
+        </div> */}
+
+        {/* Position Information (Optional - can be uncommented for debugging)
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Position Information</h2>
           <MultiPositionSummary user={me} />
