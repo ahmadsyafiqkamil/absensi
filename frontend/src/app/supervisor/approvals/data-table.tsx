@@ -61,6 +61,12 @@ export function DataTable<TData, TValue>({
   loading = false,
   meta
 }: DataTableProps<TData, TValue>) {
+  console.log('=== DATATABLE RENDERED ===', { 
+    data, 
+    dataLength: data?.length, 
+    loading, 
+    firstItem: data?.[0] 
+  })
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})

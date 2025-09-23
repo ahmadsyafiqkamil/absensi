@@ -275,8 +275,22 @@ export function useSupervisorApprovalLevel() {
         let source = 'No position'
         let positionInfo = null
 
-        // Priority 1: Use backend-computed approval_capabilities
-        if (result.approval_capabilities) {
+        // Priority 1: Use current_context (posisi aktif untuk position switching)
+        if (result.current_context) {
+          level = result.current_context.approval_level || 0
+          const activePosition = result.current_context.active_position
+          source = `Current Context: ${activePosition?.name || result.current_context.context}`
+          positionInfo = {
+            total_positions: result.positions?.length || 1,
+            active_positions: activePosition ? [activePosition] : [],
+            primary_position: result.primary_position,
+            current_position: activePosition,
+            highest_level: level,
+            context: result.current_context.context
+          }
+        }
+        // Priority 2: Use backend-computed approval_capabilities (fallback)
+        else if (result.approval_capabilities) {
           level = result.approval_capabilities.approval_level || 0
           const activePositions = result.approval_capabilities.active_positions || []
           source = `Multi-position: ${activePositions.length} positions (max level ${level})`
@@ -287,7 +301,7 @@ export function useSupervisorApprovalLevel() {
             highest_level: level
           }
         }
-        // Priority 2: Use primary_position
+        // Priority 3: Use primary_position
         else if (result.primary_position) {
           level = result.primary_position.approval_level || 0
           source = `Primary Position: ${result.primary_position.name}`
@@ -297,7 +311,7 @@ export function useSupervisorApprovalLevel() {
             highest_level: level
           }
         }
-        // Priority 3: Use legacy position field
+        // Priority 4: Use legacy position field
         else if (result.position) {
           level = result.position.approval_level || 0
           source = `Legacy Position: ${result.position.name}`
@@ -307,7 +321,7 @@ export function useSupervisorApprovalLevel() {
             highest_level: level
           }
         }
-        // Priority 4: Use group-based fallback
+        // Priority 5: Use group-based fallback
         else if (userGroups.includes('admin') || result.is_superuser) {
           level = 2
           source = 'Admin/Superuser group'
@@ -316,16 +330,7 @@ export function useSupervisorApprovalLevel() {
           source = 'Supervisor group'
         }
 
-        // Override with current context if available (for real-time position switching)
-        if (currentContext) {
-          level = currentContext.approval_level || 0
-          source = `Current Context: ${currentContext.active_position?.name || currentContext.context}`
-          console.log('Using current context for approval level:', {
-            context: currentContext.context,
-            approval_level: currentContext.approval_level,
-            active_position: currentContext.active_position?.name
-          })
-        }
+        // Note: current_context is now handled as Priority 1 above
 
         console.log('Enhanced approval level calculation:', {
           userGroups,

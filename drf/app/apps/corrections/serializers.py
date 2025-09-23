@@ -65,6 +65,19 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
         """Custom representation to include computed fields for frontend"""
         data = super().to_representation(instance)
         
+        # Debug logging
+        print(f"=== CORRECTION SERIALIZER DEBUG ===")
+        print(f"Instance ID: {instance.id}")
+        print(f"User: {instance.user}")
+        print(f"Employee: {instance.employee}")
+        print(f"Correction Type: {instance.correction_type}")
+        print(f"Created At: {instance.created_at}")
+        print(f"User first_name: {instance.user.first_name if instance.user else 'None'}")
+        print(f"User last_name: {instance.user.last_name if instance.user else 'None'}")
+        print(f"User username: {instance.user.username if instance.user else 'None'}")
+        print(f"Final data user field: {data.get('user', 'NOT_FOUND')}")
+        print(f"Final data type field: {data.get('type', 'NOT_FOUND')}")
+        
         # Add computed fields for frontend compatibility
         if instance.date_local:
             # Return date in ISO format that can be parsed by JavaScript Date
@@ -72,6 +85,10 @@ class AttendanceCorrectionSerializer(serializers.ModelSerializer):
         elif instance.attendance and instance.attendance.date_local:
             # Fallback to attendance date if correction date is not set
             data['date_local'] = instance.attendance.date_local.isoformat() + 'T00:00:00Z'
+        
+        # Format created_at for frontend
+        if instance.created_at:
+            data['created_at'] = instance.created_at.isoformat()
         
         # Convert proposed times back to local timezone for display
         if instance.requested_check_in:

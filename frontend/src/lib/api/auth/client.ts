@@ -176,10 +176,17 @@ export const authApi = {
     group: 'admin' | 'supervisor' | 'pegawai'
   }): Promise<{ id: number; username: string; group: string; message: string }> => {
     try {
+      // Convert group to groups array format for backend compatibility
+      const { group, ...otherData } = userData
+      const requestData = {
+        ...otherData,
+        groups: [group]
+      }
+      
       const response = await legacyFetch('/api/v2/users/users/provision/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
+        body: JSON.stringify(requestData)
       })
 
       if (!response.ok) {

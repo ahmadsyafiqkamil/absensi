@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         username,
         password: password || '1',
         email: email || '',
-        group
+        groups: [group]  // Send as array to match backend expectation
       })
     });
 
