@@ -132,7 +132,7 @@ export default function PotentialOvertimeTable({ onQuickSubmit, refreshTrigger }
       if (dateRange.start_date) queryParams.append('start_date', dateRange.start_date);
       if (dateRange.end_date) queryParams.append('end_date', dateRange.end_date);
 
-      const response = await fetch(`/api/v2/overtime/potential?${queryParams.toString()}`);
+      const response = await fetch(`/api/v2/overtime/overtime/potential_overtime/?${queryParams.toString()}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch potential overtime data');

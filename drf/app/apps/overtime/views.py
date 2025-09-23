@@ -1060,14 +1060,21 @@ class SupervisorOvertimeRequestViewSet(OvertimeRequestViewSet):
     def get_queryset(self):
         # Supervisors can see overtime requests of employees in their division
         # If they have org-wide approval, they can see all overtime requests
-        if hasattr(self.request.user, 'employee_profile') and self.request.user.employee_profile.position:
-            if self.request.user.employee_profile.position.can_approve_overtime_org_wide:
+        if hasattr(self.request.user, 'employee_profile'):
+            employee_profile = self.request.user.employee_profile
+            
+            # Check if user has org-wide approval capability
+            can_approve_org_wide = False
+            if hasattr(employee_profile, 'approval_capabilities') and employee_profile.approval_capabilities:
+                can_approve_org_wide = employee_profile.approval_capabilities.get('can_approve_overtime_org_wide', False)
+            
+            if can_approve_org_wide:
                 # Org-wide approval: can see all overtime requests
                 return OvertimeRequest.objects.all()
-            elif self.request.user.employee_profile.division:
+            elif employee_profile.division:
                 # Division-only approval: can see only their division's requests
                 return OvertimeRequest.objects.filter(
-                    employee__division=self.request.user.employee_profile.division
+                    employee__division=employee_profile.division
                 )
         return OvertimeRequest.objects.none()
 
