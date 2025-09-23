@@ -43,10 +43,9 @@ services:
     environment:
       PMA_HOST: mysql
       PMA_PORT: 3306
-      PMA_USER: root
-      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PMA_ARBITRARY: 0
       PMA_ABSOLUTE_URI: https://phpmyadmin.${FRONTEND_DOMAIN}
+      # Remove PMA_USER and PMA_PASSWORD to force login prompt
     # Remove public port exposure for security (will be accessed via Caddy)
     depends_on:
       - mysql
