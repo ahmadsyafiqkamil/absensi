@@ -13,9 +13,20 @@ class IsAdmin(permissions.BasePermission):
 class IsSupervisor(permissions.BasePermission):
     """Allow access only to supervisor users"""
     def has_permission(self, request, view):
-        return request.user.is_authenticated and (
-            request.user.groups.filter(name='supervisor').exists()
-        )
+        if not request.user.is_authenticated:
+            return False
+        
+        # Check if user has supervisor group
+        if request.user.groups.filter(name='supervisor').exists():
+            return True
+        
+        # Check if user has approval capabilities (for multi-position users)
+        if hasattr(request.user, 'employee_profile'):
+            employee = request.user.employee_profile
+            approval_capabilities = employee.get_approval_capabilities()
+            return approval_capabilities.get('approval_level', 0) > 0
+        
+        return False
 
 
 class IsEmployee(permissions.BasePermission):

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Header from '@/components/Header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ApprovalLevelWarning } from '@/components/ui/approval-level-warning'
+import { PositionSwitcher } from '@/components/PositionSwitcher'
 import { useSupervisorApprovalLevel } from '@/lib/hooks'
 import { DataTable } from './data-table'
 import { columns, type AttendanceCorrection } from './columns'
@@ -55,19 +56,42 @@ export default function ApprovalsPage() {
   }, [])
 
   async function load() {
+    console.log('=== LOAD FUNCTION CALLED ===')
     setLoading(true)
     setError(null)
     try {
+      console.log('=== FETCHING DATA ===')
       // Use V2 API endpoint for supervisor corrections
-      const resp = await fetch('/api/v2/corrections/supervisor?status=pending')
+      const resp = await fetch('/api/v2/corrections/supervisor/?status=pending', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      console.log('=== RESPONSE RECEIVED ===', { status: resp.status, ok: resp.ok })
+      
       const data = await resp.json().catch(() => ({}))
+      console.log('=== DATA PARSED ===', data)
+      
       const list = Array.isArray(data) ? data : (data.results || [])
+      console.log('=== LIST PROCESSED ===', { list, listLength: list.length })
+      
       setItems(list)
-      console.log('LOAD_DATA_V2', { list, response: data })
+      console.log('=== ITEMS SET ===', { 
+        list, 
+        response: data, 
+        listLength: list.length,
+        firstItem: list[0],
+        firstItemUser: list[0]?.user,
+        firstItemEmployee: list[0]?.employee,
+        firstItemType: list[0]?.type
+      })
     } catch (e) {
+      console.error('=== ERROR IN LOAD ===', e)
       setError(e instanceof Error ? e.message : 'Gagal memuat data')
     } finally {
       setLoading(false)
+      console.log('=== LOAD COMPLETED ===')
     }
   }
 
@@ -88,14 +112,16 @@ export default function ApprovalsPage() {
     setError(null)
     try {
       // Use V2 API endpoints for approval actions
-      const path = action === 'approve' ? `/api/v2/corrections/${id}/approve` : `/api/v2/corrections/${id}/reject`
+      const path = `/api/v2/corrections/corrections/${id}/approve/`
       console.log('APPROVAL_ACTION_V2', { id, action, path })
       
       const resp = await fetch(path, { 
         method: 'POST', 
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
-          decision_note: decisionNote
+          action: action,
+          reason: decisionNote
         }) 
       })
       
@@ -174,6 +200,11 @@ export default function ApprovalsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header title="Approvals" subtitle="Review and approve attendance corrections" username={me?.username || ''} role={role} />
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Position Switcher */}
+        {/* <div className="mb-6">
+          <PositionSwitcher />
+        </div> */}
+
         {/* Approval Level Warning */}
         {approvalLevel !== null && (
           <ApprovalLevelWarning approvalLevel={approvalLevel} className="mb-6" />
