@@ -214,23 +214,23 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         ),
         filterFn: 'includesString',
       }),
-      columnHelper.accessor('date', {
+      columnHelper.accessor('date_requested', {
         header: 'Tanggal',
         cell: ({ row }) => (
           <div>
-            <div className="font-medium">{formatDate(row.original.date)}</div>
+            <div className="font-medium">{formatDate(row.original.date_requested)}</div>
             <div className="text-xs text-gray-500">
-              Diajukan: {formatDateTime(row.original.requested_at)}
+              Diajukan: {formatDateTime(row.original.created_at)}
             </div>
           </div>
         ),
         sortingFn: 'datetime',
       }),
-      columnHelper.accessor('total_hours', {
+      columnHelper.accessor('overtime_hours', {
         header: 'Jam Lembur',
         cell: ({ getValue }) => (
           <div className="font-medium text-blue-600">
-            {parseFloat(getValue()).toFixed(1)}j
+            {parseFloat(getValue() as string).toFixed(1)}j
           </div>
         ),
         sortingFn: 'alphanumeric',
@@ -322,11 +322,11 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           return value === '' || row.getValue(id) === value;
         },
       }),
-      columnHelper.accessor('total_amount', {
+      columnHelper.accessor('overtime_amount', {
         header: 'Gaji Lembur',
         cell: ({ getValue }) => (
           <div className="font-medium text-green-600">
-            {formatCurrency(getValue())}
+            {formatCurrency(getValue() as string)}
           </div>
         ),
         sortingFn: 'alphanumeric',
@@ -438,17 +438,17 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
     }
     
     // Date range filter
-    if (dateFromFilter) {
-      filtered = filtered.filter(item => 
-        new Date(item.date) >= new Date(dateFromFilter)
-      );
-    }
-    
-    if (dateToFilter) {
-      filtered = filtered.filter(item => 
-        new Date(item.date) <= new Date(dateToFilter)
-      );
-    }
+      if (dateFromFilter) {
+        filtered = filtered.filter(item => 
+          new Date(item.date_requested) >= new Date(dateFromFilter)
+        );
+      }
+      
+      if (dateToFilter) {
+        filtered = filtered.filter(item => 
+          new Date(item.date_requested) <= new Date(dateToFilter)
+        );
+      }
     
     return filtered;
   }, [data, statusFilter, divisionFilter, dateFromFilter, dateToFilter]);
@@ -536,8 +536,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         const uniqueDivisions = Array.from(
           new Map([
             ...results
-              .filter(req => req?.employee?.division)
-              .map(req => [req.employee!.division!.id, req.employee!.division!]),
+              .filter((req: OvertimeRequest) => req?.employee?.division)
+              .map((req: OvertimeRequest) => [req.employee!.division!.id, req.employee!.division!]),
             ...(divisionsData.results || divisionsData || []).map((div: any) => [div.id, div])
           ].filter(([_, division]) => division)).values()
         );
@@ -547,8 +547,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         const uniqueDivisions = Array.from(
           new Map(
             results
-              .filter(req => req?.employee?.division)
-              .map(req => [req.employee!.division!.id, req.employee!.division!])
+              .filter((req: OvertimeRequest) => req?.employee?.division)
+              .map((req: OvertimeRequest) => [req.employee!.division!.id, req.employee!.division!])
           ).values()
         );
         setDivisions(uniqueDivisions as {id: number, name: string}[]);
@@ -565,7 +565,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
 
     setProcessing(true);
     try {
-      const endpoint = `/api/v2/overtime/supervisor/overtime/${selectedRequest.id}/${actionType}/`;
+        const endpoint = `/api/v2/overtime/overtime/${selectedRequest.id}/${actionType}/`;
       const body = actionType === 'reject' ? { rejection_reason: rejectionReason } : actionType === 'approve' ? { approval_level: supervisorInfo?.approvalLevel || 1 } : {};
 
       const response = await authFetch(endpoint, {
@@ -907,18 +907,18 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                       <span className="font-medium">Karyawan:</span>
                       <div>{getEmployeeName(selectedRequest.employee)}</div>
                     </div>
-                    <div>
-                      <span className="font-medium">Tanggal:</span>
-                      <div>{formatDate(selectedRequest.date)}</div>
-                    </div>
-                    <div>
-                      <span className="font-medium">Jam Lembur:</span>
-                      <div>{parseFloat(selectedRequest.total_hours).toFixed(1)} jam</div>
-                    </div>
-                    <div>
-                      <span className="font-medium">Gaji Lembur:</span>
-                      <div>{formatCurrency(selectedRequest.total_amount)}</div>
-                    </div>
+                      <div>
+                        <span className="font-medium">Tanggal:</span>
+                       <div>{formatDate(selectedRequest.date_requested)}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium">Jam Lembur:</span>
+                       <div>{parseFloat(selectedRequest.overtime_hours).toFixed(1)} jam</div>
+                      </div>
+                      <div>
+                        <span className="font-medium">Gaji Lembur:</span>
+                       <div>{formatCurrency(selectedRequest.overtime_amount)}</div>
+                      </div>
                     <div className="col-span-2">
                       <span className="font-medium">Status Saat Ini:</span>
                       <div className="mt-1">
