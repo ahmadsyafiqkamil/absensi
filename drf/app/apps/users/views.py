@@ -39,6 +39,26 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
     
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def check_username(self, request):
+        """Check if username is available"""
+        username = request.query_params.get('username')
+        
+        if not username:
+            return Response(
+                {'detail': 'Username parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if username exists
+        exists = User.objects.filter(username=username).exists()
+        
+        return Response({
+            'username': username,
+            'available': not exists,
+            'exists': exists
+        })
+    
     @action(detail=True, methods=['post'])
     def set_groups(self, request, pk=None):
         """Set user groups"""

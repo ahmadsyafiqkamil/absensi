@@ -213,7 +213,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            "user_id", "nip", "fullname", "division_id", "position_id",
+            "id", "user_id", "nip", "fullname", "division_id", "position_id",
             "gaji_pokok", "tmt_kerja", "tempat_lahir", "tanggal_lahir"
         ]
     

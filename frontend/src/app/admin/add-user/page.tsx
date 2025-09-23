@@ -164,18 +164,28 @@ export default function AddUserPage() {
     const updatedPositions = [...selectedPositions];
     
     if (field === 'position_id') {
-      const selectedPosition = availablePositions.find(p => p.id === parseInt(value));
+      const positionId = parseInt(value);
+      const selectedPosition = availablePositions.find(p => p.id === positionId);
       if (selectedPosition) {
         updatedPositions[index].position_id = selectedPosition.id;
         updatedPositions[index].position = selectedPosition;
+        console.log(`[DEBUG] Updated position assignment ${index}:`, {
+          position_id: selectedPosition.id,
+          position_name: selectedPosition.name,
+          assignment: updatedPositions[index]
+        });
+      } else {
+        console.warn(`[WARNING] Position with ID ${positionId} not found in available positions`);
       }
     } else if (field === 'is_primary' && value) {
       // Only one position can be primary
       updatedPositions.forEach((pos, i) => {
         pos.is_primary = i === index;
       });
+      console.log(`[DEBUG] Set position ${index} as primary`);
     } else {
       (updatedPositions[index] as any)[field] = value;
+      console.log(`[DEBUG] Updated position assignment ${index} field ${field}:`, value);
     }
     
     setSelectedPositions(updatedPositions);
@@ -200,9 +210,24 @@ export default function AddUserPage() {
     // Basic validation
     if (!formData.username.trim()) {
       errors.push('Username is required');
+    } else {
+      // Check for username format
+      if (formData.username.length < 3) {
+        errors.push('Username must be at least 3 characters long');
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
+        errors.push('Username can only contain letters, numbers, and underscores');
+      }
     }
     if (!formData.password.trim()) {
       errors.push('Password is required');
+    } else if (formData.password.length < 6) {
+      errors.push('Password must be at least 6 characters long');
+    }
+    
+    // Position validation for single position mode
+    if (!showMultiPosition && formData.position_id === 'none') {
+      errors.push('Position is required - please select a position');
     }
     
     // Multi-position validation
@@ -225,6 +250,14 @@ export default function AddUserPage() {
         errors.push('All position assignments must have a position selected');
       }
       
+      // Check for positions that don't exist in available positions
+      const invalidPositionIds = selectedPositions.filter(p => 
+        p.position_id > 0 && !availablePositions.find(ap => ap.id === p.position_id)
+      );
+      if (invalidPositionIds.length > 0) {
+        errors.push('Some selected positions are no longer available');
+      }
+      
       // Check for duplicate positions
       const positionIds = selectedPositions.map(p => p.position_id).filter(id => id > 0);
       const uniquePositionIds = new Set(positionIds);
@@ -240,10 +273,29 @@ export default function AddUserPage() {
             errors.push(`Position ${i + 1}: Effective until date must be after effective from date`);
           }
         }
+        
+        // Check if position object is properly populated
+        if (assignment.position_id > 0 && (!assignment.position || assignment.position.id !== assignment.position_id)) {
+          errors.push(`Position ${i + 1}: Position data is not properly loaded`);
+        }
       }
     }
     
     return errors;
+  };
+
+  const checkUsernameAvailability = async (username: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/check-username?username=${encodeURIComponent(username)}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.available;
+      }
+      return true; // If check fails, assume available
+    } catch (error) {
+      console.warn('Username availability check failed:', error);
+      return true; // If check fails, assume available
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -252,10 +304,22 @@ export default function AddUserPage() {
     setError("");
     setSuccess("");
 
+    // Initialize success message
+    let successMessage = "User created successfully!";
+
     // Validate form
     const validationErrors = validateForm();
     if (validationErrors.length > 0) {
       setError(validationErrors.join('; '));
+      setIsLoading(false);
+      return;
+    }
+
+    // Check username availability
+    console.log('[DEBUG] Checking username availability for:', formData.username);
+    const isUsernameAvailable = await checkUsernameAvailability(formData.username);
+    if (!isUsernameAvailable) {
+      setError(`Username '${formData.username}' is already taken. Please choose a different username.`);
       setIsLoading(false);
       return;
     }
@@ -296,6 +360,7 @@ export default function AddUserPage() {
       if (!userResponse.ok) {
         const errorText = await userResponse.text();
         console.error('[DEBUG] User provision error response:', errorText);
+        console.error('[DEBUG] User provision error status:', userResponse.status);
         
         let errorData;
         try {
@@ -304,10 +369,27 @@ export default function AddUserPage() {
           errorData = { detail: errorText };
         }
         
+        // Handle specific error cases
+        if (userResponse.status === 500) {
+          // Check if it's a duplicate username error
+          if (errorText.includes('Duplicate entry') && errorText.includes('username')) {
+            throw new Error(`Username '${formData.username}' already exists. Please choose a different username.`);
+          }
+          throw new Error(`Server error: ${extractErrorMessage(errorData) || 'Internal server error'}`);
+        }
+        
         throw new Error(extractErrorMessage(errorData) || `Failed to create user (${userResponse.status})`);
       }
 
       const userData = await userResponse.json();
+
+      // Validate user creation result
+      if (!userData.id) {
+        console.error('[ERROR] User ID is missing from user creation result:', userData);
+        throw new Error('User ID is missing from creation result');
+      }
+
+      console.log('[DEBUG] User created successfully:', { id: userData.id, username: userData.username });
 
       // Then, create employee record if NIP is provided
       if (formData.nip) {
@@ -322,7 +404,7 @@ export default function AddUserPage() {
           fullname: formData.fullname || null,
         };
 
-        // Add legacy position for backward compatibility if not using multi-position
+        // Add position for single position mode
         if (!showMultiPosition && formData.position_id !== 'none') {
           (employeeData as any).position_id = formData.position_id;
         }
@@ -340,14 +422,43 @@ export default function AddUserPage() {
 
         const employeeResult = await employeeResponse.json();
 
+        // Debug logging for employee creation result
+        console.log('[DEBUG] Employee creation result:', employeeResult);
+        console.log('[DEBUG] Employee ID:', employeeResult.id);
+        console.log('[DEBUG] Employee ID type:', typeof employeeResult.id);
+        console.log('[DEBUG] Employee response status:', employeeResponse.status);
+        console.log('[DEBUG] Employee response headers:', Object.fromEntries(employeeResponse.headers.entries()));
+
+        // Debug logging for multi-position assignment
+        console.log('[DEBUG] Multi-position check:', {
+          showMultiPosition,
+          selectedPositionsLength: selectedPositions.length,
+          selectedPositions: selectedPositions,
+          willAssignPositions: showMultiPosition && selectedPositions.length > 0
+        });
+
         // Assign multiple positions if multi-position is enabled
         if (showMultiPosition && selectedPositions.length > 0) {
+          console.log('[DEBUG] Multi-position assignment:', {
+            showMultiPosition,
+            selectedPositionsCount: selectedPositions.length,
+            selectedPositions: selectedPositions,
+            employeeResult: employeeResult
+          });
+          
+          // Validate employee ID exists
+          if (!employeeResult.id) {
+            console.error('[ERROR] Employee ID is missing from employee creation result:', employeeResult);
+            throw new Error('Employee ID is missing from creation result');
+          }
+          
+          const assignmentErrors: string[] = [];
+          const successfulAssignments: string[] = [];
+          
           for (const positionAssignment of selectedPositions) {
             if (positionAssignment.position_id > 0) {
-              const assignmentResponse = await fetch('/api/v2/employees/employee-positions/assign_position/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+              try {
+                const assignmentData = {
                   employee_id: employeeResult.id,
                   position_id: positionAssignment.position_id,
                   is_primary: positionAssignment.is_primary,
@@ -355,20 +466,56 @@ export default function AddUserPage() {
                   effective_from: positionAssignment.effective_from,
                   effective_until: positionAssignment.effective_until || null,
                   assignment_notes: positionAssignment.assignment_notes || `Assigned during user creation - ${new Date().toISOString()}`
-                })
-              });
+                };
 
-              if (!assignmentResponse.ok) {
-                const errorData = await assignmentResponse.json().catch(() => null);
-                console.warn(`Failed to assign position ${positionAssignment.position.name}:`, errorData);
-                // Don't throw error here, continue with other assignments
+                console.log(`[DEBUG] Assigning position ${positionAssignment.position?.name || positionAssignment.position_id}:`, assignmentData);
+                console.log(`[DEBUG] Assignment data JSON string:`, JSON.stringify(assignmentData));
+                console.log(`[DEBUG] Assignment data employee_id:`, assignmentData.employee_id);
+                console.log(`[DEBUG] Assignment data employee_id type:`, typeof assignmentData.employee_id);
+
+                const assignmentResponse = await fetch('/api/v2/employees/employee-positions/assign_position/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(assignmentData)
+                });
+
+                if (!assignmentResponse.ok) {
+                  const errorData = await assignmentResponse.json().catch(() => null);
+                  const errorMessage = `Failed to assign position ${positionAssignment.position?.name || positionAssignment.position_id}: ${errorData?.detail || errorData?.error || 'Unknown error'}`;
+                  console.error(`❌ ${errorMessage}`, errorData);
+                  assignmentErrors.push(errorMessage);
+                } else {
+                  const assignmentResult = await assignmentResponse.json();
+                  const successMessage = `Successfully assigned position ${positionAssignment.position?.name || positionAssignment.position_id}`;
+                  console.log(`✅ ${successMessage}:`, assignmentResult);
+                  successfulAssignments.push(positionAssignment.position?.name || `Position ${positionAssignment.position_id}`);
+                }
+              } catch (error) {
+                const errorMessage = `Network error assigning position ${positionAssignment.position?.name || positionAssignment.position_id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                console.error(`❌ ${errorMessage}`, error);
+                assignmentErrors.push(errorMessage);
               }
+            } else {
+              const errorMessage = `Invalid position assignment: position_id is ${positionAssignment.position_id}`;
+              console.error(`❌ ${errorMessage}`, positionAssignment);
+              assignmentErrors.push(errorMessage);
             }
+          }
+
+          // Report assignment results
+          if (assignmentErrors.length > 0) {
+            console.warn(`[WARNING] ${assignmentErrors.length} position assignment(s) failed:`, assignmentErrors);
+            // Don't throw error, but show warning in success message
+            successMessage += ` Warning: ${assignmentErrors.length} position assignment(s) failed.`;
+          }
+          
+          if (successfulAssignments.length > 0) {
+            console.log(`[SUCCESS] ${successfulAssignments.length} position assignment(s) successful:`, successfulAssignments);
           }
         }
       }
 
-      let successMessage = "User created successfully!";
+      // Update success message with position assignment info
       if (showMultiPosition && selectedPositions.length > 0) {
         const assignedCount = selectedPositions.filter(p => p.position_id > 0).length;
         successMessage += ` ${assignedCount} position(s) assigned.`;
@@ -541,7 +688,7 @@ export default function AddUserPage() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="position_id">Position</Label>
+                      <Label htmlFor="position_id">Position {!showMultiPosition && <span className="text-red-500">*</span>}</Label>
                       <div className="flex items-center space-x-2">
                         <Checkbox 
                           id="multi-position"
@@ -561,11 +708,11 @@ export default function AddUserPage() {
                     
                     {!showMultiPosition ? (
                       <Select value={formData.position_id} onValueChange={(value) => handleSelectChange('position_id', value)}>
-                        <SelectTrigger>
+                        <SelectTrigger className={formData.position_id === 'none' ? 'border-red-300' : ''}>
                           <SelectValue placeholder="Select Position" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">Select Position</SelectItem>
+                          <SelectItem value="none" className="text-gray-400">Select Position (Required)</SelectItem>
                           {positions.map((position) => (
                             <SelectItem key={position.id} value={String(position.id)}>
                               <div className="flex items-center justify-between w-full">

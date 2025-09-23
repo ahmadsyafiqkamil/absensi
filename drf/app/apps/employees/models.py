@@ -532,3 +532,14 @@ class Employee(TimeStampedModel):
             if first_assignment:
                 self.active_position = first_assignment
                 self.save()
+    
+    def delete(self, *args, **kwargs):
+        """Override delete to also delete associated user"""
+        # Get the user before deleting employee
+        user = self.user
+        
+        # Delete the employee first (this will cascade to related records)
+        super().delete(*args, **kwargs)
+        
+        # Then delete the user
+        user.delete()
