@@ -485,7 +485,7 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
       setError(null);
       
       // Fetch data individually to avoid Promise.all issues
-      const overtimeResponse = await authFetch('/api/overtime-requests/');
+      const overtimeResponse = await authFetch('/api/v2/overtime/overtime/');
       const divisionsResponse = await authFetch('/api/v2/employees/divisions/');
       const supervisorResponse = await authFetch('/api/v2/auth/me');
 
