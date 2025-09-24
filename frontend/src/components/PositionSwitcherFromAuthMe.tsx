@@ -1,3 +1,4 @@
+// FileName: /PositionSwitcherFromAuthMe.tsx
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -178,7 +179,7 @@ export default function PositionSwitcherFromAuthMe() {
   // Don't render if not authenticated or no contexts
   if (isLoading) {
     return (
-      <Button variant="ghost" size="sm" disabled>
+      <Button variant="default" size="sm" disabled className="bg-white border border-gray-300 shadow-sm">
         <RefreshCw className="h-4 w-4 animate-spin mr-2" />
         Loading...
       </Button>
@@ -197,7 +198,7 @@ export default function PositionSwitcherFromAuthMe() {
   if (contexts.length === 1) {
     const singleContext = contexts[0];
     return (
-      <Badge variant="secondary" className="flex items-center gap-1">
+      <Badge variant="secondary" className="flex items-center gap-1 bg-white border border-gray-300 text-gray-800 shadow-sm">
         <Briefcase className="h-3 w-3" />
         {singleContext.position_name}
         {singleContext.is_primary && (
@@ -212,9 +213,10 @@ export default function PositionSwitcherFromAuthMe() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button 
-          variant="ghost" 
+          variant="default" 
           size="sm" 
-          className="flex items-center gap-2"
+          // Ditambahkan !bg-white untuk memastikan latar belakang solid
+          className="flex items-center gap-2 bg-white !bg-white border border-gray-300 hover:bg-gray-100 shadow-sm"
           disabled={isSwitching}
         >
           {isSwitching ? (
@@ -231,7 +233,11 @@ export default function PositionSwitcherFromAuthMe() {
         </Button>
       </DropdownMenuTrigger>
       
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent 
+        align="end" 
+        // Ditambahkan !bg-white untuk memastikan latar belakang konten dropdown solid
+        className="w-72 !bg-white"
+      >
         <DropdownMenuLabel className="flex items-center gap-2">
           <User className="h-4 w-4" />
           Switch Position Context
