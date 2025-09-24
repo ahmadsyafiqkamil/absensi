@@ -950,6 +950,29 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject a monthly summary request"""
+        if not (request.user.is_superuser or 
+                request.user.groups.filter(name__in=['admin', 'supervisor']).exists()):
+            return Response(
+                {"error": "Only admins and supervisors can reject monthly summary requests"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        monthly_summary = self.get_object()
+        serializer = MonthlySummaryRequestApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            reason = serializer.validated_data.get('reason', '')
+            monthly_summary.reject(request.user, reason)
+            return Response(
+                {"message": "Monthly summary request rejected successfully"}, 
+                status=status.HTTP_200_OK
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=False, methods=['get'])
     def pending(self, request):
         """Get pending monthly summary requests for approval"""

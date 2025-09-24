@@ -33,3 +33,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }
+

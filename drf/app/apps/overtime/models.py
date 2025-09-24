@@ -362,6 +362,11 @@ class MonthlySummaryRequest(TimeStampedModel):
         return datetime(self.year, self.month, 1).strftime('%B')
     
     @property
+    def request_period(self):
+        """Get request period in YYYY-MM format"""
+        return f"{self.year}-{self.month:02d}"
+    
+    @property
     def is_pending(self):
         """Check if request is pending approval"""
         return self.status == 'pending'

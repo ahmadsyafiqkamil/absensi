@@ -171,20 +171,22 @@ class AttendanceCorrection(TimeStampedModel):
         # Get or create attendance record
         attendance = self.attendance
         if not attendance and self.date_local:
-            # Create new attendance record for manual correction
+            # Get or create attendance record for manual correction
             from apps.settings.models import WorkSettings
             from django.utils import timezone as dj_timezone
             
             ws = WorkSettings.objects.first()
             tzname = ws.timezone if ws else dj_timezone.get_current_timezone_name()
             
-            attendance = Attendance.objects.create(
+            attendance, created = Attendance.objects.get_or_create(
                 user=self.user,
                 date_local=self.date_local,
-                timezone=tzname,
-                employee=self.employee
+                defaults={
+                    'timezone': tzname,
+                    'employee': self.employee
+                }
             )
-            # Link the correction to the new attendance record
+            # Link the correction to the attendance record
             self.attendance = attendance
             self.save()
         

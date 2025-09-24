@@ -247,11 +247,12 @@ class MonthlySummaryRequestSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     level1_approved_by = UserBasicSerializer(read_only=True)
     approved_by = UserBasicSerializer(read_only=True)
+    request_period = serializers.ReadOnlyField()
     
     class Meta:
         model = MonthlySummaryRequest
         fields = [
-            "id", "user", "employee", "month", "year", "purpose", "status",
+            "id", "user", "employee", "month", "year", "request_period", "purpose", "status",
             "level1_approved_by", "level1_approved_at",
             "approved_by", "approved_at", "rejection_reason",
             "requested_at"

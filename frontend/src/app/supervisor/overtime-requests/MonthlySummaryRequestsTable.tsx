@@ -195,7 +195,7 @@ interface OvertimeSummaryRequestsTableProps {
 export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSummaryRequestsTableProps) {
   const [data, setData] = useState<OvertimeSummaryRequest[]>([]);
   const [divisions, setDivisions] = useState<{id: number, name: string}[]>([]);
-  const [supervisorInfo, setSupervisorInfo] = useState<{isOrgWide: boolean, isAdmin: boolean} | null>(null);
+  const [supervisorInfo, setSupervisorInfo] = useState<{isOrgWide: boolean, isAdmin: boolean, approvalLevel: number} | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<OvertimeSummaryRequest | null>(null);
@@ -319,14 +319,17 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
           let disabledReason = '';
           let approvalLevel: 1 | 2 | null = null;
           
+          // Get the actual approval level from current context
+          const actualApprovalLevel = supervisorInfo?.approvalLevel || 1;
+          
           if (isAdmin) {
             // Admin can approve any status except rejected/approved/completed
             canApprove = status === 'pending' || status === 'level1_approved';
             canReject = status === 'pending' || status === 'level1_approved';
             buttonText = status === 'level1_approved' ? 'Final Approve' : 'Setujui';
             approvalLevel = status === 'level1_approved' ? 2 : 2; // admin defaults to final
-          } else if (isOrgWide) {
-            // Org-wide supervisor can only final approve after level1_approved
+          } else if (actualApprovalLevel >= 2 && isOrgWide) {
+            // User has approval level 2+ AND org-wide permission: can do final approval
             canApprove = status === 'level1_approved';
             canReject = status === 'pending' || status === 'level1_approved';
             buttonText = 'Final Approve';
@@ -335,12 +338,23 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
               disabledReason = 'Menunggu Level 1 Approval';
               canApprove = false;
             }
-          } else if (isDivisionSupervisor) {
-            // Division supervisor can only do level 1 approval
+          } else if (actualApprovalLevel >= 1) {
+            // User has approval level 1+: can do level 1 approval for pending requests
             canApprove = status === 'pending';
             canReject = status === 'pending';
             buttonText = 'Level 1 Approve';
             approvalLevel = 1;
+            
+            // If user has org-wide permission but only level 1 approval, they can still do level 1
+            if (isOrgWide && actualApprovalLevel === 1) {
+              // This handles cases like konsuler becoming home staff (level 1) but having org-wide permission
+              buttonText = 'Level 1 Approve';
+            }
+          } else {
+            // No approval permission
+            canApprove = false;
+            canReject = false;
+            disabledReason = 'Tidak memiliki permission approval';
           }
           
           if (status === 'approved' || status === 'rejected' || status === 'completed' || status === 'cancelled') {
@@ -377,8 +391,11 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                     variant="outline"
                     className="border-red-300 text-red-600 hover:bg-red-50 text-xs px-2 py-1"
                     onClick={() => openActionModal(row.original, 'reject')}
+                    title={supervisorInfo?.isAdmin ? 'Reject (Final)' : 
+                           (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Reject (Final)' : 
+                           'Reject (Level 1)'}
                   >
-                    Tolak
+                    {supervisorInfo?.isAdmin || (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Final Reject' : 'Level 1 Reject'}
                   </Button>
                 )}
               </div>
@@ -452,7 +469,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
       // Fetch data individually to avoid Promise.all issues
       const monthlySummaryResponse = await authFetch(`/api/v2/overtime/monthly-summary/`);
       const divisionsResponse = await authFetch(`/api/v2/employees/divisions/`);
-      const supervisorResponse = await authFetch(`/api/v2/overtime/summary/`);
+      const supervisorResponse = await authFetch('/api/v2/auth/me');
 
       if (!monthlySummaryResponse.ok) {
         throw new Error('Failed to fetch monthly summary requests');
@@ -466,16 +483,24 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
       // Fetch supervisor info (optional, for determining role)
       if (supervisorResponse.ok) {
-        const supervisorData = await supervisorResponse.json();
-        setSupervisorInfo({
-          isOrgWide: supervisorData.can_approve_overtime_org_wide || false,
-          isAdmin: false // This endpoint is for supervisors, so not admin
+        const meData = await supervisorResponse.json();
+        const supervisorInfo = {
+          isOrgWide: meData?.current_context?.can_approve_overtime_org_wide || false,
+          isAdmin: (meData?.groups || []).includes('admin') || !!meData?.is_superuser,
+          approvalLevel: meData?.current_context?.approval_level || 1
+        };
+        console.log('🔍 MonthlySummaryRequestsTable Supervisor Info Debug:', {
+          current_context: meData?.current_context,
+          supervisorInfo,
+          raw_meData: meData
         });
+        setSupervisorInfo(supervisorInfo);
       } else {
         // Fallback: assume division supervisor
         setSupervisorInfo({
           isOrgWide: false,
-          isAdmin: false
+          isAdmin: false,
+          approvalLevel: 1
         });
       }
 
@@ -515,20 +540,45 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
 
     setProcessing(true);
     try {
-      // Backend v2 expects a unified approve endpoint with an action payload
-      const endpoint = `/api/v2/overtime/monthly-summary/${selectedRequest.id}/approve/`;
-      // Decide approval_level client-side based on role and current status
+      // Use separate endpoints like overtime requests for consistency
+      const endpoint = actionType === 'approve' 
+        ? `/api/v2/overtime/monthly-summary/${selectedRequest.id}/approve/`
+        : `/api/v2/overtime/monthly-summary/${selectedRequest.id}/reject/`;
+      
+      // Determine approval_level based on role and current status (consistent with backend logic)
       let approval_level: 1 | 2 | undefined = undefined;
       if (actionType === 'approve') {
-        if (supervisorInfo?.isAdmin || supervisorInfo?.isOrgWide) {
-          approval_level = selectedRequest.status === 'level1_approved' ? 2 : 2;
-        } else {
-          approval_level = 1;
+        const actualApprovalLevel = supervisorInfo?.approvalLevel || 1;
+        
+        if (supervisorInfo?.isAdmin) {
+          // Admin can do final approval for any status except rejected/approved
+          approval_level = 2;
+        } else if (actualApprovalLevel >= 2 && supervisorInfo?.isOrgWide) {
+          // User has approval level 2+ AND org-wide permission: can do final approval
+          approval_level = 2;
+        } else if (actualApprovalLevel >= 1) {
+          // User has approval level 1+: can do level 1 approval for pending requests only
+          // If request is already level1_approved, they cannot approve again
+          if (selectedRequest.status === 'pending') {
+            approval_level = 1;
+          } else {
+            // Request is not pending, cannot approve at level 1
+            throw new Error('Request tidak dapat disetujui pada level 1 karena status bukan pending');
+          }
         }
       }
+      
       const body = actionType === 'approve'
         ? { action: 'approve', approval_level }
         : { action: 'reject', reason: rejectionReason };
+
+      console.log('🔍 MonthlySummaryRequestsTable: Sending request:', {
+        endpoint,
+        body,
+        actionType,
+        approval_level,
+        rejectionReason
+      });
 
       const response = await authFetch(endpoint, {
         method: 'POST',
@@ -578,7 +628,7 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
   // Get unique periods and report types for filters
   const uniquePeriods = useMemo(() => {
     const safeData = Array.isArray(data) ? data : [];
-    const periods = Array.from(new Set(safeData.map(item => item.request_period)));
+    const periods = Array.from(new Set(safeData.map(item => item.request_period).filter(Boolean)));
     return periods.sort().reverse(); // Most recent first
   }, [data]);
 
@@ -669,8 +719,8 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option key="all-divisions" value="">Semua Divisi</option>
-                {divisions.map((division) => (
-                  <option key={division.id} value={division.id.toString()}>
+                {divisions.map((division, index) => (
+                  <option key={`division-${division.id || index}`} value={division.id.toString()}>
                     {division.name}
                   </option>
                 ))}
@@ -687,8 +737,8 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option key="all-periods" value="">Semua Periode</option>
-                {uniquePeriods.map((period) => (
-                  <option key={period} value={period}>
+                {uniquePeriods.map((period, index) => (
+                  <option key={`period-${period || index}`} value={period}>
                     {formatPeriod(period)}
                   </option>
                 ))}
@@ -717,6 +767,23 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
           <CardTitle>Daftar Pengajuan Rekap Bulanan</CardTitle>
           <CardDescription>
             Kelola pengajuan rekap bulanan dari tim Anda
+            {supervisorInfo && (
+              <div className="mt-2 text-sm">
+                <span className="font-medium">Role Anda: </span>
+                {supervisorInfo.isAdmin ? (
+                  <span className="text-purple-600">Admin (Dapat approve/reject semua level)</span>
+                ) : supervisorInfo.isOrgWide && supervisorInfo.approvalLevel >= 2 ? (
+                  <span className="text-blue-600">Supervisor Organization-wide (Final approval)</span>
+                ) : supervisorInfo.approvalLevel >= 1 ? (
+                  <span className="text-green-600">
+                    Supervisor Level {supervisorInfo.approvalLevel} 
+                    {supervisorInfo.isOrgWide ? ' (Org-wide permission)' : ' (Divisi)'}
+                  </span>
+                ) : (
+                  <span className="text-gray-600">Tidak memiliki permission approval</span>
+                )}
+              </div>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -823,6 +890,40 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
               {actionType === 'approve' ? 'Setujui Pengajuan Rekap Bulanan' : 'Tolak Pengajuan Rekap Bulanan'}
             </Dialog.Title>
             
+            {/* Action Type Indicator */}
+            <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="text-sm font-medium text-blue-800">
+                {actionType === 'approve' ? (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Admin Approval' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Final Approval' : 
+                     'Level 1 Approval'}
+                  </>
+                ) : (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Admin Rejection' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Final Rejection' : 
+                     'Level 1 Rejection'}
+                  </>
+                )}
+              </div>
+              <div className="text-xs text-blue-600 mt-1">
+                {actionType === 'approve' ? (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Anda akan melakukan final approval langsung' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Anda akan melakukan final approval setelah level 1' : 
+                     'Anda akan melakukan level 1 approval, menunggu final approval'}
+                  </>
+                ) : (
+                  <>
+                    {supervisorInfo?.isAdmin ? 'Anda akan melakukan final rejection langsung' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Anda akan melakukan final rejection' : 
+                     'Anda akan melakukan level 1 rejection'}
+                  </>
+                )}
+              </div>
+            </div>
+            
             {selectedRequest && (
               <div className="space-y-4">
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -839,13 +940,39 @@ export default function OvertimeSummaryRequestsTable({ onRefresh }: OvertimeSumm
                       <span className="font-medium">Jenis Laporan:</span>
                       <div>{getReportTypeText(selectedRequest.report_type)}</div>
                     </div>
-                    <div>
+                    <div className="col-span-2">
                       <span className="font-medium">Status Saat Ini:</span>
                       <div className="mt-1">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedRequest.status)}`}>
                           {getStatusText(selectedRequest.status)}
                         </span>
                       </div>
+                      
+                      {/* Approval/Rejection History */}
+                      {(selectedRequest.level1_approved_by || selectedRequest.final_approved_by) && (
+                        <div className="mt-2 text-xs space-y-1">
+                          {selectedRequest.level1_approved_by && (
+                            <div className="text-green-600">
+                              ✓ Level 1 Approved by: {selectedRequest.level1_approved_by.username}
+                              {selectedRequest.level1_approved_at && (
+                                <span className="text-gray-500 ml-1">
+                                  ({formatDateTime(selectedRequest.level1_approved_at)})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {selectedRequest.final_approved_by && (
+                            <div className="text-green-600">
+                              ✓ Final Approved by: {selectedRequest.final_approved_by.username}
+                              {selectedRequest.final_approved_at && (
+                                <span className="text-gray-500 ml-1">
+                                  ({formatDateTime(selectedRequest.final_approved_at)})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="mt-4">

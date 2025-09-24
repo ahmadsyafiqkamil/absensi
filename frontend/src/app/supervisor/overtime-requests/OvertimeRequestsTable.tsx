@@ -48,8 +48,8 @@ type OvertimeRequest = {
     first_name: string;
     last_name: string;
   };
-  date_requested: string;
-  overtime_hours: string;
+  date: string;
+  total_hours: string;
   work_description: string;
   status: 'pending' | 'level1_approved' | 'approved' | 'rejected';
   approved_by: {
@@ -88,9 +88,11 @@ type OvertimeRequest = {
   } | null;
   final_rejected_at: string | null;
   rejection_reason: string | null;
-  overtime_amount: string;
+  total_amount: string | number | null;
+  hourly_rate: string | number | null;
   created_at: string;
   updated_at: string;
+  requested_at: string;
 };
 
 type OvertimeRequestsResponse = {
@@ -214,19 +216,19 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
         ),
         filterFn: 'includesString',
       }),
-      columnHelper.accessor('date_requested', {
+      columnHelper.accessor('date', {
         header: 'Tanggal',
         cell: ({ row }) => (
           <div>
-            <div className="font-medium">{formatDate(row.original.date_requested)}</div>
+            <div className="font-medium">{formatDate(row.original.date)}</div>
             <div className="text-xs text-gray-500">
-              Diajukan: {formatDateTime(row.original.created_at)}
+              Diajukan: {formatDateTime(row.original.requested_at || row.original.created_at)}
             </div>
           </div>
         ),
         sortingFn: 'datetime',
       }),
-      columnHelper.accessor('overtime_hours', {
+      columnHelper.accessor('total_hours', {
         header: 'Jam Lembur',
         cell: ({ getValue }) => (
           <div className="font-medium text-blue-600">
@@ -322,13 +324,23 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           return value === '' || row.getValue(id) === value;
         },
       }),
-      columnHelper.accessor('overtime_amount', {
+      columnHelper.accessor('total_amount', {
         header: 'Gaji Lembur',
-        cell: ({ getValue }) => (
-          <div className="font-medium text-green-600">
-            {formatCurrency(getValue() as string)}
-          </div>
-        ),
+        cell: ({ getValue }) => {
+          const amount = getValue() as string | number | null;
+          if (amount === null || amount === undefined || amount === '') {
+            return (
+              <div className="font-medium text-gray-500">
+                Belum dihitung
+              </div>
+            );
+          }
+          return (
+            <div className="font-medium text-green-600">
+              {formatCurrency(amount)}
+            </div>
+          );
+        },
         sortingFn: 'alphanumeric',
       }),
       columnHelper.display({
@@ -345,26 +357,39 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
           let buttonText = 'Setujui';
           let disabledReason = '';
           
+          // Get the actual approval level from current context
+          const actualApprovalLevel = supervisorInfo?.approvalLevel || 1;
+          
           if (isAdmin) {
             // Admin can approve any status except rejected/approved
             canApprove = status === 'pending' || status === 'level1_approved';
             canReject = status === 'pending' || status === 'level1_approved';
             buttonText = status === 'level1_approved' ? 'Final Approve' : 'Setujui';
-          } else if (isOrgWide) {
-            // Org-wide supervisor can only final approve after level1_approved
+          } else if (actualApprovalLevel >= 2 && isOrgWide) {
+            // User has approval level 2+ AND org-wide permission: can do final approval
             canApprove = status === 'level1_approved';
             canReject = status === 'pending' || status === 'level1_approved';
             buttonText = 'Final Approve';
             if (status === 'pending') {
               disabledReason = 'Menunggu Level 1 Approval';
-              // Ensure canApprove is false for pending status
               canApprove = false;
             }
-          } else if (isDivisionSupervisor) {
-            // Division supervisor can only do level 1 approval
+          } else if (actualApprovalLevel >= 1) {
+            // User has approval level 1+: can do level 1 approval for pending requests
             canApprove = status === 'pending';
             canReject = status === 'pending';
             buttonText = 'Level 1 Approve';
+            
+            // If user has org-wide permission but only level 1 approval, they can still do level 1
+            if (isOrgWide && actualApprovalLevel === 1) {
+              // This handles cases like konsuler becoming home staff (level 1) but having org-wide permission
+              buttonText = 'Level 1 Approve';
+            }
+          } else {
+            // No approval permission
+            canApprove = false;
+            canReject = false;
+            disabledReason = 'Tidak memiliki permission approval';
           }
           
 
@@ -403,9 +428,11 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                     variant="outline"
                     className="border-red-300 text-red-600 hover:bg-red-50 text-xs px-2 py-1"
                     onClick={() => openActionModal(row.original, 'reject')}
-                    title={supervisorInfo?.isAdmin ? 'Reject (Final)' : supervisorInfo?.isOrgWide ? 'Reject (Final)' : 'Reject (Level 1)'}
+                    title={supervisorInfo?.isAdmin ? 'Reject (Final)' : 
+                           (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Reject (Final)' : 
+                           'Reject (Level 1)'}
                   >
-                    {supervisorInfo?.isAdmin || supervisorInfo?.isOrgWide ? 'Final Reject' : 'Level 1 Reject'}
+                    {supervisorInfo?.isAdmin || (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Final Reject' : 'Level 1 Reject'}
                   </Button>
                 )}
               </div>
@@ -440,13 +467,13 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
     // Date range filter
       if (dateFromFilter) {
         filtered = filtered.filter(item => 
-          new Date(item.date_requested) >= new Date(dateFromFilter)
+          new Date(item.date) >= new Date(dateFromFilter)
         );
       }
       
       if (dateToFilter) {
         filtered = filtered.filter(item => 
-          new Date(item.date_requested) <= new Date(dateToFilter)
+          new Date(item.date) <= new Date(dateToFilter)
         );
       }
     
@@ -699,8 +726,8 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Semua Divisi</option>
-                {divisions.map((division) => (
-                  <option key={division.id} value={division.id.toString()}>
+                {divisions.map((division, index) => (
+                  <option key={`division-${division.id || index}`} value={division.id.toString()}>
                     {division.name}
                   </option>
                 ))}
@@ -756,10 +783,15 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                 <span className="font-medium">Role Anda: </span>
                 {supervisorInfo.isAdmin ? (
                   <span className="text-purple-600">Admin (Dapat approve/reject semua level)</span>
-                ) : supervisorInfo.isOrgWide ? (
+                ) : supervisorInfo.isOrgWide && supervisorInfo.approvalLevel >= 2 ? (
                   <span className="text-blue-600">Supervisor Organization-wide (Final approval)</span>
+                ) : supervisorInfo.approvalLevel >= 1 ? (
+                  <span className="text-green-600">
+                    Supervisor Level {supervisorInfo.approvalLevel} 
+                    {supervisorInfo.isOrgWide ? ' (Org-wide permission)' : ' (Divisi)'}
+                  </span>
                 ) : (
-                  <span className="text-green-600">Supervisor Divisi (Level 1 approval)</span>
+                  <span className="text-gray-600">Tidak memiliki permission approval</span>
                 )}
               </div>
             )}
@@ -874,11 +906,15 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
               <div className="text-sm font-medium text-blue-800">
                 {actionType === 'approve' ? (
                   <>
-                    {supervisorInfo?.isAdmin ? 'Admin Approval' : supervisorInfo?.isOrgWide ? 'Final Approval' : 'Level 1 Approval'}
+                    {supervisorInfo?.isAdmin ? 'Admin Approval' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Final Approval' : 
+                     'Level 1 Approval'}
                   </>
                 ) : (
                   <>
-                    {supervisorInfo?.isAdmin ? 'Admin Rejection' : supervisorInfo?.isOrgWide ? 'Final Rejection' : 'Level 1 Rejection'}
+                    {supervisorInfo?.isAdmin ? 'Admin Rejection' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Final Rejection' : 
+                     'Level 1 Rejection'}
                   </>
                 )}
               </div>
@@ -886,13 +922,13 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                 {actionType === 'approve' ? (
                   <>
                     {supervisorInfo?.isAdmin ? 'Anda akan melakukan final approval langsung' : 
-                     supervisorInfo?.isOrgWide ? 'Anda akan melakukan final approval setelah level 1' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Anda akan melakukan final approval setelah level 1' : 
                      'Anda akan melakukan level 1 approval, menunggu final approval'}
                   </>
                 ) : (
                   <>
                     {supervisorInfo?.isAdmin ? 'Anda akan melakukan final rejection langsung' : 
-                     supervisorInfo?.isOrgWide ? 'Anda akan melakukan final rejection' : 
+                     (supervisorInfo?.isOrgWide && supervisorInfo?.approvalLevel >= 2) ? 'Anda akan melakukan final rejection' : 
                      'Anda akan melakukan level 1 rejection'}
                   </>
                 )}
@@ -909,15 +945,20 @@ export default function OvertimeRequestsTable({ onRefresh }: OvertimeRequestsTab
                     </div>
                       <div>
                         <span className="font-medium">Tanggal:</span>
-                       <div>{formatDate(selectedRequest.date_requested)}</div>
+                       <div>{formatDate(selectedRequest.date)}</div>
                       </div>
                       <div>
                         <span className="font-medium">Jam Lembur:</span>
-                       <div>{parseFloat(selectedRequest.overtime_hours).toFixed(1)} jam</div>
+                       <div>{parseFloat(selectedRequest.total_hours).toFixed(1)} jam</div>
                       </div>
                       <div>
                         <span className="font-medium">Gaji Lembur:</span>
-                       <div>{formatCurrency(selectedRequest.overtime_amount)}</div>
+                       <div>
+                         {selectedRequest.total_amount ? 
+                           formatCurrency(selectedRequest.total_amount) : 
+                           'Belum dihitung'
+                         }
+                       </div>
                       </div>
                     <div className="col-span-2">
                       <span className="font-medium">Status Saat Ini:</span>
