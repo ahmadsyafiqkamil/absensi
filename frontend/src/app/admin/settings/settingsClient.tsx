@@ -358,29 +358,45 @@ export default function SettingsClient() {
                 <Input
                   type="number"
                   step="0.01"
+                  min="0"
+                  max="10"
                   value={String(settings.overtime_rate_workday || 0.50)}
-                  onChange={(e) => setSettings({ ...settings, overtime_rate_workday: Number(e.target.value || 0) })}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    setSettings({ ...settings, overtime_rate_workday: value });
+                  }}
                 />
-                <div className="text-xs text-gray-500">Contoh: 0.50 = 2/4 dari gaji per jam</div>
+                <div className="text-xs text-gray-500">Contoh: 0.50 = 50% dari gaji per jam, 1.00 = 100% dari gaji per jam</div>
               </div>
               <div className="grid gap-2">
                 <Label>Rate Lembur Hari Libur (kali gaji per jam)</Label>
                 <Input
                   type="number"
                   step="0.01"
+                  min="0"
+                  max="10"
                   value={String(settings.overtime_rate_holiday || 0.75)}
-                  onChange={(e) => setSettings({ ...settings, overtime_rate_holiday: Number(e.target.value || 0) })}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    setSettings({ ...settings, overtime_rate_holiday: value });
+                  }}
                 />
-                <div className="text-xs text-gray-500">Contoh: 0.75 = 3/4 dari gaji per jam</div>
+                <div className="text-xs text-gray-500">Contoh: 0.75 = 75% dari gaji per jam, 1.50 = 150% dari gaji per jam</div>
               </div>
               <div className="grid gap-2">
                 <Label>Batas Mulai Lembur (menit)</Label>
                 <Input
                   type="number"
+                  min="0"
+                  max="1440"
+                  step="1"
                   value={settings.overtime_threshold_minutes || 60}
-                  onChange={(e) => setSettings({ ...settings, overtime_threshold_minutes: Number(e.target.value || 60) })}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
+                    setSettings({ ...settings, overtime_threshold_minutes: value });
+                  }}
                 />
-                <div className="text-xs text-gray-500">Lembur mulai dihitung setelah melebihi jam kerja + batas ini</div>
+                <div className="text-xs text-gray-500">Lembur mulai dihitung setelah melebihi jam kerja + batas ini (0-1440 menit)</div>
               </div>
             </div>
             <div className="mt-4 p-3 bg-green-50 rounded-lg">
