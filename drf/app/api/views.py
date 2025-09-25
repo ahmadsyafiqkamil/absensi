@@ -26,19 +26,19 @@ def supervisor_attendance_detail(request, employee_id):
     try:
         # Check if user is supervisor
         if not request.user.groups.filter(name='supervisor').exists():
-            return Response({"error": "Access denied. Supervisor role required."}, status=403)
+            return Response({"error": "Akses ditolak. Peran supervisor diperlukan."}, status=403)
         
         # Get the employee
         try:
             employee = Employee.objects.select_related('user', 'division', 'position').get(id=employee_id)
         except Employee.DoesNotExist:
-            return Response({"error": "Employee not found"}, status=404)
+            return Response({"error": "Pegawai tidak ditemukan"}, status=404)
         
         # Check if supervisor has access to this employee (same division)
         if (hasattr(request.user, 'employee_profile') and 
             request.user.employee_profile.division and 
             employee.division != request.user.employee_profile.division):
-            return Response({"error": "Access denied. You can only view employees in your division."}, status=403)
+            return Response({"error": "Akses ditolak. Anda hanya dapat melihat pegawai di divisi Anda."}, status=403)
         
         # Get query parameters
         start_date = request.GET.get('start_date')
@@ -140,4 +140,4 @@ def supervisor_attendance_detail(request, employee_id):
         return Response(response_data)
         
     except Exception as e:
-        return Response({"error": f"Internal server error: {str(e)}"}, status=500)
+        return Response({"error": f"Kesalahan server internal: {str(e)}"}, status=500)

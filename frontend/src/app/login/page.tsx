@@ -77,22 +77,22 @@ export default function LoginPage() {
         <CardContent>
           <form id="login-form" className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium text-gray-700">Username</Label>
+              <Label htmlFor="username" className="text-sm font-medium text-gray-700">Nama Pengguna</Label>
               <Input 
                 id="username" 
                 name="username" 
-                placeholder="Masukkan username" 
+                placeholder="Masukkan nama pengguna" 
                 className="w-full"
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium text-gray-700">Kata Sandi</Label>
               <Input 
                 id="password" 
                 name="password" 
                 type="password" 
-                placeholder="Masukkan password" 
+                placeholder="Masukkan kata sandi" 
                 className="w-full"
                 required
               />

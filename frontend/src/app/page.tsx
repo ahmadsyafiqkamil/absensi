@@ -55,24 +55,24 @@ export default async function Home() {
         )}
         {isSupervisor && (
           <div className="p-4 border rounded w-full max-w-xl">
-            <h2 className="font-bold mb-2">Supervisor Dashboard</h2>
-            <p>Konten supervisor, seperti approval dan monitoring tim.</p>
+            <h2 className="font-bold mb-2">Dashboard Supervisor</h2>
+            <p>Konten supervisor, seperti persetujuan dan pemantauan tim.</p>
           </div>
         )}
         {isPegawai && (
           <div className="p-4 border rounded w-full max-w-xl">
-            <h2 className="font-bold mb-2">Pegawai Area</h2>
-            <p>Konten pegawai, seperti absensi harian dan riwayat.</p>
+            <h2 className="font-bold mb-2">Area Pegawai</h2>
+            <p>Konten pegawai, seperti kehadiran harian dan riwayat.</p>
           </div>
         )}
 
         {/* API Status Check */}
         <div className="w-full max-w-4xl">
-          <h2 className="text-xl font-semibold mb-4">API System Status</h2>
+          <h2 className="text-xl font-semibold mb-4">Status Sistem API</h2>
           <ApiStatusCheck />
         </div>
 
-        <a href="/api/auth/logout" className="text-blue-600 underline">Logout</a>
+        <a href="/api/auth/logout" className="text-blue-600 underline">Keluar</a>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row">
           <a
@@ -88,7 +88,7 @@ export default async function Home() {
               width={20}
               height={20}
             />
-            Deploy now
+            Deploy Sekarang
           </a>
           <a
             className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
@@ -96,7 +96,7 @@ export default async function Home() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            Read our docs
+            Baca Dokumentasi
           </a>
         </div>
       </main>

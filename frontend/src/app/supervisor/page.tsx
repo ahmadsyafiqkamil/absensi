@@ -61,8 +61,8 @@ export default async function SupervisorPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
       <Header 
-        title="Supervisor Dashboard" 
-        subtitle="Manage your team and monitor performance"
+        title="Dashboard Supervisor" 
+        subtitle="Kelola tim Anda dan pantau kinerja"
         username={me.username}
         role="supervisor"
       />
@@ -119,7 +119,7 @@ export default async function SupervisorPage() {
                 <Button className="w-full">View Team</Button>
               </Link>
               <Link href="/supervisor/assignments">
-                <Button variant="outline" className="w-full">Assign Tasks</Button>
+                <Button variant="outline" className="w-full">Berikan Tugas</Button>
               </Link>
             </CardContent>
           </Card>
@@ -140,13 +140,13 @@ export default async function SupervisorPage() {
                 <Button className="w-full">View Attendance</Button>
               </Link>
               <Link href="/supervisor/approvals">
-                <Button variant="outline" className="w-full">Pending Approvals</Button>
+                <Button variant="outline" className="w-full">Persetujuan Tertunda</Button>
               </Link>
               <Link href="/supervisor/overtime-requests">
                 <Button variant="outline" className="w-full">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {/* <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  </svg> */}
                   Persetujuan Lembur
                 </Button>
               </Link>
@@ -169,7 +169,7 @@ export default async function SupervisorPage() {
                 <Button className="w-full">View Reports</Button>
               </Link>
               <Link href="/supervisor/monthly-summary">
-                <Button variant="outline" className="w-full">Monthly Summary</Button>
+                <Button variant="outline" className="w-full">Ringkasan Bulanan</Button>
               </Link>
             </CardContent>
           </Card>
@@ -190,7 +190,7 @@ export default async function SupervisorPage() {
                 <Button className="w-full">Send Announcement</Button>
               </Link>
               <Link href="/supervisor/messages">
-                <Button variant="outline" className="w-full">Team Messages</Button>
+                <Button variant="outline" className="w-full">Pesan Tim</Button>
               </Link>
             </CardContent>
           </Card>
@@ -209,10 +209,10 @@ export default async function SupervisorPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/supervisor/settings">
-                <Button variant="outline" className="w-full">Preferences</Button>
+                <Button variant="outline" className="w-full">Preferensi</Button>
               </Link>
               <Link href="/supervisor/profile">
-                <Button variant="outline" className="w-full">Profile</Button>
+                <Button variant="outline" className="w-full">Profil</Button>
               </Link>
             </CardContent>
           </Card>

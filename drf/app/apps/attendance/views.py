@@ -171,7 +171,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
             attendance = qs.first()
             if not attendance:
                 return Response(
-                    {"message": "No attendance record for today"}, 
+                    {"message": "Tidak ada catatan kehadiran untuk hari ini"}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -180,7 +180,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             # Avoid leaking internal errors; return a safe message
             return Response(
-                {"detail": "Failed to fetch today's attendance"}, 
+                {"detail": "Gagal mengambil kehadiran hari ini"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -204,7 +204,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                     end_date = datetime.strptime(f"{year}-{int(month_num)+1}-01", "%Y-%m-%d").date() - timedelta(days=1)
             except ValueError:
                 return Response(
-                    {"error": "Invalid month format. Use YYYY-MM"}, 
+                    {"error": "Format bulan tidak valid. Gunakan YYYY-MM"}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
         else:
@@ -214,7 +214,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                     start_date = date.fromisoformat(request.query_params['start_date'])
                 except ValueError:
                     return Response(
-                        {"error": "Invalid start_date format. Use YYYY-MM-DD"}, 
+                        {"error": "Format tanggal mulai tidak valid. Gunakan YYYY-MM-DD"}, 
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
@@ -223,7 +223,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                     end_date = date.fromisoformat(request.query_params['end_date'])
                 except ValueError:
                     return Response(
-                        {"error": "Invalid end_date format. Use YYYY-MM-DD"}, 
+                        {"error": "Format tanggal akhir tidak valid. Gunakan YYYY-MM-DD"}, 
                         status=status.HTTP_400_BAD_REQUEST
                     )
         
@@ -275,18 +275,18 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 start_dt = datetime.strptime(start_date, '%Y-%m-%d')
             except ValueError:
-                return Response({"detail": "Invalid start_date format. Use YYYY-MM-DD"}, status=400)
+                return Response({"detail": "Format tanggal mulai tidak valid. Gunakan YYYY-MM-DD"}, status=400)
         
         if end_date:
             try:
                 end_dt = datetime.strptime(end_date, '%Y-%m-%d')
             except ValueError:
-                return Response({"detail": "Invalid end_date format. Use YYYY-MM-DD"}, status=400)
+                return Response({"detail": "Format tanggal akhir tidak valid. Gunakan YYYY-MM-DD"}, status=400)
         
         # Validate that end_date is not before start_date
         if start_date and end_date:
             if end_dt < start_dt:
-                return Response({"detail": "end_date cannot be before start_date"}, status=400)
+                return Response({"detail": "tanggal_akhir tidak boleh sebelum tanggal_mulai"}, status=400)
         
         # Build attendance queryset
         attendance_qs = Attendance.objects.filter(user=user)
@@ -301,7 +301,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                     date_local__month=month_num
                 )
             except ValueError:
-                return Response({"detail": "invalid_month_format_use_yyyy_mm"}, status=400)
+                return Response({"detail": "format_bulan_tidak_valid_gunakan_yyyy_mm"}, status=400)
         else:
             # Apply date range filters (can be partial - just start or just end)
             if start_date:
@@ -543,7 +543,7 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
         
         # Get supervisor's division
         if not hasattr(request.user, 'employee_profile') or not request.user.employee_profile.division:
-            return Response({"error": "Supervisor must have a division assigned"}, status=400)
+            return Response({"error": "Supervisor harus memiliki divisi yang ditugaskan"}, status=400)
         
         division = request.user.employee_profile.division
         
@@ -643,7 +643,7 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
         
         # Get supervisor's division
         if not hasattr(request.user, 'employee_profile') or not request.user.employee_profile.division:
-            return Response({"error": "Supervisor must have a division assigned"}, status=400)
+            return Response({"error": "Supervisor harus memiliki divisi yang ditugaskan"}, status=400)
         
         division = request.user.employee_profile.division
         
@@ -817,19 +817,19 @@ def supervisor_attendance_detail(request, employee_id):
     try:
         # Check if user is supervisor
         if not request.user.groups.filter(name='supervisor').exists():
-            return Response({"error": "Access denied. Supervisor role required."}, status=403)
+            return Response({"error": "Akses ditolak. Peran supervisor diperlukan."}, status=403)
         
         # Get the employee
         try:
             employee = Employee.objects.select_related('user', 'division', 'position').get(id=employee_id)
         except Employee.DoesNotExist:
-            return Response({"error": "Employee not found"}, status=404)
+            return Response({"error": "Pegawai tidak ditemukan"}, status=404)
         
         # Check if supervisor has access to this employee (same division)
         if (hasattr(request.user, 'employee_profile') and 
             request.user.employee_profile.division and 
             employee.division != request.user.employee_profile.division):
-            return Response({"error": "Access denied. You can only view employees in your division."}, status=403)
+            return Response({"error": "Akses ditolak. Anda hanya dapat melihat pegawai di divisi Anda."}, status=403)
         
         # Get query parameters
         start_date = request.GET.get('start_date')
@@ -931,4 +931,4 @@ def supervisor_attendance_detail(request, employee_id):
         return Response(response_data)
         
     except Exception as e:
-        return Response({"error": f"Internal server error: {str(e)}"}, status=500)
+        return Response({"error": f"Kesalahan server internal: {str(e)}"}, status=500)

@@ -630,7 +630,7 @@ export default function PegawaiCorrectionsPage() {
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading corrections data...</p>
+              <p className="text-gray-600">Memuat data perbaikan...</p>
             </div>
           </div>
         </div>
@@ -649,13 +649,13 @@ export default function PegawaiCorrectionsPage() {
         />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            <h3 className="font-semibold">Error Loading Data</h3>
+            <h3 className="font-semibold">Error Memuat Data</h3>
             <p>{error}</p>
             <Button 
               onClick={() => fetchCorrectionsData()}
               className="mt-2"
             >
-              Try Again
+              Coba Lagi
             </Button>
           </div>
         </div>
@@ -674,7 +674,7 @@ export default function PegawaiCorrectionsPage() {
         />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="text-center">
-            <p className="text-gray-500">No corrections data available</p>
+            <p className="text-gray-500">Tidak ada data perbaikan tersedia</p>
           </div>
         </div>
       </div>
@@ -684,7 +684,7 @@ export default function PegawaiCorrectionsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
-        title="Attendance Corrections" 
+        title="Perbaikan Absensi" 
         subtitle="Potensi absensi yang perlu diperbaiki"
         username="Pegawai"
         role="pegawai"
@@ -698,7 +698,7 @@ export default function PegawaiCorrectionsPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to Employee Dashboard
+              Kembali ke Dashboard Pegawai
             </Button>
           </Link>
         </div>
@@ -748,7 +748,7 @@ export default function PegawaiCorrectionsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                 )}
-                {refreshing ? 'Refreshing...' : 'Refresh'}
+                {refreshing ? 'Menyegarkan...' : 'Segarkan'}
               </Button>
             </div>
           </div>
@@ -756,25 +756,25 @@ export default function PegawaiCorrectionsPage() {
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold text-blue-600">{correctionsData.summary.total_records}</div>
-                <div className="text-sm text-gray-600">Total Records</div>
+                <div className="text-sm text-gray-600">Total Catatan</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold text-orange-600">{correctionsData.summary.wfa_records}</div>
-                <div className="text-sm text-gray-600">WFA Records</div>
+                <div className="text-sm text-gray-600">Catatan WFA</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold text-red-600">{correctionsData.summary.missing_attendance}</div>
-                <div className="text-sm text-gray-600">Missing Attendance</div>
+                <div className="text-sm text-gray-600">Kehadiran Hilang</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold text-yellow-600">{correctionsData.summary.pending_corrections}</div>
-                <div className="text-sm text-gray-600">Pending Corrections</div>
+                <div className="text-sm text-gray-600">Perbaikan Tertunda</div>
               </CardContent>
             </Card>
           </div>
@@ -783,15 +783,15 @@ export default function PegawaiCorrectionsPage() {
         {/* Filters */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Filters</CardTitle>
+            <CardTitle>Filter</CardTitle>
             <CardDescription>Filter data perbaikan absensi</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date
-                  {filters.month && <span className="text-gray-400 ml-1">(disabled when month is selected)</span>}
+                  Tanggal Mulai
+                  {filters.month && <span className="text-gray-400 ml-1">(dinonaktifkan saat bulan dipilih)</span>}
                 </label>
                 <input
                   type="date"
@@ -803,8 +803,8 @@ export default function PegawaiCorrectionsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date
-                  {filters.month && <span className="text-gray-400 ml-1">(disabled when month is selected)</span>}
+                  Tanggal Akhir
+                  {filters.month && <span className="text-gray-400 ml-1">(dinonaktifkan saat bulan dipilih)</span>}
                 </label>
                 <input
                   type="date"
@@ -816,7 +816,7 @@ export default function PegawaiCorrectionsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Month (YYYY-MM)
+                  Bulan (YYYY-MM)
                   {/* <span className="text-gray-400 ml-1">(overrides date range)</span> */}
                 </label>
                 <input
@@ -843,11 +843,11 @@ export default function PegawaiCorrectionsPage() {
                   onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
-                  <option value="all">All Status</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="not_submitted">Not Submitted</option>
+                  <option value="all">Semua Status</option>
+                  <option value="pending">Tertunda</option>
+                  <option value="approved">Disetujui</option>
+                  <option value="rejected">Ditolak</option>
+                  <option value="not_submitted">Belum Diajukan</option>
                     </select>
                   </div>
             </div>
@@ -856,12 +856,12 @@ export default function PegawaiCorrectionsPage() {
             {(filters.start_date || filters.end_date || filters.month || filters.status !== 'all') && (
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                 <div className="text-sm text-blue-800">
-                  <strong>Active Filters:</strong>
+                  <strong>Filter Aktif:</strong>
                   {filters.month && (
-                    <span className="ml-2">Month: {filters.month}</span>
+                    <span className="ml-2">Bulan: {filters.month}</span>
                   )}
                   {!filters.month && filters.start_date && filters.end_date && (
-                    <span className="ml-2">Date Range: {filters.start_date} to {filters.end_date}</span>
+                    <span className="ml-2">Rentang Tanggal: {filters.start_date} sampai {filters.end_date}</span>
                   )}
                   {filters.status !== 'all' && (
                     <span className="ml-2">Status: {filters.status}</span>
@@ -949,7 +949,7 @@ export default function PegawaiCorrectionsPage() {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={columns.length} className="h-24 text-center">
-                          No results.
+                          Tidak ada hasil.
                         </TableCell>
                       </TableRow>
                     )}
@@ -961,20 +961,20 @@ export default function PegawaiCorrectionsPage() {
               <div className="flex items-center justify-between px-6 py-3 bg-white border-t border-gray-200">
                 <div className="flex items-center gap-2">
                   <p className="text-sm text-gray-700">
-                    Showing{' '}
+                    Menampilkan{' '}
                     <span className="font-medium">
                       {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}
                     </span>{' '}
-                    to{' '}
+                    sampai{' '}
                     <span className="font-medium">
                       {Math.min(
                         (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
                         table.getFilteredRowModel().rows.length
                       )}
                     </span>{' '}
-                    of{' '}
+                    dari{' '}
                     <span className="font-medium">{table.getFilteredRowModel().rows.length}</span>{' '}
-                    results
+                    hasil
                   </p>
                 </div>
 
@@ -1035,7 +1035,7 @@ export default function PegawaiCorrectionsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-700">Rows per page:</span>
+                  <span className="text-sm text-gray-700">Baris per halaman:</span>
                   <Select
                     value={table.getState().pagination.pageSize.toString()}
                     onValueChange={(value) => {

@@ -21,10 +21,10 @@ export default async function PegawaiPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
-          <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
+          <h1 className="text-2xl font-bold text-red-600">Akses Ditolak</h1>
+          <p className="text-gray-600 mt-2">Anda tidak berwenang melihat halaman ini.</p>
           <Link href="/" className="text-blue-600 hover:underline mt-4 inline-block">
-            Return to Home
+            Kembali ke Beranda
           </Link>
         </div>
       </div>
@@ -34,8 +34,8 @@ export default async function PegawaiPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
       <Header 
-        title="Employee Dashboard" 
-        subtitle="Manage your attendance and profile"
+        title="Dashboard Pegawai" 
+        subtitle="Kelola kehadiran dan profil Anda"
         username={me.username}
         role="pegawai"
       />
@@ -43,7 +43,7 @@ export default async function PegawaiPage() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Quick Stats */}
         <div className="mb-8 grid gap-4">
-          <h2 className="text-xl font-semibold text-gray-900">Your Overview</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Ringkasan Anda</h2>
           <TodayAttendance />
         </div>
 
@@ -56,9 +56,9 @@ export default async function PegawaiPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Attendance
+                Kehadiran
               </CardTitle>
-              <CardDescription>Record your daily attendance</CardDescription>
+              <CardDescription>Catat kehadiran harian Anda</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <AttendanceWidget />
@@ -75,16 +75,16 @@ export default async function PegawaiPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-                Profile
+                Profil
               </CardTitle>
-              <CardDescription>Manage your profile and settings</CardDescription>
+              <CardDescription>Kelola profil dan pengaturan Anda</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/pegawai/profile">
-                <Button className="w-full">View Profile</Button>
+                <Button className="w-full">Lihat Profil</Button>
               </Link>
               <Link href="/pegawai/settings">
-                <Button variant="outline" className="w-full">Settings</Button>
+                <Button variant="outline" className="w-full">Pengaturan</Button>
               </Link>
             </CardContent>
           </Card>
@@ -96,16 +96,16 @@ export default async function PegawaiPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                Leave Management
+                Manajemen Cuti
               </CardTitle>
-              <CardDescription>Request and manage your leave</CardDescription>
+              <CardDescription>Ajukan dan kelola cuti Anda</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/pegawai/leave-request">
-                <Button className="w-full">Request Leave</Button>
+                <Button className="w-full">Ajukan Cuti</Button>
               </Link>
               <Link href="/pegawai/leave-history">
-                <Button variant="outline" className="w-full">Leave History</Button>
+                <Button variant="outline" className="w-full">Riwayat Cuti</Button>
               </Link>
             </CardContent>
           </Card>
@@ -117,13 +117,13 @@ export default async function PegawaiPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Reports
+                Laporan
               </CardTitle>
-              <CardDescription>View your attendance reports</CardDescription>
+              <CardDescription>Lihat laporan kehadiran Anda</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/pegawai/attendance-report">
-                <Button variant="outline" className="w-full">Attendance Report</Button>
+                <Button variant="outline" className="w-full">Laporan Kehadiran</Button>
               </Link>
               <Link href="/pegawai/overtime">
                 <Button variant="outline" className="w-full">Pengajuan Lembur</Button>

@@ -19,14 +19,14 @@ class Position(models.Model):
     # Approval permissions for overtime requests
     can_approve_overtime_org_wide = models.BooleanField(
         default=False,
-        verbose_name="Can Approve Overtime Organization-Wide",
-        help_text="If true, supervisors with this position can approve overtime requests from all divisions (final approval)"
+        verbose_name="Dapat Menyetujui Lembur Seluruh Organisasi",
+        help_text="Jika benar, supervisor dengan posisi ini dapat menyetujui permintaan lembur dari semua divisi (persetujuan akhir)"
     )
     approval_level = models.PositiveSmallIntegerField(
         default=1,
-        choices=[(0, 'No Approval'), (1, 'Division Level'), (2, 'Organization Level')],
-        verbose_name="Approval Level",
-        help_text="0 = No approval permission, 1 = Division-level approval, 2 = Organization-level (final) approval"
+        choices=[(0, 'Tidak Ada Persetujuan'), (1, 'Level Divisi'), (2, 'Level Organisasi')],
+        verbose_name="Level Persetujuan",
+        help_text="0 = Tidak ada izin persetujuan, 1 = Persetujuan level divisi, 2 = Persetujuan level organisasi (final)"
     )
 
     class Meta:
@@ -72,10 +72,10 @@ class Employee(models.Model):
     )
     
     fullname = models.TextField(
-        verbose_name="Full Name",
+        verbose_name="Nama Lengkap",
         null=True,
         blank=True,
-        help_text="Full name of the employee"
+        help_text="Nama lengkap pegawai"
     )
 
     class Meta:
@@ -101,10 +101,10 @@ class WorkSettings(models.Model):
     workdays = models.JSONField(default=_default_workdays)
     
     # Friday-specific settings
-    friday_start_time = models.TimeField(default=time(9, 0), verbose_name="Friday Start Time")
-    friday_end_time = models.TimeField(default=time(13, 0), verbose_name="Friday End Time")
-    friday_required_minutes = models.PositiveIntegerField(default=240, verbose_name="Friday Required Minutes")  # 4 hours (9:00-13:00)
-    friday_grace_minutes = models.PositiveIntegerField(default=0, verbose_name="Friday Grace Minutes")
+    friday_start_time = models.TimeField(default=time(9, 0), verbose_name="Waktu Mulai Jumat")
+    friday_end_time = models.TimeField(default=time(13, 0), verbose_name="Waktu Selesai Jumat")
+    friday_required_minutes = models.PositiveIntegerField(default=240, verbose_name="Menit Wajib Jumat")  # 4 hours (9:00-13:00)
+    friday_grace_minutes = models.PositiveIntegerField(default=0, verbose_name="Menit Toleransi Jumat")
     
     # Office geofence settings (single office)
     office_latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
@@ -117,44 +117,44 @@ class WorkSettings(models.Model):
         max_digits=5,
         decimal_places=2,
         default=0.50,
-        verbose_name="Overtime Rate (Workday)",
-        help_text="Multiplier of hourly base wage for overtime on workdays (e.g., 0.50 = 2/4)",
+        verbose_name="Tarif Lembur (Hari Kerja)",
+        help_text="Pengali gaji pokok per jam untuk lembur pada hari kerja (misalnya, 0.50 = 2/4)",
     )
     overtime_rate_holiday = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         default=0.75,
-        verbose_name="Overtime Rate (Holiday)",
-        help_text="Multiplier of hourly base wage for overtime on holidays (e.g., 0.75 = 3/4)",
+        verbose_name="Tarif Lembur (Hari Libur)",
+        help_text="Pengali gaji pokok per jam untuk lembur pada hari libur (misalnya, 0.75 = 3/4)",
     )
     overtime_threshold_minutes = models.PositiveIntegerField(
         default=60,
-        verbose_name="Overtime Threshold (Minutes)",
-        help_text="Minimum extra minutes before overtime starts counting (e.g., 60 = 1 hour buffer)",
+        verbose_name="Ambang Lembur (Menit)",
+        help_text="Menit ekstra minimum sebelum lembur mulai dihitung (misalnya, 60 = buffer 1 jam)",
     )
     
     # Early check-in restriction settings
     earliest_check_in_time = models.TimeField(
         default=time(6, 0),  # Default: 06:00
-        verbose_name="Earliest Check-in Time",
-        help_text="Earliest time employees can check in (e.g., 06:00)"
+        verbose_name="Waktu Check-in Terawal",
+        help_text="Waktu terawal pegawai dapat check-in (misalnya, 06:00)"
     )
     earliest_check_in_enabled = models.BooleanField(
         default=True,
-        verbose_name="Enable Early Check-in Restriction",
-        help_text="Whether to enforce earliest check-in time restriction"
+        verbose_name="Aktifkan Pembatasan Check-in Awal",
+        help_text="Apakah akan menerapkan pembatasan waktu check-in terawal"
     )
 
     # Early check-out restriction settings
     latest_check_out_time = models.TimeField(
         default=time(22, 0),  # Default: 22:00
-        verbose_name="Latest Check-out Time",
-        help_text="Latest time employees can check out (e.g., 22:00)"
+        verbose_name="Waktu Check-out Terakhir",
+        help_text="Waktu terakhir pegawai dapat check-out (misalnya, 22:00)"
     )
     latest_check_out_enabled = models.BooleanField(
         default=True,
-        verbose_name="Enable Latest Check-out Restriction",
-        help_text="Whether to enforce latest check-out time restriction"
+        verbose_name="Aktifkan Pembatasan Check-out Terakhir",
+        help_text="Apakah akan menerapkan pembatasan waktu check-out terakhir"
     )
 
     class Meta:
@@ -186,13 +186,13 @@ class Attendance(models.Model):
     check_in_lat = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_in_lng = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_in_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
-    check_in_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Check-in IP Address")
+    check_in_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Alamat IP Check-in")
 
     check_out_at_utc = models.DateTimeField(null=True, blank=True)
     check_out_lat = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_out_lng = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     check_out_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
-    check_out_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Check-out IP Address")
+    check_out_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Alamat IP Check-out")
 
     is_holiday = models.BooleanField(default=False)
     within_geofence = models.BooleanField(default=False)
@@ -204,20 +204,20 @@ class Attendance(models.Model):
     # Overtime fields
     overtime_minutes = models.PositiveIntegerField(
         default=0,
-        verbose_name="Overtime Minutes",
-        help_text="Minutes worked beyond required work hours"
+        verbose_name="Menit Lembur",
+        help_text="Menit bekerja di luar jam kerja yang diperlukan"
     )
     overtime_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=0,
-        verbose_name="Overtime Amount",
-        help_text="Calculated overtime pay amount"
+        verbose_name="Jumlah Lembur",
+        help_text="Jumlah pembayaran lembur yang dihitung"
     )
     overtime_approved = models.BooleanField(
         default=False,
-        verbose_name="Overtime Approved",
-        help_text="Whether overtime has been approved by supervisor"
+        verbose_name="Lembur Disetujui",
+        help_text="Apakah lembur telah disetujui oleh supervisor"
     )
     overtime_approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -225,12 +225,12 @@ class Attendance(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="approved_overtimes",
-        verbose_name="Overtime Approved By"
+        verbose_name="Lembur Disetujui Oleh"
     )
     overtime_approved_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Overtime Approved At"
+        verbose_name="Lembur Disetujui Pada"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

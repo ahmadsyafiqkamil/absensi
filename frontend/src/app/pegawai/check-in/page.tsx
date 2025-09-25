@@ -202,10 +202,10 @@ export default function CheckInPage() {
               )}
               {clientIP && (
                 <div className="text-xs text-gray-600">
-                  IP Address: {clientIP}
-                  {ipDetectionStatus === 'detecting' && <span className="ml-2 text-blue-500">(Detecting...)</span>}
+                  Alamat IP: {clientIP}
+                  {ipDetectionStatus === 'detecting' && <span className="ml-2 text-blue-500">(Mendeteksi...)</span>}
                   {ipDetectionStatus === 'success' && <span className="ml-2 text-green-500">✓</span>}
-                  {ipDetectionStatus === 'failed' && <span className="ml-2 text-orange-500">(Dev Mode)</span>}
+                  {ipDetectionStatus === 'failed' && <span className="ml-2 text-orange-500">(Mode Dev)</span>}
                 </div>
               )}
               <div className="grid gap-2">
