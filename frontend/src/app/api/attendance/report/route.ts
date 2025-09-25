@@ -14,11 +14,17 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('end_date')
     const month = searchParams.get('month')
     
-    // Build query string
+    // Build query string with proper priority handling
     const queryParams = new URLSearchParams()
-    if (startDate) queryParams.append('start_date', startDate)
-    if (endDate) queryParams.append('end_date', endDate)
-    if (month) queryParams.append('month', month)
+    
+    // Priority: month filter overrides date range filters
+    if (month) {
+      queryParams.append('month', month)
+    } else {
+      // Only use date range if month is not set
+      if (startDate) queryParams.append('start_date', startDate)
+      if (endDate) queryParams.append('end_date', endDate)
+    }
     
     const queryString = queryParams.toString()
     const url = `api/v2/attendance/attendance/summary/${queryString ? `?${queryString}` : ''}`
@@ -50,8 +56,8 @@ export async function GET(request: Request) {
         total_work_minutes: v2Data.total_work_minutes || 0,
         average_work_minutes: v2Data.work_days > 0 ? (v2Data.total_work_minutes || 0) / v2Data.work_days : 0
       },
-      attendance_records: (v2Data.attendances || []).map((att: any) => ({
-        id: 0, // Not available in V2 response
+      attendance_records: (v2Data.attendances || []).map((att: any, index: number) => ({
+        id: index + 1, // Generate ID for frontend compatibility
         date_local: att.date,
         check_in_at_utc: att.check_in,
         check_out_at_utc: att.check_out,
@@ -64,7 +70,7 @@ export async function GET(request: Request) {
         minutes_late: att.minutes_late || 0,
         total_work_minutes: att.work_minutes || 0,
         is_holiday: att.is_holiday || false,
-        within_geofence: true, // Not available in V2 response
+        within_geofence: true, // Default to true for V2 compatibility
         note: null,
         employee_note: null,
         created_at: att.date,

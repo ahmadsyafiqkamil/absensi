@@ -26,4 +26,7 @@ urlpatterns = [
     path('admin/', include((admin_router.urls, 'admin'), namespace='attendance-admin')),
     path('supervisor/', include((supervisor_router.urls, 'supervisor'), namespace='attendance-supervisor')),
     path('employee/', include((employee_router.urls, 'employee'), namespace='attendance-employee')),
+    
+    # Supervisor function-based endpoints
+    path('supervisor/attendance-detail/<int:employee_id>', views.supervisor_attendance_detail, name='supervisor-attendance-detail'),
 ]

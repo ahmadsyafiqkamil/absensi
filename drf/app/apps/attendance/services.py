@@ -1,7 +1,7 @@
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from zoneinfo import ZoneInfo
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from .models import Attendance
 from apps.settings.models import WorkSettings
 from apps.core.utils import haversine_meters, evaluate_lateness_as_dict
@@ -253,13 +253,40 @@ class AttendanceService:
         
         return distance <= self.work_settings.office_radius_meters
     
-    def get_attendance_summary(self, user, start_date, end_date):
+    def get_attendance_summary(self, user, start_date, end_date, month=None):
         """Get attendance summary for a user"""
         try:
-            attendances = Attendance.objects.filter(
-                user=user,
-                date_local__range=[start_date, end_date]
-            ).order_by('date_local')
+            # Build queryset with date filtering
+            attendances = Attendance.objects.filter(user=user)
+            
+            # Apply month filter if provided (overrides date range)
+            if month:
+                try:
+                    year, month_num = month.split('-')
+                    attendances = attendances.filter(
+                        date_local__year=year,
+                        date_local__month=month_num
+                    )
+                    # Calculate date range for summary
+                    from datetime import datetime
+                    month_start = datetime.strptime(f"{year}-{month_num}-01", "%Y-%m-%d").date()
+                    if month_num == '12':
+                        month_end = datetime.strptime(f"{int(year)+1}-01-01", "%Y-%m-%d").date() - timedelta(days=1)
+                    else:
+                        month_end = datetime.strptime(f"{year}-{int(month_num)+1}-01", "%Y-%m-%d").date() - timedelta(days=1)
+                    start_date = month_start
+                    end_date = month_end
+                except ValueError:
+                    # Invalid month format, use date range instead
+                    pass
+            
+            # Apply date range filter if no month filter
+            if not month:
+                attendances = attendances.filter(
+                    date_local__range=[start_date, end_date]
+                )
+            
+            attendances = attendances.order_by('date_local')
             
             summary = {
                 'total_days': (end_date - start_date).days + 1,

@@ -25,7 +25,7 @@ export async function GET(
     if (month) queryParams.append('month', month)
     
     const queryString = queryParams.toString()
-    const url = `/supervisor/attendance-detail/${employeeId}${queryString ? `?${queryString}` : ''}`
+    const url = `/attendance/supervisor/attendance-detail/${employeeId}${queryString ? `?${queryString}` : ''}`
     
     const response = await backendFetch(url, {
       method: 'GET',
@@ -33,7 +33,7 @@ export async function GET(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-    }, 'LEGACY')
+    }, 'V2')
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
