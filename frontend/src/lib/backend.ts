@@ -122,8 +122,19 @@ export async function meFromServerCookies() {
 
 // New V2 API functions
 export async function v2Fetch(path: string, init?: RequestInit) {
-  // For client-side requests, use cookies for authentication
+  // For client-side requests, use JWT token from cookies
   const headers = { ...init?.headers } as Record<string, string>;
+  
+  // Get JWT token from cookies and add as Authorization header
+  if (typeof document !== 'undefined') {
+    const cookies = document.cookie.split(';');
+    const accessTokenCookie = cookies.find(cookie => cookie.trim().startsWith('client_access_token='));
+    if (accessTokenCookie) {
+      const token = accessTokenCookie.split('=')[1];
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('[v2Fetch] Added JWT token to Authorization header');
+    }
+  }
   
   // For POST requests, get CSRF token if not already present
   if (init?.method === 'POST' && !headers['X-CSRFToken']) {

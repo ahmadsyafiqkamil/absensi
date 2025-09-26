@@ -16,10 +16,13 @@ export default function NotificationBadge({ className }: NotificationBadgeProps)
   useEffect(() => {
     const loadUnreadCount = async () => {
       try {
+        console.log('[NotificationBadge] Loading unread count...')
         const data = await notificationApi.user.getUnreadCount()
+        console.log('[NotificationBadge] Unread count data:', data)
         setUnreadCount(data.unread_count)
+        console.log('[NotificationBadge] Set unread count to:', data.unread_count)
       } catch (error) {
-        console.error('Failed to load unread count:', error)
+        console.error('[NotificationBadge] Failed to load unread count:', error)
         setUnreadCount(0)
       } finally {
         setIsLoading(false)
@@ -33,7 +36,10 @@ export default function NotificationBadge({ className }: NotificationBadgeProps)
     return () => clearInterval(interval)
   }, [])
 
+  console.log('[NotificationBadge] Render - isLoading:', isLoading, 'unreadCount:', unreadCount)
+
   if (isLoading) {
+    console.log('[NotificationBadge] Rendering loading state')
     return (
       <Button
         variant="outline"
@@ -59,35 +65,52 @@ export default function NotificationBadge({ className }: NotificationBadgeProps)
     )
   }
 
+  console.log('[NotificationBadge] Rendering with unreadCount:', unreadCount)
+  console.log('[NotificationBadge] Should show badge:', unreadCount > 0)
+  
+  // Force show badge for testing if unreadCount > 0
+  const shouldShowBadge = unreadCount > 0
+  console.log('[NotificationBadge] Final decision - shouldShowBadge:', shouldShowBadge)
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className={`flex items-center space-x-2 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 relative ${className}`}
-      onClick={() => window.location.href = '/notifications'}
-    >
-      <svg
-        className="w-4 h-4"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
+    <div className="relative">
+      <Button
+        variant="outline"
+        size="sm"
+        className={`flex items-center space-x-2 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 ${className}`}
+        onClick={() => window.location.href = '/notifications'}
       >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M15 17h5l-5 5v-5zM4.5 19.5c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h15c1.1 0 2 .9 2 2v11.5c0 1.1-.9 2-2 2h-15zM4.5 6v11.5h15V6h-15z"
-        />
-      </svg>
-      <span>Notifikasi</span>
-      {unreadCount > 0 && (
-        <Badge 
-          variant="destructive" 
-          className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
         >
-          {unreadCount > 99 ? '99+' : unreadCount}
-        </Badge>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 17h5l-5 5v-5zM4.5 19.5c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h15c1.1 0 2 .9 2 2v11.5c0 1.1-.9 2-2 2h-15zM4.5 6v11.5h15V6h-15z"
+          />
+        </svg>
+        <span>Notifikasi</span>
+      </Button>
+      {shouldShowBadge && (
+        <>
+          {console.log('[NotificationBadge] Rendering badge with count:', unreadCount)}
+          <div 
+            className="absolute -top-2 -right-2 h-6 w-6 flex items-center justify-center text-xs font-bold rounded-full"
+            style={{
+              backgroundColor: '#ef4444',
+              color: 'white',
+              border: '2px solid white',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              zIndex: 20
+            }}
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </div>
+        </>
       )}
-    </Button>
+    </div>
   )
 }

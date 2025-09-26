@@ -146,6 +146,7 @@ export default function Header({ title, subtitle, username, role }: HeaderProps)
           {/* Right side - Notifications, Position switcher, User info and logout */}
           <div className="flex items-center space-x-4">
             {/* Notifications Button */}
+            {console.log('[Header] Rendering NotificationBadge')}
             <NotificationBadge />
 
             {/* Position Switcher - Dynamic from /auth/me */}
