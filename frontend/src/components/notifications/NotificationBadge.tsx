@@ -96,7 +96,6 @@ export default function NotificationBadge({ className }: NotificationBadgeProps)
       </Button>
       {shouldShowBadge && (
         <>
-          {console.log('[NotificationBadge] Rendering badge with count:', unreadCount)}
           <div 
             className="absolute -top-2 -right-2 h-6 w-6 flex items-center justify-center text-xs font-bold rounded-full"
             style={{
