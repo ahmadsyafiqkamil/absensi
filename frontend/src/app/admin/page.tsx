@@ -198,6 +198,27 @@ export default async function AdminPage() {
             </CardContent>
           </Card>
 
+          {/* Notifications */}
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM4.5 19.5c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h15c1.1 0 2 .9 2 2v11.5c0 1.1-.9 2-2 2h-15zM4.5 6v11.5h15V6h-15z" />
+                </svg>
+                Manajemen Notifikasi
+              </CardTitle>
+              <CardDescription>Kelola notifikasi untuk seluruh pengguna</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/admin/notifications">
+                <Button variant="outline" className="w-full">Lihat Notifikasi</Button>
+              </Link>
+              <Link href="/admin/notifications/create">
+                <Button variant="outline" className="w-full">Buat Notifikasi</Button>
+              </Link>
+            </CardContent>
+          </Card>
+
           {/* Reports */}
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>

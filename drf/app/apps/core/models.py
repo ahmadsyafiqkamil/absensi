@@ -67,6 +67,7 @@ class GroupPermission(models.Model):
         ('reportaccesslog', 'Report Access Log Management'),
         ('reportschedule', 'Report Schedule Management'),
         ('reporttemplate', 'Report Template Management'),
+        ('notification', 'Notification Management'),
     ]
     
     PERMISSION_ACTIONS = [

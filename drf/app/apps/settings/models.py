@@ -31,15 +31,15 @@ class WorkSettings(TimeStampedModel):
     # Overtime settings (multipliers of hourly base wage)
     # Default: workday 2/4 (=0.50), holiday 3/4 (=0.75)
     overtime_rate_workday = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
+        max_digits=6,
+        decimal_places=4,
         default=0.50,
         verbose_name="Overtime Rate (Workday)",
         help_text="Multiplier of hourly base wage for overtime on workdays (e.g., 0.50 = 2/4)",
     )
     overtime_rate_holiday = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
+        max_digits=6,
+        decimal_places=4,
         default=0.75,
         verbose_name="Overtime Rate (Holiday)",
         help_text="Multiplier of hourly base wage for overtime on holidays (e.g., 0.75 = 3/4)",

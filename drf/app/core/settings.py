@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'apps.overtime',
     'apps.reporting',
     'apps.settings',
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [
@@ -191,5 +192,14 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Notification settings
+NOTIFICATION_SETTINGS = {
+    'DEFAULT_EXPIRY_DAYS': 30,
+    'MAX_ATTACHMENT_SIZE': 10 * 1024 * 1024,  # 10MB
+    'ALLOWED_ATTACHMENT_TYPES': ['pdf', 'doc', 'docx', 'jpg', 'png'],
+    'ENABLE_EMAIL_NOTIFICATIONS': False,  # Future feature
+    'ENABLE_PUSH_NOTIFICATIONS': False,  # Future feature
+}
 
 APPEND_SLASH=False

@@ -542,3 +542,6 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'overtime'
 export type ReportStatus = 'success' | 'failed' | 'pending'
 export type RoleCategory = 'admin' | 'supervisor' | 'employee' | 'system'
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'reject' | 'export' | 'import'
+
+// Re-export notification types
+export * from './types/notifications'
