@@ -31,6 +31,7 @@ urlpatterns = [
     path('api/v2/employees/', include('apps.employees.urls')),
     path('api/v2/settings/', include('apps.settings.urls')),
     path('api/v2/users/', include('apps.users.urls')),
+    path('api/v2/notifications/', include('apps.notifications.urls')),
     # Schema and docs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularRedocView.as_view(url_name='schema'), name='swagger-ui'),
