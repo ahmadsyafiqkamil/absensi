@@ -6,6 +6,7 @@
 // Import feature-based API clients
 export { default as authApi } from './auth/client'
 export { default as attendanceApi, correctionsApi } from './attendance/client'
+export { default as notificationApi } from './notifications/client'
 
 // Re-export for backward compatibility
 export * from './auth/client'

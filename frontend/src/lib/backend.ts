@@ -44,6 +44,7 @@ export async function backendFetch(
       const response = await fetch(url, {
         ...init,
         cache: 'no-store',
+        credentials: init?.credentials || 'include', // Include cookies by default
         headers: {
           'Content-Type': 'application/json',
           ...init?.headers,
@@ -121,7 +122,35 @@ export async function meFromServerCookies() {
 
 // New V2 API functions
 export async function v2Fetch(path: string, init?: RequestInit) {
-  return backendFetch(path, init, 'V2')
+  // For client-side requests, use cookies for authentication
+  const headers = { ...init?.headers } as Record<string, string>;
+  
+  // For POST requests, get CSRF token if not already present
+  if (init?.method === 'POST' && !headers['X-CSRFToken']) {
+    try {
+      const csrfResponse = await fetch(`${getBackendBaseUrl()}/api/v2/auth/csrf-token/`, {
+        credentials: 'include'
+      });
+      if (csrfResponse.ok) {
+        const csrfData = await csrfResponse.json();
+        if (csrfData.csrfToken) {
+          headers['X-CSRFToken'] = csrfData.csrfToken;
+          console.log('[v2Fetch] Added CSRF token to request');
+        }
+      }
+    } catch (error) {
+      console.warn('[v2Fetch] Failed to get CSRF token:', error);
+    }
+  }
+  
+  // Add credentials to include cookies for authentication
+  const requestInit: RequestInit = {
+    ...init,
+    headers,
+    credentials: 'include', // Include cookies for authentication
+  };
+  
+  return backendFetch(path, requestInit, 'V2')
 }
 
 // Helper function to get full backend URL for V2 endpoints
@@ -192,7 +221,7 @@ export async function proxyToBackend(
     // For POST requests, try to get CSRF token if not present
     if (method === 'POST' && !csrfToken && cookie) {
       try {
-        const csrfResponse = await fetch(`${getBackendBaseUrl()}/api/v2/auth/csrf/`, {
+        const csrfResponse = await fetch(`${getBackendBaseUrl()}/api/v2/auth/csrf-token/`, {
           headers: { 'Cookie': cookie }
         });
         if (csrfResponse.ok) {
