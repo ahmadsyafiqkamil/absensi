@@ -357,7 +357,7 @@ export default function SettingsClient() {
                 <Label>Rate Lembur Hari Kerja (kali gaji per jam)</Label>
                 <Input
                   type="number"
-                  step="0.01"
+                  step="0.0001"
                   min="0"
                   max="10"
                   value={String(settings.overtime_rate_workday || 0.50)}
@@ -366,13 +366,13 @@ export default function SettingsClient() {
                     setSettings({ ...settings, overtime_rate_workday: value });
                   }}
                 />
-                <div className="text-xs text-gray-500">Contoh: 0.50 = 50% dari gaji per jam, 1.00 = 100% dari gaji per jam</div>
+                <div className="text-xs text-gray-500">Contoh: 0.50 = 50% dari gaji per jam, 1.00 = 100% dari gaji per jam. Presisi hingga 4 desimal.</div>
               </div>
               <div className="grid gap-2">
                 <Label>Rate Lembur Hari Libur (kali gaji per jam)</Label>
                 <Input
                   type="number"
-                  step="0.01"
+                  step="0.0001"
                   min="0"
                   max="10"
                   value={String(settings.overtime_rate_holiday || 0.75)}
@@ -381,7 +381,7 @@ export default function SettingsClient() {
                     setSettings({ ...settings, overtime_rate_holiday: value });
                   }}
                 />
-                <div className="text-xs text-gray-500">Contoh: 0.75 = 75% dari gaji per jam, 1.50 = 150% dari gaji per jam</div>
+                <div className="text-xs text-gray-500">Contoh: 0.75 = 75% dari gaji per jam, 1.50 = 150% dari gaji per jam. Presisi hingga 4 desimal.</div>
               </div>
               <div className="grid gap-2">
                 <Label>Batas Mulai Lembur (menit)</Label>
