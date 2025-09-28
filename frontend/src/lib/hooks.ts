@@ -507,7 +507,7 @@ export function useCurrentContext() {
       return null;
     }
     
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/v2/employees/employees/current_context/`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'}/api/v2/employees/employees/current_context/`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'

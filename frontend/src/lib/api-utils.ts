@@ -10,7 +10,7 @@ import { proxyToBackend } from './backend';
  */
 export function getBackendUrl(): string {
   // For server-side API routes, use container-to-container networking
-  return process.env.BACKEND_URL || 'http://backend:8000';
+  return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local';
 }
 
 /**
@@ -18,7 +18,7 @@ export function getBackendUrl(): string {
  */
 export function getClientBackendUrl(): string {
   // For client-side, use localhost (through Caddy proxy)
-  return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+  return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local';
 }
 
 /**

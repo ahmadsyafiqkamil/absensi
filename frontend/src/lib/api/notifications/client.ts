@@ -12,7 +12,14 @@ export const notificationApi = {
   admin: {
     // Get all notifications (admin view)
     getNotifications: async (): Promise<Notification[]> => {
-      const response = await v2Fetch('/notifications/admin/notifications/')
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch('/api/v2/notifications/admin/notifications/', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch notifications')
       }
@@ -44,8 +51,10 @@ export const notificationApi = {
       }
       // Note: attachment handling will be implemented later if needed
 
-      const response = await v2Fetch('/notifications/admin/notifications/', {
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch('/api/v2/notifications/admin/notifications/', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -62,7 +71,14 @@ export const notificationApi = {
 
     // Get allowed targets for current user
     getAllowedTargets: async (): Promise<NotificationTargets> => {
-      const response = await v2Fetch('/notifications/admin/notifications/allowed_targets/')
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch('/api/v2/notifications/admin/notifications/allowed_targets/', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch allowed targets')
       }
@@ -71,8 +87,13 @@ export const notificationApi = {
 
     // Publish notification
     publishNotification: async (id: number): Promise<{ message: string }> => {
-      const response = await v2Fetch(`/notifications/admin/notifications/${id}/publish/`, {
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch(`/api/v2/notifications/admin/notifications/${id}/publish/`, {
         method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Failed to publish notification' }))
@@ -83,8 +104,13 @@ export const notificationApi = {
 
     // Archive notification
     archiveNotification: async (id: number): Promise<{ message: string }> => {
-      const response = await v2Fetch(`/notifications/admin/notifications/${id}/archive/`, {
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch(`/api/v2/notifications/admin/notifications/${id}/archive/`, {
         method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Failed to archive notification' }))
@@ -119,11 +145,21 @@ export const notificationApi = {
   user: {
     // Get user notifications
     getNotifications: async (unreadOnly: boolean = false, includeExpired: boolean = false): Promise<Notification[]> => {
+      // Use proxy route to avoid SSL certificate issues
       const params = new URLSearchParams()
       if (unreadOnly) params.append('unread_only', 'true')
       if (includeExpired) params.append('include_expired', 'true')
       
-      const response = await v2Fetch(`/notifications/notifications/?${params.toString()}`)
+      const queryString = params.toString()
+      const url = `/api/v2/notifications/notifications/${queryString ? `?${queryString}` : ''}`
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch notifications')
       }
@@ -132,8 +168,13 @@ export const notificationApi = {
 
     // Mark notification as read
     markAsRead: async (id: number): Promise<{ message: string }> => {
-      const response = await v2Fetch(`/notifications/notifications/${id}/mark_read/`, {
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch(`/api/v2/notifications/notifications/${id}/mark_read/`, {
         method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Failed to mark notification as read' }))
@@ -144,8 +185,13 @@ export const notificationApi = {
 
     // Acknowledge notification
     acknowledgeNotification: async (id: number): Promise<{ message: string }> => {
-      const response = await v2Fetch(`/notifications/notifications/${id}/acknowledge/`, {
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch(`/api/v2/notifications/notifications/${id}/acknowledge/`, {
         method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Failed to acknowledge notification' }))
@@ -156,7 +202,14 @@ export const notificationApi = {
 
     // Get unread count
     getUnreadCount: async (): Promise<{ unread_count: number }> => {
-      const response = await v2Fetch('/notifications/notifications/unread_count/')
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch('/api/v2/notifications/notifications/unread_count/', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch unread count')
       }
@@ -165,7 +218,14 @@ export const notificationApi = {
 
     // Get notification summary
     getSummary: async (): Promise<{ total: number; unread: number; urgent: number; requires_acknowledgment: number }> => {
-      const response = await v2Fetch('/notifications/notifications/summary/')
+      // Use proxy route to avoid SSL certificate issues
+      const response = await fetch('/api/v2/notifications/notifications/summary/', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch notification summary')
       }

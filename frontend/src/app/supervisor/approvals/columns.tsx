@@ -266,7 +266,7 @@ export const columns: ColumnDef<AttendanceCorrection>[] = [
       if (!attachment) return <span className="text-muted-foreground">-</span>
       
       // Get the full URL for the attachment
-      const attachmentUrl = attachment.startsWith('http') ? attachment : `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/media/${attachment}`
+      const attachmentUrl = attachment.startsWith('http') ? attachment : `${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'}/media/${attachment}`
       
       return (
         <div className="flex items-center">
