@@ -3,10 +3,20 @@ export const getBackendBaseUrl = () => {
   // Use different URLs for server vs client in Docker environment
   if (typeof window === 'undefined') {
     // Server-side (API routes): use container-to-container networking
-    return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    // Check if we're in production environment
+    if (process.env.NODE_ENV === 'production') {
+      return process.env.BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    } else {
+      return process.env.BACKEND_URL || 'http://backend:8000'
+    }
   } else {
     // Client-side (browser): use host networking
-    return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    // Check if we're in production environment
+    if (process.env.NODE_ENV === 'production') {
+      return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    } else {
+      return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    }
   }
 }
 

@@ -10,15 +10,25 @@ import { proxyToBackend } from './backend';
  */
 export function getBackendUrl(): string {
   // For server-side API routes, use container-to-container networking
-  return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local';
+  // Check if we're in production environment
+  if (process.env.NODE_ENV === 'production') {
+    return process.env.BACKEND_URL || 'https://api.siaki.kjri-dubai.local';
+  } else {
+    return process.env.BACKEND_URL || 'http://backend:8000';
+  }
 }
 
 /**
  * Get backend URL for client-side (browser)
  */
 export function getClientBackendUrl(): string {
-  // For client-side, use localhost (through Caddy proxy)
-  return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local';
+  // For client-side, use appropriate URL based on environment
+  // Check if we're in production environment
+  if (process.env.NODE_ENV === 'production') {
+    return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local';
+  } else {
+    return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+  }
 }
 
 /**

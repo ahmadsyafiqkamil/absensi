@@ -7,7 +7,7 @@ export async function POST(
 ) {
   try {
     // Get the backend URL from environment
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     
     // Get cookies from the request
     const cookieStore = await cookies()

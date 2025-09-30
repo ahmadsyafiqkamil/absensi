@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 export async function GET(request: NextRequest) {
   try {
     // Get the backend URL from environment
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     
     // Get cookies from the request
     const cookieStore = await cookies()
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Get the backend URL from environment
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.siaki.kjri-dubai.local'
+    const backend = process.env.BACKEND_URL || 'http://backend:8000'
     
     // Get cookies from the request
     const cookieStore = await cookies()
