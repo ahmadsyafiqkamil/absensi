@@ -169,6 +169,18 @@ class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
                 "Overtime date cannot be in the future"
             )
         
+        # Validasi waktu pengajuan lembur manual (hanya 12 malam - 6 pagi)
+        from django.utils import timezone
+        current_time = timezone.now()
+        current_hour = current_time.hour
+        
+        # Untuk manual overtime request, hanya izinkan pengajuan dari jam 0-6 (12 malam - 6 pagi)
+        if current_hour < 0 or current_hour > 6:
+            raise serializers.ValidationError(
+                "Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi). "
+                f"Waktu saat ini: {current_time.strftime('%H:%M')}"
+            )
+        
         return data
     
     def create(self, validated_data):

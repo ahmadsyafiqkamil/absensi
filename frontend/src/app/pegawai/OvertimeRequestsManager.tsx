@@ -256,6 +256,16 @@ export default function OvertimeRequestsManager() {
     if (!formData.work_description.trim()) {
       errors.work_description = 'Deskripsi pekerjaan harus diisi';
     }
+
+    // Validasi waktu pengajuan lembur manual (hanya 12 malam - 6 pagi)
+    // Menggunakan timezone Dubai (Asia/Dubai) untuk konsistensi dengan backend
+    const currentTime = new Date();
+    const dubaiTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Asia/Dubai"}));
+    const currentHour = dubaiTime.getHours();
+    
+    if (currentHour < 0 || currentHour > 6) {
+      errors.submission_time = 'Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi)';
+    }
     
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -807,6 +817,33 @@ export default function OvertimeRequestsManager() {
                 Ajukan Lembur
               </Dialog.Title>
               
+              {/* Info waktu pengajuan */}
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-blue-800">
+                      Pengajuan Lembur Manual
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi)
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      Waktu Dubai saat ini: {new Date().toLocaleString('id-ID', {
+                        timeZone: 'Asia/Dubai',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="date_requested">Tanggal Lembur *</Label>
@@ -863,6 +900,30 @@ export default function OvertimeRequestsManager() {
                     <p className="text-sm text-red-600">{formErrors.work_description}</p>
                   )}
                 </div>
+
+                {/* Display submission time error */}
+                {formErrors.submission_time && (
+                  <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L10.586 10l-1.293 1.293a1 1 0 101.414 1.414L12 11.414l1.293 1.293a1 1 0 001.414-1.414L13.414 10l1.293-1.293a1 1 0 00-1.414-1.414L12 8.586l-1.293-1.293z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-red-800">{formErrors.submission_time}</p>
+                        <p className="text-xs text-red-600 mt-1">
+                          Waktu Dubai saat ini: {new Date().toLocaleString('id-ID', {
+                            timeZone: 'Asia/Dubai',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end space-x-3 pt-4">
                   <Dialog.Close asChild>
