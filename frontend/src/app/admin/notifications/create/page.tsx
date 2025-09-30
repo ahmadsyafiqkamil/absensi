@@ -44,7 +44,7 @@ export default async function CreateNotificationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Buat Notifikasi" 
         subtitle="Buat notifikasi untuk seluruh pengguna"

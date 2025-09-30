@@ -20,7 +20,7 @@ export default async function SupervisorPage() {
   
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
+      <div className="flex items-center justify-center bg-gradient-to-br from-blue-50 to-white min-h-[60vh]">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">You are not authorized to view this page.</p>
@@ -39,7 +39,7 @@ export default async function SupervisorPage() {
 
   if (!hasApprovalPermission) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
+      <div className="flex items-center justify-center bg-gradient-to-br from-blue-50 to-white min-h-[60vh]">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="text-gray-600 mt-2">Supervisor privileges required (approval level 1 or higher).</p>
@@ -59,7 +59,7 @@ export default async function SupervisorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Dashboard Supervisor" 
         subtitle="Kelola tim Anda dan pantau kinerja"
@@ -85,6 +85,26 @@ export default async function SupervisorPage() {
         <div className="grid gap-4 mb-8">
           <h2 className="text-xl font-semibold text-gray-900">Your Attendance</h2>
           <TodayAttendance />
+          {/* <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Attendance Actions
+              </CardTitle>
+              <CardDescription>Record your own attendance</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <AttendanceWidget />
+            </CardContent>
+          </Card> */}
+        </div>
+
+        {/* Supervisor Functions Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+          {/* Attendance */}
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -99,12 +119,9 @@ export default async function SupervisorPage() {
               <AttendanceWidget />
             </CardContent>
           </Card>
-        </div>
-
-        {/* Supervisor Functions Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
           {/* Team Management */}
-          <Card className="hover:shadow-lg transition-shadow">
+          {/* <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,7 +139,7 @@ export default async function SupervisorPage() {
                 <Button variant="outline" className="w-full">Berikan Tugas</Button>
               </Link>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Attendance Monitoring */}
           <Card className="hover:shadow-lg transition-shadow">
@@ -175,7 +192,7 @@ export default async function SupervisorPage() {
           </Card>
 
           {/* Communication */}
-          <Card className="hover:shadow-lg transition-shadow">
+          {/* <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,10 +210,10 @@ export default async function SupervisorPage() {
                 <Button variant="outline" className="w-full">Pesan Tim</Button>
               </Link>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Settings */}
-          <Card className="hover:shadow-lg transition-shadow">
+          {/* <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -215,7 +232,7 @@ export default async function SupervisorPage() {
                 <Button variant="outline" className="w-full">Profil</Button>
               </Link>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
 
         {/* Quick Stats */}

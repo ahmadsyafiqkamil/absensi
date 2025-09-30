@@ -44,7 +44,7 @@ export default async function EmployeePositionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Employee Position Management" 
         subtitle="Manage multiple positions for employees"

@@ -132,7 +132,7 @@ export default function ClearSessionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white p-8">
+    <div className="bg-gradient-to-br from-blue-50 to-white p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">🧹 Clear Session & Cache</h1>
         

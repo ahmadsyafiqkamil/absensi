@@ -19,7 +19,7 @@ export default async function PegawaiPage() {
   
   if (!me) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
+      <div className="flex items-center justify-center bg-gradient-to-br from-blue-50 to-white min-h-[60vh]">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600">Akses Ditolak</h1>
           <p className="text-gray-600 mt-2">Anda tidak berwenang melihat halaman ini.</p>
@@ -32,7 +32,7 @@ export default async function PegawaiPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Dashboard Pegawai" 
         subtitle="Kelola kehadiran dan profil Anda"

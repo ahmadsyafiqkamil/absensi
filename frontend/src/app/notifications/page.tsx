@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import Header from '@/components/Header'
 
 import { notificationApi } from '@/lib/api/notifications/client'
 import type { Notification } from '@/lib/types/notifications'
@@ -18,6 +19,20 @@ export default function UserNotificationsPage() {
   const [error, setError] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
   const [summary, setSummary] = useState<{ total: number; unread: number; urgent: number; requires_acknowledgment: number } | null>(null)
+  const [user, setUser] = useState<{ username: string; groups: string[]; is_superuser: boolean } | null>(null)
+
+  // Load user data
+  const loadUser = async () => {
+    try {
+      const response = await fetch('/api/v2/auth/me', { cache: 'no-store' })
+      if (response.ok) {
+        const userData = await response.json()
+        setUser(userData)
+      }
+    } catch (err) {
+      console.error('Failed to load user data:', err)
+    }
+  }
 
   // Load notifications
   const loadNotifications = async () => {
@@ -40,6 +55,7 @@ export default function UserNotificationsPage() {
   }
 
   useEffect(() => {
+    loadUser()
     loadNotifications()
   }, [])
 
@@ -93,26 +109,37 @@ export default function UserNotificationsPage() {
     })
   }
 
-  if (isLoading) {
+  if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Memuat notifikasi...</p>
+      <div className="bg-gradient-to-br from-blue-50 to-white">
+        {user && (
+          <Header 
+            title="Notifikasi" 
+            subtitle="Pemberitahuan dan pengumuman penting"
+            username={user.username}
+            role={user.groups?.includes('admin') ? 'admin' : user.groups?.includes('supervisor') ? 'supervisor' : 'pegawai'}
+          />
+        )}
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Memuat notifikasi...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="bg-gradient-to-br from-blue-50 to-white">
+      <Header 
+        title="Notifikasi" 
+        subtitle="Pemberitahuan dan pengumuman penting"
+        username={user.username}
+        role={user.groups?.includes('admin') ? 'admin' : user.groups?.includes('supervisor') ? 'supervisor' : 'pegawai'}
+      />
+      
       <div className="max-w-4xl mx-auto px-4 py-8">
-        
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Notifikasi</h1>
-          <p className="text-gray-600 mt-1">Pemberitahuan dan pengumuman penting</p>
-        </div>
 
         {/* Summary Cards */}
         {summary && (

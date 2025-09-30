@@ -44,7 +44,7 @@ export default async function AdminNotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="bg-gradient-to-br from-blue-50 to-white">
       <Header 
         title="Manajemen Notifikasi" 
         subtitle="Kelola notifikasi untuk seluruh pengguna"

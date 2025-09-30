@@ -256,3 +256,22 @@ body {
 .hover\:underline:hover {
   text-decoration: underline;
 }
+
+/* Hide footer on login page */
+body:has(.login-page) footer {
+  display: none !important;
+}
+
+.login-page footer {
+  display: none !important;
+}
+
+/* More specific targeting for login page */
+html:has(.login-page) body footer {
+  display: none !important;
+}
+
+/* Alternative approach using path-based targeting */
+[data-pathname="/login"] footer {
+  display: none !important;
+}
