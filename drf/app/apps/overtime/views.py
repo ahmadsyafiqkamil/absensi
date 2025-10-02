@@ -23,6 +23,39 @@ from django.conf import settings
 import os
 import tempfile
 import requests
+import locale
+
+
+def format_date_indonesian(date_obj, format_type='full'):
+    """
+    Format tanggal dalam bahasa Indonesia
+    format_type: 'full' (dd MMMM yyyy), 'short' (dd MMM yyyy), 'month_year' (MMMM yyyy)
+    """
+    if not date_obj:
+        return '-'
+    
+    # Nama bulan dalam bahasa Indonesia
+    bulan_indonesia = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
+        5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
+        9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }
+    
+    # Nama bulan singkat dalam bahasa Indonesia
+    bulan_singkat = {
+        1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr',
+        5: 'Mei', 6: 'Jun', 7: 'Jul', 8: 'Agu',
+        9: 'Sep', 10: 'Okt', 11: 'Nov', 12: 'Des'
+    }
+    
+    if format_type == 'full':
+        return f"{date_obj.day:02d} {bulan_indonesia[date_obj.month]} {date_obj.year}"
+    elif format_type == 'short':
+        return f"{date_obj.day:02d} {bulan_singkat[date_obj.month]} {date_obj.year}"
+    elif format_type == 'month_year':
+        return f"{bulan_indonesia[date_obj.month]} {date_obj.year}"
+    else:
+        return str(date_obj)
 
 
 # Overtime Request Views
@@ -257,11 +290,11 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
 
         current_dt = timezone.now()
         tahun = current_dt.strftime('%Y')
-        bulan = current_dt.strftime('%B')
+        bulan = format_date_indonesian(current_dt.date(), 'month_year')
         hari = current_dt.strftime('%d')
-        tanggal_doc = current_dt.strftime('%d %B %Y')
+        tanggal_doc = format_date_indonesian(current_dt.date(), 'full')
 
-        tanggal_lembur = overtime_request.date.strftime('%d %B %Y') if overtime_request.date else '-'
+        tanggal_lembur = format_date_indonesian(overtime_request.date, 'full') if overtime_request.date else '-'
         jam_lembur = f"{overtime_request.total_hours} jam"
         deskripsi = overtime_request.work_description
         jumlah = f"{overtime_request.total_amount or 0}"
@@ -288,12 +321,12 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         lvl1_name = _approver_name(getattr(overtime_request, 'level1_approved_by', None))
         lvl1_nip = _approver_nip(getattr(overtime_request, 'level1_approved_by', None))
         lvl1_at = getattr(overtime_request, 'level1_approved_at', None)
-        lvl1_date = lvl1_at.strftime('%d %B %Y') if lvl1_at else '-'
+        lvl1_date = format_date_indonesian(lvl1_at.date(), 'full') if lvl1_at else '-'
 
         final_name = _approver_name(getattr(overtime_request, 'final_approved_by', None))
         final_nip = _approver_nip(getattr(overtime_request, 'final_approved_by', None))
         final_at = getattr(overtime_request, 'final_approved_at', None)
-        final_date = final_at.strftime('%d %B %Y') if final_at else '-'
+        final_date = format_date_indonesian(final_at.date(), 'full') if final_at else '-'
 
         nomor_dok = f"{overtime_request.id}/SPKL/KJRI-DXB/{tahun}"
 
@@ -798,7 +831,7 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         # Get current date for export
         from django.utils import timezone
         current_dt = timezone.now()
-        tanggal_export = current_dt.strftime('%d %B %Y')
+        tanggal_export = format_date_indonesian(current_dt.date(), 'full')
         
         # Get approval info for monthly summary
         def _approver_name(user):
@@ -822,12 +855,12 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         lvl1_name = _approver_name(getattr(monthly_summary, 'level1_approved_by', None))
         lvl1_nip = _approver_nip(getattr(monthly_summary, 'level1_approved_by', None))
         lvl1_at = getattr(monthly_summary, 'level1_approved_at', None)
-        lvl1_date = lvl1_at.strftime('%d %B %Y') if lvl1_at else '-'
+        lvl1_date = format_date_indonesian(lvl1_at.date(), 'full') if lvl1_at else '-'
 
         final_name = _approver_name(getattr(monthly_summary, 'final_approved_by', None))
         final_nip = _approver_nip(getattr(monthly_summary, 'final_approved_by', None))
         final_at = getattr(monthly_summary, 'final_approved_at', None)
-        final_date = final_at.strftime('%d %B %Y') if final_at else '-'
+        final_date = format_date_indonesian(final_at.date(), 'full') if final_at else '-'
         
         replacements = {
             '{{NAMA_PEGAWAI}}': employee_name,
@@ -881,7 +914,7 @@ class MonthlySummaryRequestViewSet(viewsets.ModelViewSet):
         hdr_cells[3].text = 'Deskripsi'
         for item in rows:
             row_cells = table.add_row().cells
-            row_cells[0].text = item['date'].strftime('%d %b %Y')
+            row_cells[0].text = format_date_indonesian(item['date'], 'short')
             row_cells[1].text = f"{item['hours']:.2f}j"
             row_cells[2].text = f"{item['amount']:.2f}"
             row_cells[3].text = item['desc'] or ''
