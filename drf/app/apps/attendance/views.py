@@ -263,12 +263,25 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def export_pdf(self, request):
         """Generate PDF report for attendance data"""
+        from apps.settings.models import WorkSettings
+        import pytz
+        
         user = request.user
         
         # Get query parameters
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         month = request.query_params.get('month')
+        
+        # Get work settings for timezone
+        work_settings = WorkSettings.objects.first()
+        if work_settings and work_settings.timezone:
+            try:
+                work_tz = pytz.timezone(work_settings.timezone)
+            except pytz.exceptions.UnknownTimeZoneError:
+                work_tz = pytz.UTC
+        else:
+            work_tz = pytz.UTC
         
         # Validate date formats
         if start_date:
@@ -481,9 +494,10 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                 note = Paragraph(f"<i>Catatan: Ditampilkan 50 record terbaru dari total {attendances.count()} record</i>", styles['Normal'])
                 elements.append(note)
         
-        # Footer
+        # Footer - Use work timezone
         elements.append(Spacer(1, 30))
-        footer = Paragraph(f"<i>Dibuat pada: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+        current_time = datetime.now(work_tz)
+        footer = Paragraph(f"<i>Dibuat pada: {current_time.strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
         elements.append(footer)
         
         # Build PDF
@@ -492,7 +506,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Create response
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="attendance-report-{datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="attendance-report-{current_time.strftime("%Y%m%d-%H%M%S")}.pdf"'
         
         return response
 
@@ -622,8 +636,10 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
     def team_attendance_pdf(self, request):
         """Generate PDF report for supervisor team attendance"""
         from apps.employees.models import Employee
+        from apps.settings.models import WorkSettings
         from django.db.models import Count, Avg, Sum, Q
         from datetime import date, timedelta
+        import pytz
         
         # Get query parameters
         start_date = request.query_params.get('start_date')
@@ -654,6 +670,16 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
         if employee_id:
             employees_qs = employees_qs.filter(id=employee_id)
         
+        # Get work settings for timezone
+        work_settings = WorkSettings.objects.first()
+        if work_settings and work_settings.timezone:
+            try:
+                work_tz = pytz.timezone(work_settings.timezone)
+            except pytz.exceptions.UnknownTimeZoneError:
+                work_tz = pytz.UTC
+        else:
+            work_tz = pytz.UTC
+        
         # Create PDF
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
@@ -673,9 +699,13 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
         title = Paragraph("Laporan Absensi Tim", title_style)
         elements.append(title)
         
-        # Supervisor Info
+        # Supervisor Info - Use employee profile fullname if available
+        supervisor_name = request.user.employee_profile.fullname if hasattr(request.user, 'employee_profile') and request.user.employee_profile.fullname else f"{request.user.first_name} {request.user.last_name}".strip()
+        if not supervisor_name:
+            supervisor_name = request.user.username
+        
         supervisor_info = f"""
-        <b>Supervisor:</b> {request.user.first_name} {request.user.last_name}<br/>
+        <b>Supervisor:</b> {supervisor_name}<br/>
         <b>Divisi:</b> {division.name}<br/>
         <b>Periode:</b> {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}<br/>
         <b>Total Anggota Tim:</b> {employees_qs.count()}
@@ -785,9 +815,10 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
             ]))
             elements.append(details_table)
         
-        # Footer
+        # Footer - Use work timezone
         elements.append(Spacer(1, 30))
-        footer = Paragraph(f"<i>Dibuat pada: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
+        current_time = datetime.now(work_tz)
+        footer = Paragraph(f"<i>Dibuat pada: {current_time.strftime('%d/%m/%Y %H:%M:%S')}</i>", styles['Normal'])
         elements.append(footer)
         
         # Build PDF
@@ -796,7 +827,7 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
         
         # Create response
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="supervisor-team-attendance-{current_time.strftime("%Y%m%d-%H%M%S")}.pdf"'
         
         return response
 
