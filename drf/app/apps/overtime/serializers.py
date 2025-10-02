@@ -67,14 +67,20 @@ class OvertimeRequestSupervisorSerializer(OvertimeRequestSerializer):
                     est_total = est_hourly * total_hours
                     data['hourly_rate'] = round(est_hourly, 2)
                     data['total_amount'] = round(est_total, 2)
+                    # Add overtime_amount field for frontend compatibility
+                    data['overtime_amount'] = round(est_total, 2)
                 else:
                     if hourly_rate is not None:
                         data['hourly_rate'] = float(hourly_rate)
                     if total_amount is not None:
                         data['total_amount'] = float(total_amount)
+                        # Add overtime_amount field for frontend compatibility
+                        data['overtime_amount'] = float(total_amount)
             else:
                 data['hourly_rate'] = float(hourly_rate)
                 data['total_amount'] = float(total_amount)
+                # Add overtime_amount field for frontend compatibility
+                data['overtime_amount'] = float(total_amount)
         except Exception:
             pass
         return data
@@ -115,14 +121,20 @@ class OvertimeRequestEmployeeSerializer(OvertimeRequestSerializer):
                     est_total = est_hourly * total_hours
                     data['hourly_rate'] = round(est_hourly, 2)
                     data['total_amount'] = round(est_total, 2)
+                    # Add overtime_amount field for frontend compatibility
+                    data['overtime_amount'] = round(est_total, 2)
                 else:
                     if hourly_rate is not None:
                         data['hourly_rate'] = float(hourly_rate)
                     if total_amount is not None:
                         data['total_amount'] = float(total_amount)
+                        # Add overtime_amount field for frontend compatibility
+                        data['overtime_amount'] = float(total_amount)
             else:
                 data['hourly_rate'] = float(hourly_rate)
                 data['total_amount'] = float(total_amount)
+                # Add overtime_amount field for frontend compatibility
+                data['overtime_amount'] = float(total_amount)
         except Exception:
             # Best-effort; leave fields absent on error
             pass
