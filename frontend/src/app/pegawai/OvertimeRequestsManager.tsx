@@ -102,18 +102,26 @@ function formatDateTime(dateString: string): string {
   });
 }
 
-// Custom filter function for month filtering
-const monthFilterFn: FilterFn<any> = (row, columnId, value: string) => {
-  if (!value) return true;
+// Custom filter function for date range filtering
+const dateRangeFilterFn: FilterFn<any> = (row, columnId, value: { start_date?: string; end_date?: string }) => {
+  if (!value || (!value.start_date && !value.end_date)) return true;
   
   const dateValue = row.getValue(columnId) as string;
   if (!dateValue) return false;
   
-  const date = new Date(dateValue);
-  const filterDate = new Date(value);
+  const rowDate = new Date(dateValue);
   
-  return date.getFullYear() === filterDate.getFullYear() && 
-         date.getMonth() === filterDate.getMonth();
+  if (value.start_date) {
+    const startDate = new Date(value.start_date);
+    if (rowDate < startDate) return false;
+  }
+  
+  if (value.end_date) {
+    const endDate = new Date(value.end_date);
+    if (rowDate > endDate) return false;
+  }
+  
+  return true;
 };
 
 function getStatusColor(status: string): string {
@@ -162,42 +170,48 @@ export default function OvertimeRequestsManager() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState<string>(() => {
-    // Default to current month
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [dateRange, setDateRange] = useState({
+    start_date: '',
+    end_date: ''
   });
   const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isQuickSubmit, setIsQuickSubmit] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    // Set default date range (last 30 days)
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    setDateRange({
+      start_date: thirtyDaysAgo.toISOString().split('T')[0],
+      end_date: today.toISOString().split('T')[0]
+    });
   }, []);
 
-  // Apply month filter when monthFilter changes
   useEffect(() => {
-    if (monthFilter) {
-      const parts = monthFilter.split('-');
-      const year = parts[0] || '';
-      const month = parts[1] || '';
-      setColumnFilters(prev => {
-        const existingFilter = prev.find(filter => filter.id === 'date_requested');
-        if (existingFilter) {
-          return prev.map(filter => 
-            filter.id === 'date_requested' 
-              ? { ...filter, value: monthFilter }
-              : filter
-          );
-        } else {
-          return [...prev, { id: 'date_requested', value: monthFilter }];
-        }
-      });
-    } else {
-      // Remove date filter if monthFilter is empty
-      setColumnFilters(prev => prev.filter(filter => filter.id !== 'date_requested'));
+    if (dateRange.start_date && dateRange.end_date) {
+      fetchData();
     }
-  }, [monthFilter]);
+  }, [dateRange]);
+
+  // Apply date range filter to table when dateRange changes
+  useEffect(() => {
+    setColumnFilters(prev => {
+      const existingFilter = prev.find(filter => filter.id === 'date_requested');
+      if (existingFilter) {
+        return prev.map(filter => 
+          filter.id === 'date_requested' 
+            ? { ...filter, value: dateRange }
+            : filter
+        );
+      } else {
+        return [...prev, { id: 'date_requested', value: dateRange }];
+      }
+    });
+  }, [dateRange]);
 
   const fetchData = async () => {
     try {
@@ -205,8 +219,11 @@ export default function OvertimeRequestsManager() {
       setError(null);
       
       const params = new URLSearchParams();
-      if (monthFilter) {
-        params.append('month', monthFilter);
+      if (dateRange.start_date) {
+        params.append('start_date', dateRange.start_date);
+      }
+      if (dateRange.end_date) {
+        params.append('end_date', dateRange.end_date);
       }
 
       const [requestsResponse, summaryResponse] = await Promise.all([
@@ -258,13 +275,16 @@ export default function OvertimeRequestsManager() {
     }
 
     // Validasi waktu pengajuan lembur manual (hanya 12 malam - 6 pagi)
-    // Menggunakan timezone Dubai (Asia/Dubai) untuk konsistensi dengan backend
-    const currentTime = new Date();
-    const dubaiTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Asia/Dubai"}));
-    const currentHour = dubaiTime.getHours();
-    
-    if (currentHour < 0 || currentHour > 6) {
-      errors.submission_time = 'Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi)';
+    // TIDAK berlaku untuk quick submit dari tabel potensi lembur
+    if (!isQuickSubmit) {
+      // Menggunakan timezone Dubai (Asia/Dubai) untuk konsistensi dengan backend
+      const currentTime = new Date();
+      const dubaiTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Asia/Dubai"}));
+      const currentHour = dubaiTime.getHours();
+      
+      if (currentHour < 0 || currentHour > 6) {
+        errors.submission_time = 'Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi)';
+      }
     }
     
     if (Object.keys(errors).length > 0) {
@@ -307,6 +327,7 @@ export default function OvertimeRequestsManager() {
         work_description: '',
       });
       setIsModalOpen(false);
+      setIsQuickSubmit(false);
       
       // Refresh data
       await fetchData();
@@ -336,6 +357,7 @@ export default function OvertimeRequestsManager() {
       overtime_hours: hours.toString(),
       work_description: defaultDescription,
     });
+    setIsQuickSubmit(true); // Mark as quick submit to bypass time validation
     setIsModalOpen(true);
   };
 
@@ -456,8 +478,11 @@ export default function OvertimeRequestsManager() {
       
       // Build query parameters
       const params = new URLSearchParams();
-      if (monthFilter) {
-        params.append('month', monthFilter);
+      if (dateRange.start_date) {
+        params.append('start_date', dateRange.start_date);
+      }
+      if (dateRange.end_date) {
+        params.append('end_date', dateRange.end_date);
       }
       // Note: status filter is not implemented in the backend yet
       
@@ -514,7 +539,7 @@ export default function OvertimeRequestsManager() {
     columnHelper.accessor('date_requested', {
       header: 'Tanggal',
       cell: (info) => formatDate(info.getValue()),
-      filterFn: monthFilterFn,
+      filterFn: dateRangeFilterFn,
     }),
     columnHelper.accessor('overtime_hours', {
       header: 'Jam Lembur',
@@ -804,9 +829,17 @@ export default function OvertimeRequestsManager() {
 
       {/* Action Button */}
       <div className="flex justify-end items-center mb-4">
-        <Dialog.Root open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <Dialog.Root open={isModalOpen} onOpenChange={(open) => {
+          setIsModalOpen(open);
+          if (!open) {
+            setIsQuickSubmit(false); // Reset quick submit flag when modal closes
+          }
+        }}>
           <Dialog.Trigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => setIsQuickSubmit(false)} // Reset quick submit flag for manual submission
+            >
               Ajukan Lembur
             </Button>
           </Dialog.Trigger>
@@ -817,32 +850,55 @@ export default function OvertimeRequestsManager() {
                 Ajukan Lembur
               </Dialog.Title>
               
-              {/* Info waktu pengajuan */}
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-blue-800">
-                      Pengajuan Lembur Manual
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi)
-                    </p>
-                    <p className="text-xs text-blue-600">
-                      Waktu Dubai saat ini: {new Date().toLocaleString('id-ID', {
-                        timeZone: 'Asia/Dubai',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                      })}
-                    </p>
+              {/* Info waktu pengajuan - hanya untuk pengajuan manual */}
+              {!isQuickSubmit && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-blue-800">
+                        Pengajuan Lembur Manual
+                      </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi)
+                      </p>
+                      <p className="text-xs text-blue-600">
+                        Waktu Dubai saat ini: {new Date().toLocaleString('id-ID', {
+                          timeZone: 'Asia/Dubai',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        })}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* Info untuk quick submit */}
+              {isQuickSubmit && (
+                <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-green-800">
+                        Pengajuan dari Tabel Potensi Lembur
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        Pengajuan lembur dari tabel potensi lembur dapat dilakukan kapan saja tanpa pembatasan waktu
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -867,12 +923,12 @@ export default function OvertimeRequestsManager() {
                     id="overtime_hours"
                     name="overtime_hours"
                     type="number"
-                    step="0.1"
+                    step="0.01"
                     min="0.5"
                     max="12"
                     value={formData.overtime_hours}
                     onChange={handleInputChange}
-                    placeholder="Contoh: 2.5"
+                    placeholder="Contoh: 2.5, 4.8, 6.25"
                     className={formErrors.overtime_hours ? 'border-red-500' : ''}
                     required
                   />
@@ -880,7 +936,7 @@ export default function OvertimeRequestsManager() {
                     <p className="text-sm text-red-600">{formErrors.overtime_hours}</p>
                   )}
                   <p className="text-sm text-gray-500">
-                    Minimal 0.5 jam, maksimal 12 jam per hari. Gunakan format desimal (contoh: 1.5, 2.5, 3.0)
+                    Minimal 0.5 jam, maksimal 12 jam per hari. Gunakan format desimal dengan presisi hingga 2 tempat desimal (contoh: 1.5, 2.75, 4.8, 6.25)
                   </p>
                 </div>
 
@@ -965,12 +1021,14 @@ export default function OvertimeRequestsManager() {
               ? `Menampilkan ${requests.length} pengajuan lembur` 
               : 'Belum ada pengajuan lembur'
             }
-            {monthFilter && (
+            {(dateRange.start_date || dateRange.end_date) && (
               <span className="ml-2 text-blue-600">
-                • Filter: {new Date(monthFilter).toLocaleDateString('id-ID', { 
-                  year: 'numeric', 
-                  month: 'long' 
-                })}
+                • Filter: {dateRange.start_date && dateRange.end_date 
+                  ? `${dateRange.start_date} sampai ${dateRange.end_date}`
+                  : dateRange.start_date 
+                    ? `dari ${dateRange.start_date}`
+                    : `sampai ${dateRange.end_date}`
+                }
               </span>
             )}
           </CardDescription>
@@ -988,29 +1046,34 @@ export default function OvertimeRequestsManager() {
             <>
               {/* Filters and Search */}
               <div className="flex items-center gap-4 flex-wrap">
-                {/* Month Filter */}
+                {/* Date Range Filter */}
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
-                    Filter Bulan:
+                  <Label htmlFor="start_date" className="text-sm font-medium text-gray-700">
+                    Dari Tanggal:
                   </Label>
                   <Input
-                    id="month-filter"
-                    type="month"
-                    value={monthFilter}
-                    onChange={(e) => setMonthFilter(e.target.value)}
+                    id="start_date"
+                    type="date"
+                    value={dateRange.start_date}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, start_date: e.target.value }))}
                     className="w-40"
                   />
-                  {monthFilter && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setMonthFilter('')}
-                      className="text-xs"
-                    >
-                      Clear
-                    </Button>
-                  )}
                 </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="end_date" className="text-sm font-medium text-gray-700">
+                    Sampai Tanggal:
+                  </Label>
+                  <Input
+                    id="end_date"
+                    type="date"
+                    value={dateRange.end_date}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, end_date: e.target.value }))}
+                    className="w-40"
+                  />
+                </div>
+                <Button onClick={fetchData} variant="outline" size="sm">
+                  Filter
+                </Button>
 
                 {/* Global Search */}
                 <div className="flex items-center gap-2">
@@ -1024,7 +1087,7 @@ export default function OvertimeRequestsManager() {
 
                 {/* Results Count */}
                 <div className="text-sm text-gray-500">
-                  {monthFilter ? (
+                  {(dateRange.start_date || dateRange.end_date) ? (
                     <>
                       Menampilkan <span className="font-medium text-blue-600">{table.getFilteredRowModel().rows.length}</span> dari{' '}
                       <span className="font-medium">{requests.length}</span> data
@@ -1038,7 +1101,7 @@ export default function OvertimeRequestsManager() {
                 </div>
 
                 {/* Export Filtered Data to PDF */}
-                {monthFilter && table.getFilteredRowModel().rows.length > 0 && (
+                {(dateRange.start_date || dateRange.end_date) && table.getFilteredRowModel().rows.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"

@@ -119,7 +119,6 @@ export default function LoginPage() {
         {/* Footer dengan informasi tambahan */}
         <div className="text-center mt-6 text-sm text-gray-500">
           <p>© {new Date().getFullYear()} Konsulat Jenderal Republik Indonesia Dubai</p>
-          <p className="mt-1">Sistem Absensi Pegawai</p>
         </div>
       </div>
     </div>
