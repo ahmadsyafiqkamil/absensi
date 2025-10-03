@@ -326,6 +326,7 @@ export default function OvertimeRequestsManager() {
         date_requested: '',
         overtime_hours: '',
         work_description: '',
+        is_quick_submit: '',
       });
       setIsModalOpen(false);
       setIsQuickSubmit(false);
