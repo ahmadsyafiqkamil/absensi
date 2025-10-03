@@ -341,7 +341,7 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Create PDF
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
         elements = []
         
         # Get styles
@@ -361,8 +361,16 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         # Employee Info
         try:
             employee = user.employee_profile
+            # Get full name from user
+            full_name = f"{user.first_name} {user.last_name}".strip()
+            if not full_name:
+                full_name = user.username
+            if not full_name:
+                full_name = user.email
+            
             employee_info = f"""
-            <b>Nama:</b> {user.first_name} {user.last_name}<br/>
+            <b>Nama:</b> {full_name}<br/>
+            <b>Username:</b> {user.username}<br/>
             <b>NIP:</b> {employee.nip if employee else 'N/A'}<br/>
             <b>Divisi:</b> {employee.division.name if employee and employee.division else 'N/A'}<br/>
             <b>Jabatan:</b> {employee.position.name if employee and employee.position else 'N/A'}<br/>
@@ -371,7 +379,8 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
             if month:
                 employee_info += f"<br/><b>Bulan:</b> {month}"
         except:
-            employee_info = f"<b>Nama:</b> {user.first_name} {user.last_name}<br/><b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}"
+            # Fallback with username
+            employee_info = f"<b>Nama:</b> {user.username}<br/><b>Periode:</b> {start_date or 'Semua'} - {end_date or 'Semua'}"
         
         employee_para = Paragraph(employee_info, styles['Normal'])
         elements.append(employee_para)
@@ -457,9 +466,22 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                 else:
                     status = 'Tidak Hadir'
                 
-                # Format times
-                check_in = att.check_in_at_utc.strftime('%H:%M') if att.check_in_at_utc else '-'
-                check_out = att.check_out_at_utc.strftime('%H:%M') if att.check_out_at_utc else '-'
+                # Format times with timezone conversion
+                if att.check_in_at_utc:
+                    # Convert UTC to work timezone
+                    check_in_utc = att.check_in_at_utc.replace(tzinfo=pytz.UTC)
+                    check_in_local = check_in_utc.astimezone(work_tz)
+                    check_in = check_in_local.strftime('%H:%M')
+                else:
+                    check_in = '-'
+                
+                if att.check_out_at_utc:
+                    # Convert UTC to work timezone
+                    check_out_utc = att.check_out_at_utc.replace(tzinfo=pytz.UTC)
+                    check_out_local = check_out_utc.astimezone(work_tz)
+                    check_out = check_out_local.strftime('%H:%M')
+                else:
+                    check_out = '-'
                 
                 # Format work hours
                 work_hours = format_work_hours(att.total_work_minutes)
@@ -473,19 +495,24 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
                     work_hours
                 ])
             
-            # Create table
-            records_table = Table(table_data, colWidths=[1*inch, 1.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
+            # Create table with auto-width and text wrapping
+            records_table = Table(table_data, repeatRows=1)
             records_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),  # Enable text wrapping
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ]))
             elements.append(records_table)
             
@@ -784,14 +811,12 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
             elements.append(Spacer(1, 10))
             
             # Prepare table data
-            table_data = [['Nama', 'NIP', 'Jabatan', 'Total Hari', 'Hadir', 'Terlambat', 'Tidak Hadir', 'Rate (%)']]
+            table_data = [['Nama', 'Total Hari', 'Hadir', 'Terlambat', 'Tidak Hadir', 'Rate (%)']]
             
             for data in team_attendance_data:
                 employee = data['employee']
                 table_data.append([
                     employee.fullname,
-                    employee.nip,
-                    employee.position.name if employee.position else 'N/A',
                     str(data['total_days']),
                     str(data['present_days']),
                     str(data['late_days']),
@@ -799,19 +824,24 @@ class SupervisorAttendanceViewSet(AttendanceViewSet):
                     f"{round(data['attendance_rate'], 2)}%"
                 ])
             
-            # Create table with landscape-optimized column widths
-            details_table = Table(table_data, colWidths=[2*inch, 1.2*inch, 1.5*inch, 1*inch, 0.8*inch, 1*inch, 1*inch, 1*inch])
+            # Create table with auto-width and text wrapping
+            details_table = Table(table_data, repeatRows=1)
             details_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),  # Enable text wrapping
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ]))
             elements.append(details_table)
         
