@@ -209,6 +209,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
     tmt_kerja: '',
     tempat_lahir: '',
     tanggal_lahir: '',
+    role: '',
   })
   const [divisions, setDivisions] = useState<{ id: number; name: string }[]>([])
   const [positions, setPositions] = useState<{ id: number; name: string; approval_level: number; can_approve_overtime_org_wide: boolean }[]>([])
@@ -274,6 +275,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
       tmt_kerja: data.tmt_kerja || '',
       tempat_lahir: data.tempat_lahir || '',
       tanggal_lahir: data.tanggal_lahir || '',
+      role: data.user?.groups?.[0] || '',
     })
     setEditOpen(true)
   }, [])
@@ -391,6 +393,7 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
         tmt_kerja: formData.tmt_kerja || null,
         tempat_lahir: formData.tempat_lahir || null,
         tanggal_lahir: formData.tanggal_lahir || null,
+        groups: formData.role ? [formData.role] : [],
       }
       const resp = await fetch(`/api/admin/employees/${editingId}`, {
         method: 'PATCH',
@@ -584,6 +587,15 @@ export default function EmployeesTable({ data }: { data: EmployeeRow[] }) {
               <div className="space-y-1">
                 <Label htmlFor="nip">NIP</Label>
                 <Input id="nip" name="nip" value={formData.nip} onChange={onChange} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="role">Role</Label>
+                <select id="role" name="role" value={formData.role} onChange={onChange} className="w-full h-10 border rounded px-2 text-sm">
+                  <option value="">Select Role</option>
+                  <option value="pegawai">Pegawai</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="admin">Admin</option>
+                </select>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">

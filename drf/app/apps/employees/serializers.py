@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from .models import Division, Position, Employee, EmployeePosition
 
 User = get_user_model()
@@ -7,9 +8,15 @@ User = get_user_model()
 
 class UserBasicSerializer(serializers.ModelSerializer):
     """Basic user serializer for nested relationships"""
+    groups = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ["id", "username", "first_name", "last_name", "email"]
+        fields = ["id", "username", "first_name", "last_name", "email", "groups"]
+    
+    def get_groups(self, obj):
+        """Get user groups"""
+        return list(obj.groups.values_list('name', flat=True))
 
 
 class DivisionSerializer(serializers.ModelSerializer):
@@ -151,12 +158,19 @@ class EmployeeAdminSerializer(EmployeeSerializer):
         allow_null=True, 
         required=False
     )
+    groups = serializers.SerializerMethodField(read_only=True)
     
     class Meta(EmployeeSerializer.Meta):
         fields = EmployeeSerializer.Meta.fields + [
             "gaji_pokok", "tmt_kerja", "tempat_lahir", "tanggal_lahir",
-            "user_id", "division_id", "position_id"
+            "user_id", "division_id", "position_id", "groups"
         ]
+    
+    def get_groups(self, obj):
+        """Get user groups"""
+        if hasattr(obj, 'user') and obj.user:
+            return list(obj.user.groups.values_list('name', flat=True))
+        return []
 
 
 class EmployeeSupervisorSerializer(EmployeeSerializer):
@@ -209,21 +223,41 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         allow_null=True, 
         required=False
     )
+    groups = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False,
+        allow_empty=True
+    )
     
     class Meta:
         model = Employee
         fields = [
             "id", "user_id", "nip", "fullname", "division_id", "position_id",
-            "gaji_pokok", "tmt_kerja", "tempat_lahir", "tanggal_lahir"
+            "gaji_pokok", "tmt_kerja", "tempat_lahir", "tanggal_lahir", "groups"
         ]
     
     def create(self, validated_data):
         """Create employee and handle position assignment"""
-        # Extract position_id before creating employee
+        # Extract position_id and groups before creating employee
         position_id = validated_data.pop('position', None)
+        groups = validated_data.pop('groups', [])
         
         # Create employee
         employee = super().create(validated_data)
+        
+        # Handle groups assignment
+        if groups:
+            user = employee.user
+            # Clear existing groups
+            user.groups.clear()
+            # Add new groups
+            for group_name in groups:
+                try:
+                    group = Group.objects.get(name=group_name)
+                    user.groups.add(group)
+                except Group.DoesNotExist:
+                    pass  # Skip non-existent groups
         
         # Handle position assignment
         if position_id:
@@ -249,11 +283,25 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         """Update employee and handle position assignment"""
-        # Extract position_id before updating employee
+        # Extract position_id and groups before updating employee
         position_id = validated_data.pop('position', None)
+        groups = validated_data.pop('groups', None)
         
         # Update employee
         employee = super().update(instance, validated_data)
+        
+        # Handle groups assignment
+        if groups is not None:
+            user = employee.user
+            # Clear existing groups
+            user.groups.clear()
+            # Add new groups
+            for group_name in groups:
+                try:
+                    group = Group.objects.get(name=group_name)
+                    user.groups.add(group)
+                except Group.DoesNotExist:
+                    pass  # Skip non-existent groups
         
         # Handle position assignment
         if position_id is not None:
