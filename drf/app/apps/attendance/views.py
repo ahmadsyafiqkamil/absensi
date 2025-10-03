@@ -162,10 +162,25 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     def today(self, request):
         """Get today's attendance for current user"""
         try:
+            # Get user's timezone from work settings or default to Asia/Dubai
+            from apps.settings.models import WorkSettings
+            try:
+                work_settings = WorkSettings.objects.first()
+                timezone_name = work_settings.timezone if work_settings else "Asia/Dubai"
+            except:
+                timezone_name = "Asia/Dubai"
+            
+            # Calculate today's date in user's timezone
+            from zoneinfo import ZoneInfo
+            from django.utils import timezone as django_timezone
+            user_tz = ZoneInfo(timezone_name)
+            user_now = django_timezone.now().astimezone(user_tz)
+            today_in_user_tz = user_now.date()
+            
             # Use queryset to avoid MultipleObjectsReturned and pick the latest record deterministically
             qs = Attendance.objects.filter(
                 user=request.user,
-                date_local=date.today()
+                date_local=today_in_user_tz
             ).order_by('-check_in_at_utc', '-id')
 
             attendance = qs.first()

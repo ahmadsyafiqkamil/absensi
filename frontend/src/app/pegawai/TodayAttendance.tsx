@@ -112,7 +112,11 @@ export default function TodayAttendance() {
         "fetchTodayData called for date:",
         targetDate,
         "skipSettings:",
-        skipSettings
+        skipSettings,
+        "current timezone:",
+        workSettings?.timezone || "Asia/Dubai",
+        "timestamp:",
+        new Date().toISOString()
       );
 
       if (showLoading) setLoading(true);
@@ -120,12 +124,21 @@ export default function TodayAttendance() {
       const q = `?start=${targetDate}&end=${targetDate}`;
 
       try {
-        const nocacheInit: RequestInit = { cache: "no-store", credentials: "include" };
+        const nocacheInit: RequestInit = { 
+          cache: "no-store", 
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        };
+        const timestamp = Date.now();
         const requests: Promise<Response>[] = [
           // Primary: current user's attendance today
-          fetch(`/api/v2/attendance/today/?_=${Date.now()}`, nocacheInit),
+          fetch(`/api/v2/attendance/today/?_=${timestamp}&date=${targetDate}`, nocacheInit),
           // Holidays for the date
-          fetch(`/api/v2/settings/holidays/${q}&_=${Date.now()}`, nocacheInit),
+          fetch(`/api/v2/settings/holidays/${q}&_=${timestamp}`, nocacheInit),
         ];
 
         // Only fetch settings if not skipping (to prevent loops)
@@ -158,8 +171,10 @@ export default function TodayAttendance() {
 
         // Only set data if it's for the current date
         if (att && att.date_local === targetDate) {
+          console.log("Setting attendance data for date:", att.date_local, "target:", targetDate);
           setData(att);
         } else {
+          console.log("No attendance data found or date mismatch. Found:", att?.date_local, "Expected:", targetDate);
           setData(null);
         }
 
