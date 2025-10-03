@@ -231,7 +231,7 @@ class OvertimeRequest(TimeStampedModel):
         self.save()
     
     def _calculate_financial_details(self):
-        """Calculate hourly rate and total amount"""
+        """Calculate hourly rate and total amount with payment threshold policy"""
         if not self.employee or not self.employee.gaji_pokok:
             return
         
@@ -252,8 +252,19 @@ class OvertimeRequest(TimeStampedModel):
                 base_hourly_rate = float(self.employee.gaji_pokok) / monthly_hours
                 self.hourly_rate = base_hourly_rate * rate_multiplier
                 
-                # Calculate total amount
-                self.total_amount = self.hourly_rate * float(self.total_hours)
+                # Apply payment threshold policy
+                payment_threshold_minutes = int(work_settings.overtime_payment_threshold_minutes or 60)
+                total_hours = float(self.total_hours)
+                total_minutes = total_hours * 60
+                
+                if total_minutes > payment_threshold_minutes:
+                    # Only pay for minutes above the threshold
+                    payable_minutes = total_minutes - payment_threshold_minutes
+                    payable_hours = payable_minutes / 60
+                    self.total_amount = self.hourly_rate * payable_hours
+                else:
+                    # No payment if overtime is less than or equal to threshold
+                    self.total_amount = 0
                 
         except Exception:
             pass

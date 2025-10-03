@@ -139,7 +139,7 @@ class Attendance(TimeStampedModel):
             if self.total_work_minutes > (required_minutes + overtime_threshold):
                 overtime_minutes = self.total_work_minutes - required_minutes - overtime_threshold
                 
-                # Calculate overtime amount
+                # Calculate overtime amount with payment threshold policy
                 monthly_hours = 22 * 8  # 22 workdays * 8 hours per day
                 hourly_wage = float(employee.gaji_pokok) / monthly_hours
                 
@@ -149,7 +149,18 @@ class Attendance(TimeStampedModel):
                 else:
                     rate = float(work_settings.overtime_rate_workday or 0.50)
                 
-                overtime_amount = (overtime_minutes / 60) * hourly_wage * rate
+                # Apply payment threshold policy
+                payment_threshold_minutes = int(work_settings.overtime_payment_threshold_minutes or 60)
+                
+                if overtime_minutes > payment_threshold_minutes:
+                    # Only pay for minutes above the threshold
+                    payable_minutes = overtime_minutes - payment_threshold_minutes
+                    payable_hours = payable_minutes / 60
+                    overtime_amount = payable_hours * hourly_wage * rate
+                else:
+                    # No payment if overtime is less than or equal to threshold
+                    overtime_amount = 0
+                
                 return overtime_minutes, round(overtime_amount, 2)
             
             return 0, 0

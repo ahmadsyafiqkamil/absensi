@@ -39,7 +39,7 @@ class WorkSettingsAdminSerializer(WorkSettingsSerializer):
     class Meta(WorkSettingsSerializer.Meta):
         fields = WorkSettingsSerializer.Meta.fields + [
             "overtime_rate_workday", "overtime_rate_holiday", "overtime_threshold_minutes",
-            "created_at", "updated_at"
+            "overtime_payment_threshold_minutes", "created_at", "updated_at"
         ]
 
 
@@ -47,7 +47,8 @@ class WorkSettingsSupervisorSerializer(WorkSettingsSerializer):
     """Supervisor work settings serializer with limited access"""
     class Meta(WorkSettingsSerializer.Meta):
         fields = WorkSettingsSerializer.Meta.fields + [
-            "overtime_rate_workday", "overtime_rate_holiday", "overtime_threshold_minutes"
+            "overtime_rate_workday", "overtime_rate_holiday", "overtime_threshold_minutes",
+            "overtime_payment_threshold_minutes"
         ]
 
 
@@ -72,7 +73,7 @@ class WorkSettingsCreateUpdateSerializer(serializers.ModelSerializer):
             "workdays", "friday_start_time", "friday_end_time", "friday_required_minutes",
             "friday_grace_minutes", "office_latitude", "office_longitude", "office_radius_meters",
             "overtime_rate_workday", "overtime_rate_holiday", "overtime_threshold_minutes",
-            "earliest_check_in_enabled", "earliest_check_in_time", "latest_check_out_enabled", "latest_check_out_time"
+            "overtime_payment_threshold_minutes", "earliest_check_in_enabled", "earliest_check_in_time", "latest_check_out_enabled", "latest_check_out_time"
         ]
     
     def validate_workdays(self, value):

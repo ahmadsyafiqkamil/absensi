@@ -49,6 +49,11 @@ class WorkSettings(TimeStampedModel):
         verbose_name="Overtime Threshold (Minutes)",
         help_text="Minimum extra minutes before overtime starts counting (e.g., 60 = 1 hour buffer)",
     )
+    overtime_payment_threshold_minutes = models.PositiveIntegerField(
+        default=60,
+        verbose_name="Overtime Payment Threshold (Minutes)",
+        help_text="Minimum overtime minutes before payment starts (e.g., 60 = only pay if overtime > 60 minutes)",
+    )
     
     # Check-in/out time restrictions
     earliest_check_in_enabled = models.BooleanField(

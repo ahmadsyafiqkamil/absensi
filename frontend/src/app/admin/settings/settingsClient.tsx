@@ -27,6 +27,7 @@ type WorkSettings = {
   overtime_rate_workday: number | string
   overtime_rate_holiday: number | string
   overtime_threshold_minutes: number
+  overtime_payment_threshold_minutes: number
   earliest_check_in_enabled?: boolean
   earliest_check_in_time?: string
   latest_check_out_enabled?: boolean
@@ -87,7 +88,8 @@ export default function SettingsClient() {
             office_radius_meters: 100,
             overtime_rate_workday: '0.50',
             overtime_rate_holiday: '0.75',
-            overtime_threshold_minutes: 60,
+            overtime_threshold_minutes: 0,
+            overtime_payment_threshold_minutes: 60,
             earliest_check_in_enabled: false,
             earliest_check_in_time: '06:00:00',
             latest_check_out_enabled: false,
@@ -390,7 +392,7 @@ export default function SettingsClient() {
                   min="0"
                   max="1440"
                   step="1"
-                  value={settings.overtime_threshold_minutes || 60}
+                  value={settings.overtime_threshold_minutes ?? 0}
                   onChange={(e) => {
                     const value = parseInt(e.target.value) || 0;
                     setSettings({ ...settings, overtime_threshold_minutes: value });
@@ -398,11 +400,29 @@ export default function SettingsClient() {
                 />
                 <div className="text-xs text-gray-500">Lembur mulai dihitung setelah melebihi jam kerja + batas ini (0-1440 menit)</div>
               </div>
+              <div className="grid gap-2">
+                <Label>Batas Pembayaran Lembur (menit)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="1440"
+                  step="1"
+                  value={settings.overtime_payment_threshold_minutes ?? 60}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
+                    setSettings({ ...settings, overtime_payment_threshold_minutes: value });
+                  }}
+                />
+                <div className="text-xs text-gray-500">Lembur baru dibayar jika lebih dari menit ini (0-1440 menit)</div>
+              </div>
             </div>
             <div className="mt-4 p-3 bg-green-50 rounded-lg">
               <div className="text-sm text-green-800">
-                <strong>Contoh:</strong> Jam kerja 8 jam (480 menit) + batas lembur {settings.overtime_threshold_minutes || 60} menit = 
-                Lembur mulai dihitung setelah bekerja lebih dari {Math.floor(((settings.required_minutes || 480) + (settings.overtime_threshold_minutes || 60)) / 60)} jam {((settings.required_minutes || 480) + (settings.overtime_threshold_minutes || 60)) % 60} menit
+                <strong>Contoh Perhitungan Lembur:</strong><br/>
+                • Jam kerja 8 jam (480 menit) + batas lembur {settings.overtime_threshold_minutes ?? 0} menit = 
+                Lembur mulai dihitung setelah bekerja lebih dari {Math.floor(((settings.required_minutes || 480) + (settings.overtime_threshold_minutes ?? 0)) / 60)} jam {((settings.required_minutes || 480) + (settings.overtime_threshold_minutes ?? 0)) % 60} menit<br/>
+                • <strong>Kebijakan Pembayaran:</strong> Lembur baru dibayar jika lebih dari {settings.overtime_payment_threshold_minutes ?? 60} menit. 
+                Jika lembur {settings.overtime_payment_threshold_minutes ?? 60} menit atau kurang, tidak ada pembayaran.
               </div>
             </div>
           </div>

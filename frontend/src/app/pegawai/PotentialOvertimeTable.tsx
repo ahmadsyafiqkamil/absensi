@@ -24,7 +24,6 @@ type PotentialOvertimeRecord = {
   check_out_time: string | null;
   total_work_minutes: number;
   required_minutes: number;
-  overtime_threshold_minutes: number;
   potential_overtime_minutes: number;
   potential_overtime_hours: number;
   potential_overtime_amount: number;
@@ -37,6 +36,7 @@ type PotentialOvertimeResponse = {
   start_date: string;
   end_date: string;
   overtime_threshold_minutes: number;
+  timezone: string;
   total_potential_records: number;
   total_potential_hours: number;
   total_potential_amount: number;
@@ -77,6 +77,25 @@ function formatWorkHours(minutes: number): string {
   }
   
   return '0m';
+}
+
+function formatTime(timeString: string | null, timezone: string = 'Asia/Dubai'): string {
+  if (!timeString) return '-';
+  try {
+    // If timeString is already in HH:MM format, return as is
+    if (/^\d{2}:\d{2}$/.test(timeString)) {
+      return timeString;
+    }
+    // If it's an ISO string, convert to local timezone
+    const date = new Date(timeString);
+    return date.toLocaleTimeString('id-ID', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      timeZone: timezone 
+    });
+  } catch {
+    return timeString || '-';
+  }
 }
 
 interface PotentialOvertimeTableProps {
@@ -172,7 +191,7 @@ export default function PotentialOvertimeTable({ onQuickSubmit, refreshTrigger }
             {formatWorkHours(info.getValue())}
           </div>
           <div className="text-xs text-gray-500">
-            {info.row.original.check_in_time} - {info.row.original.check_out_time}
+            {formatTime(info.row.original.check_in_time, data?.timezone)} - {formatTime(info.row.original.check_out_time, data?.timezone)}
           </div>
         </div>
       ),
@@ -185,7 +204,7 @@ export default function PotentialOvertimeTable({ onQuickSubmit, refreshTrigger }
             {formatWorkHours(info.getValue())}
           </div>
           <div className="text-xs text-gray-500">
-            + {info.row.original.overtime_threshold_minutes}m buffer
+            + {data?.overtime_threshold_minutes ?? 0}m buffer
           </div>
         </div>
       ),
@@ -320,7 +339,7 @@ export default function PotentialOvertimeTable({ onQuickSubmit, refreshTrigger }
       <CardHeader>
         <CardTitle>Potensi Pengajuan Lembur</CardTitle>
         <CardDescription>
-          Hari-hari dimana Anda bekerja lebih dari jam kerja normal + buffer {data?.overtime_threshold_minutes || 60} menit
+          {/* Hari-hari dimana Anda bekerja lebih dari jam kerja normal + buffer {data?.overtime_threshold_minutes ?? 0} menit */}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -495,7 +514,7 @@ export default function PotentialOvertimeTable({ onQuickSubmit, refreshTrigger }
             <p className="mt-2">Tidak ada potensi lembur ditemukan</p>
             <p className="text-sm">Untuk periode {dateRange.start_date} sampai {dateRange.end_date}</p>
             <p className="text-sm text-blue-600 mt-2">
-              Potensi lembur muncul jika Anda bekerja lebih dari jam normal + {data?.overtime_threshold_minutes || 60} menit buffer
+              Potensi lembur muncul jika Anda bekerja lebih dari jam normal + {data?.overtime_threshold_minutes ?? 0} menit buffer
             </p>
           </div>
         )}

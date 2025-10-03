@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
       purpose: legacy.purpose || legacy.work_description || '',
       work_description: legacy.work_description || '',
       attendance_id: null, // Will be handled by backend to find or create attendance record
+      is_quick_submit: legacy.is_quick_submit || false, // Flag for quick submit from potential overtime table
     }
 
     const response = await fetch(`${BACKEND_URL}/api/v2/overtime/overtime/`, {

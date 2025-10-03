@@ -165,6 +165,7 @@ export default function OvertimeRequestsManager() {
     date_requested: '',
     overtime_hours: '',
     work_description: '',
+    is_quick_submit: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -356,6 +357,7 @@ export default function OvertimeRequestsManager() {
       date_requested: date,
       overtime_hours: hours.toString(),
       work_description: defaultDescription,
+      is_quick_submit: 'true', // Add flag for quick submit
     });
     setIsQuickSubmit(true); // Mark as quick submit to bypass time validation
     setIsModalOpen(true);

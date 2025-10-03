@@ -565,8 +565,8 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
         except:
             ws = None
         
-        # Get overtime threshold (default: 30 minutes)
-        overtime_threshold = int(ws.overtime_threshold_minutes or 30) if ws else 30
+        # Get overtime threshold (respect 0 value)
+        overtime_threshold = int(ws.overtime_threshold_minutes) if ws and ws.overtime_threshold_minutes is not None else 30
         
         # Get attendance records for the date range
         # Exclude records that already have overtime requests
@@ -596,7 +596,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             if potential_overtime_minutes > 0:
                 potential_overtime_hours = potential_overtime_minutes / 60
                 
-                # Calculate potential overtime amount
+                # Calculate potential overtime amount with payment threshold policy
                 potential_amount = 0
                 if employee.gaji_pokok and ws:
                     monthly_hours = 22 * 8
@@ -608,16 +608,38 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                     else:
                         rate = float(ws.overtime_rate_workday or 0.50)
                     
-                    potential_amount = potential_overtime_hours * hourly_wage * rate
+                    # Apply payment threshold policy
+                    payment_threshold_minutes = int(ws.overtime_payment_threshold_minutes or 60)
+                    potential_overtime_minutes = potential_overtime_hours * 60
+                    
+                    if potential_overtime_minutes > payment_threshold_minutes:
+                        # Only pay for minutes above the threshold
+                        payable_minutes = potential_overtime_minutes - payment_threshold_minutes
+                        payable_hours = payable_minutes / 60
+                        potential_amount = payable_hours * hourly_wage * rate
+                    else:
+                        # No payment if overtime is less than or equal to threshold
+                        potential_amount = 0
                 
-                # Format times
+                # Format times (convert UTC to local timezone)
                 check_in_time = None
                 check_out_time = None
                 
                 if att.check_in_at_utc:
-                    check_in_time = att.check_in_at_utc.strftime('%H:%M')
+                    # Convert UTC to local timezone
+                    from django.utils import timezone
+                    import pytz
+                    local_tz = pytz.timezone(ws.timezone if ws else 'Asia/Dubai')
+                    check_in_local = att.check_in_at_utc.astimezone(local_tz)
+                    check_in_time = check_in_local.strftime('%H:%M')
+                    
                 if att.check_out_at_utc:
-                    check_out_time = att.check_out_at_utc.strftime('%H:%M')
+                    # Convert UTC to local timezone
+                    from django.utils import timezone
+                    import pytz
+                    local_tz = pytz.timezone(ws.timezone if ws else 'Asia/Dubai')
+                    check_out_local = att.check_out_at_utc.astimezone(local_tz)
+                    check_out_time = check_out_local.strftime('%H:%M')
                 
                 potential_records.append({
                     'date_local': att.date_local.isoformat(),
@@ -626,7 +648,6 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
                     'check_out_time': check_out_time,
                     'total_work_minutes': att.total_work_minutes,
                     'required_minutes': required_minutes,
-                    'overtime_threshold_minutes': overtime_threshold,
                     'potential_overtime_minutes': potential_overtime_minutes,
                     'potential_overtime_hours': round(potential_overtime_hours, 2),
                     'potential_overtime_amount': round(potential_amount, 2),
@@ -639,6 +660,7 @@ class OvertimeRequestViewSet(viewsets.ModelViewSet):
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
             'overtime_threshold_minutes': overtime_threshold,
+            'timezone': ws.timezone if ws else 'Asia/Dubai',
             'total_potential_records': len(potential_records),
             'total_potential_hours': sum(r['potential_overtime_hours'] for r in potential_records),
             'total_potential_amount': sum(r['potential_overtime_amount'] for r in potential_records),

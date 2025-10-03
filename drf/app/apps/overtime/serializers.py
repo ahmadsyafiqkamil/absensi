@@ -149,12 +149,13 @@ class OvertimeRequestEmployeeSerializer(OvertimeRequestSerializer):
 class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating overtime requests"""
     attendance_id = serializers.IntegerField(required=False, allow_null=True)
+    is_quick_submit = serializers.BooleanField(required=False, default=False)
     
     class Meta:
         model = OvertimeRequest
         fields = [
             "attendance_id", "request_type", "date", "start_time", "end_time",
-            "purpose", "work_description", "total_hours"
+            "purpose", "work_description", "total_hours", "is_quick_submit"
         ]
         extra_kwargs = {
             'attendance': {'required': False, 'allow_null': True}
@@ -182,16 +183,19 @@ class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
             )
         
         # Validasi waktu pengajuan lembur manual (hanya 12 malam - 6 pagi)
-        from django.utils import timezone
-        current_time = timezone.now()
-        current_hour = current_time.hour
-        
-        # Untuk manual overtime request, hanya izinkan pengajuan dari jam 0-6 (12 malam - 6 pagi)
-        if current_hour < 0 or current_hour > 6:
-            raise serializers.ValidationError(
-                "Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi). "
-                f"Waktu saat ini: {current_time.strftime('%H:%M')}"
-            )
+        # TIDAK berlaku untuk quick submit dari tabel potensi lembur
+        is_quick_submit = data.get('is_quick_submit', False)
+        if not is_quick_submit:
+            from django.utils import timezone
+            current_time = timezone.now()
+            current_hour = current_time.hour
+            
+            # Untuk manual overtime request, hanya izinkan pengajuan dari jam 0-6 (12 malam - 6 pagi)
+            if current_hour < 0 or current_hour > 6:
+                raise serializers.ValidationError(
+                    "Pengajuan lembur manual hanya dapat dilakukan dari jam 00:00 (12 malam) hingga jam 06:00 (6 pagi). "
+                    f"Waktu saat ini: {current_time.strftime('%H:%M')}"
+                )
         
         return data
     
@@ -203,6 +207,8 @@ class OvertimeRequestCreateUpdateSerializer(serializers.ModelSerializer):
         
         # Handle attendance field
         attendance_id = validated_data.pop('attendance_id', None)
+        # Remove is_quick_submit field (not stored in database)
+        validated_data.pop('is_quick_submit', None)
         attendance = None
         
         if attendance_id:
